@@ -1,5 +1,5 @@
 # ReMA Project
-This is an open-source framework for Multi-Agent Multi-Turn Reinforcement Learning, i.e. **Re**inforced **M**ulti-**A**gents (ReMA).
+This is an open-source framework for Multi-Agent Multi-Turn Reinforcement Learning, i.e. **Re**inforced **M**ulti-**A**gents (ReMA), for the work of **Re**inforced **M**eta-thinking **A**gents (ReMA)
 
 ## Overview
 ![ReMA](./assets/demo.png)
