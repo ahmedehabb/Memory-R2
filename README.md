@@ -96,10 +96,13 @@ in the training scripts.
 ## Citation
 If you find this work useful, please consider citing:
 ```
-@article{wan2025rema,
-  title={Rema: Learning to meta-think for llms with multi-agent reinforcement learning},
-  author={Wan, Ziyu and Li, Yunxiang and Song, Yan and Wang, Hanjing and Yang, Linyi and Schmidt, Mark and Wang, Jun and Zhang, Weinan and Hu, Shuyue and Wen, Ying},
-  journal={arXiv preprint arXiv:2503.09501},
-  year={2025}
+@misc{wan2025remalearningmetathinkllms,
+      title={ReMA: Learning to Meta-think for LLMs with Multi-Agent Reinforcement Learning}, 
+      author={Ziyu Wan and Yunxiang Li and Xiaoyu Wen and Yan Song and Hanjing Wang and Linyi Yang and Mark Schmidt and Jun Wang and Weinan Zhang and Shuyue Hu and Ying Wen},
+      year={2025},
+      eprint={2503.09501},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2503.09501}, 
 }
 ```
