@@ -1184,20 +1184,19 @@ class RayReMATrainer(object):
                     
                     # statistics for group filter
                     if self.config.actor_rollout_ref.rollout.n > 1:
-                        key_reward = list(reward_tensor_map.keys())[0]
-                        one_agent_reward_tensor = reward_tensor_map[key_reward]
-                        # sum over all turns, valid for 0,1 reward
-                        one_agent_sum_reward = one_agent_reward_tensor.sum(dim=-1)
-                        id2score = defaultdict(list)
+                        # key_reward = list(reward_tensor_map.keys())[0]
+                        # one_agent_reward_tensor = reward_tensor_map[key_reward]
+                        acc_tensor = new_batch.batch['acc']
+                        id2acc = defaultdict(list)
                         for i_bsz, uid in enumerate(new_batch.non_tensor_batch['uid']):
-                            id2score[uid].append(one_agent_sum_reward[i_bsz])
+                            id2acc[uid].append(acc_tensor[i_bsz])
 
                         kept_prompt_uids = []
-                        for key_uid, scores_this_uid in id2score.items():
-                            scores_this_uid = torch.tensor(scores_this_uid)
-                            if (scores_this_uid == 0).all():
+                        for key_uid, acc_this_uid in id2acc.items():
+                            acc_this_uid = torch.tensor(acc_this_uid)
+                            if (acc_this_uid == 0).all():
                                 all_negative_cnt += 1
-                            elif (scores_this_uid == 1).all():
+                            elif (acc_this_uid == 1).all():
                                 all_positive_cnt += 1
                             else:
                                 # keep prompt with none-zero advantages
