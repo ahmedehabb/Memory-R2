@@ -27,6 +27,37 @@ def compute_score_fn(compute_score, params):
     data_source, response, ground_truth, extra_info = params
     return compute_score(data_source, response, ground_truth, extra_info)
 
+
+def _rema_math_format_reward_fn(role, response_str):
+    if 'boxed' in response_str:
+        if role == 'meta_thinking':
+            return -0.25
+        elif role == 'reasoning':
+            return 0.25
+        else:
+            raise ValueError(f"Unknown {role=}") 
+    else: return 0.0
+
+def _rema_laaj_format_reward_fn(role, response_str):
+    from verl.utils.reward_score.pairwise_laaj import extract_final_verdict
+    ans = extract_final_verdict(response_str)
+    if ans is not None:
+        if role == 'meta_thinking':
+            return -0.25
+        elif role == 'reasoning':
+            return 0.25
+        else:
+            raise ValueError(f"Unknown {role=}") 
+    else: return 0.0
+
+def compute_format_r(data_source, role, response_str):
+    if data_source == "ReMA-math":
+        return _rema_math_format_reward_fn(role, response_str)
+    elif data_source == 'ReMA-laaj':
+        return _rema_laaj_format_reward_fn(role, response_str)
+    else:
+        raise ValueError(f'Unknown {data_source=} for format reward.')
+
 class ReMARewardManager:
     """The reward manager.
     """
@@ -124,8 +155,8 @@ class ReMARewardManager:
         assert len(scores) == len(data)
         accuracy = torch.tensor(scores, dtype=torch.float32) # bsz
         reward_tensor_map['acc'] = accuracy
-        for i in range(len(data)):
-            data_item = data[i]  # DataProtoItem
+        for i_bsz in range(len(data)):
+            data_item = data[i_bsz]  # DataProtoItem
             response_str = data_item.non_tensor_batch['response']
             ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
             data_source = data_item.non_tensor_batch['data_source']
@@ -136,11 +167,11 @@ class ReMARewardManager:
             #     ground_truth=ground_truth,
             #     extra_info=extra_info,
             # )
-            score = scores[i]
+            score = scores[i_bsz]
             
             num_turns = data_item.non_tensor_batch['num_turns']
             
-            for i, role in enumerate(agent_roles):
+            for i_role, role in enumerate(agent_roles):
                 turn_finished = data_item.batch[f'{role}_turn_finished'].item()
                 if data_item.meta_info['mask_unfinished_reward']:
                     # if conversation is not finised normally, i.e. with ['FINISH']
@@ -150,16 +181,12 @@ class ReMARewardManager:
 
                 if turn_finished == 0 and data_item.meta_info['use_format_reward'] and max_num_turns == 1:
                     # XXX(ziyu): only add format reward for normally finished 1-turn conversation
-                    last_round_msg = data_item.non_tensor_batch['history'][i]
+                    last_round_msg = data_item.non_tensor_batch['history'][i_role]
                     assert last_round_msg['role'] == role, role
-                    if 'boxed' in last_round_msg['content']:
-                        if role == 'meta-thinking':
-                            score -= 0.25
-                        elif role == 'reasoning':
-                            score += 0.25
-                        else:
-                            raise ValueError(f"Unknown {role=}")
-                reward_tensor_map[f'{role}_turn_level_reward'][i, num_turns - 1] = score
+
+                    format_r = compute_format_r(data_source, role, last_round_msg['content'])
+                    score += format_r
+                reward_tensor_map[f'{role}_turn_level_reward'][i_bsz, num_turns - 1] = score
 
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0
