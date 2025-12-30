@@ -21,7 +21,8 @@ from collections import defaultdict
 
 import torch
 import numpy as np
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
+from typing import Iterator
 
 
 def collate_fn(data_list: list[dict]) -> dict:
@@ -44,6 +45,59 @@ def collate_fn(data_list: list[dict]) -> dict:
     return {**tensors, **non_tensors}
 
 
+class ChunkBatchSampler(Sampler):
+    """
+    Custom batch sampler that ensures batches never span multiple chunk_ids.
+    When a chunk has fewer samples than batch_size, it pads with repetitions from the same chunk.
+    """
+    def __init__(self, dataset: 'RLHFDataset', batch_size: int, drop_last: bool = False):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+        
+        if not hasattr(dataset, 'chunk_groups') or dataset.chunk_groups is None:
+            raise ValueError("Dataset must have chunk_groups (requires chunk_id column)")
+        
+        self.chunk_groups = dataset.chunk_groups
+        self.chunk_ids = sorted(self.chunk_groups.keys())
+        
+    def __iter__(self) -> Iterator[list[int]]:
+        """Yield batches that respect chunk boundaries"""
+        for chunk_id in self.chunk_ids:
+            chunk_indices = list(self.chunk_groups[chunk_id])
+            chunk_size = len(chunk_indices)
+            
+            # Process this chunk in batches
+            i = 0
+            while i < chunk_size:
+                batch_indices = []
+                for j in range(self.batch_size):
+                    if i + j < chunk_size:
+                        # Use actual index
+                        batch_indices.append(chunk_indices[i + j])
+                    else:
+                        # Pad with repeated samples from the same chunk (cycle within chunk)
+                        repeat_idx = (i + j) % chunk_size
+                        batch_indices.append(chunk_indices[repeat_idx])
+                
+                # Only yield if we have a full batch or drop_last=False
+                if len(batch_indices) == self.batch_size or not self.drop_last:
+                    yield batch_indices
+                
+                i += self.batch_size
+    
+    def __len__(self) -> int:
+        """Calculate total number of batches"""
+        total_batches = 0
+        for chunk_id in self.chunk_ids:
+            chunk_size = len(self.chunk_groups[chunk_id])
+            if self.drop_last:
+                total_batches += chunk_size // self.batch_size
+            else:
+                total_batches += (chunk_size + self.batch_size - 1) // self.batch_size
+        return total_batches
+
+
 class RLHFDataset(Dataset):
     """
     We assume the dataset contains a column that contains prompts and other information
@@ -52,12 +106,14 @@ class RLHFDataset(Dataset):
     def __init__(self,
                  parquet_files: Union[str, List[str]],
                  prompt_key='question',
+                 shuffle=False,
                  ):
         if not isinstance(parquet_files, (List, ListConfig)):
             parquet_files = [parquet_files]
 
         self.parquet_files = copy.deepcopy(parquet_files)
         self.prompt_key = prompt_key
+        self.shuffle = shuffle
 
         # Whether to store the dataset in state_dict()
         # default not store
@@ -71,8 +127,29 @@ class RLHFDataset(Dataset):
             dataframe = pd.read_parquet(parquet_file)
             dataframes.append(dataframe)
         self.dataframe = pd.concat(dataframes)
-
-        print(f'dataset len: {len(self.dataframe)}')
+        
+        # Sort by chunk_id first, then sample_id to ensure batches contain same chunk_id
+        # Only sort by chunk_id when shuffle is False to avoid cross-chunk memory issues
+        if not self.shuffle and 'chunk_id' in self.dataframe.columns and 'sample_id' in self.dataframe.columns:
+            # Ensure chunk_id is numeric for proper sorting (not string sorting)
+            self.dataframe['chunk_id'] = pd.to_numeric(self.dataframe['chunk_id'], errors='coerce')
+            self.dataframe = self.dataframe.sort_values(by=['chunk_id', 'sample_id']).reset_index(drop=True)
+            
+            # Group by chunk_id and get counts
+            chunk_counts = self.dataframe.groupby('chunk_id').size()
+            print(f'dataset len: {len(self.dataframe)} (sorted by chunk_id, sample_id)')
+            print(f'Chunk ID counts: {dict(chunk_counts)}')
+            
+            # Store chunk_id groups for repeat logic
+            self.chunk_groups = self.dataframe.groupby('chunk_id').indices
+        elif 'chunk_id' in self.dataframe.columns:
+            # Still need chunk_groups even without shuffle for ChunkBatchSampler
+            self.dataframe['chunk_id'] = pd.to_numeric(self.dataframe['chunk_id'], errors='coerce')
+            self.chunk_groups = self.dataframe.groupby('chunk_id').indices
+            print(f'dataset len: {len(self.dataframe)} (chunk_groups created, no sorting)')
+        else:
+            self.chunk_groups = None
+            print(f'dataset len: {len(self.dataframe)}')
 
     def __len__(self):
         return len(self.dataframe)
@@ -80,8 +157,22 @@ class RLHFDataset(Dataset):
     def __getitem__(self, item):
         """
         Return the prompt data directly without tokenization
+        If accessing beyond the length of a chunk_id group, cycle within that group
         """
-        row_dict: dict = self.dataframe.iloc[item].to_dict()
+        # If chunk_groups exist and we have chunk_id info, handle repeating
+        if self.chunk_groups is not None and item < len(self.dataframe):
+            row = self.dataframe.iloc[item]
+            chunk_id = row['chunk_id']
+            chunk_indices = self.chunk_groups[chunk_id]
+            
+            # Find position within this chunk's group
+            relative_pos = list(chunk_indices).index(item)
+            # Use modulo to cycle within the same chunk if needed (for future batching logic)
+            actual_index = chunk_indices[relative_pos % len(chunk_indices)]
+            
+            row_dict: dict = self.dataframe.iloc[actual_index].to_dict()
+        else:
+            row_dict: dict = self.dataframe.iloc[item].to_dict()
         
         # Get and pop the prompt from the row dictionary
         question = row_dict.pop(self.prompt_key)
@@ -91,7 +182,7 @@ class RLHFDataset(Dataset):
         
         # Add index for each prompt
         index = row_dict.get("extra_info", {}).get("index", 0)
-        row_dict["index"] = index
+        row_dict["index"] = item
 
         return row_dict
 
