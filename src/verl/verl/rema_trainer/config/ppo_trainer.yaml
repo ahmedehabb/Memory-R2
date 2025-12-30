@@ -2,7 +2,7 @@ data:
   tokenizer: null
   train_files: data/MATH/train.parquet
   val_files: data/MATH/test500.parquet
-  prompt_key: question
+  prompt_key: prompt
   max_prompt_length: 7168 
   max_response_length: 1024 
   train_batch_size: 1024
@@ -47,7 +47,7 @@ actor_rollout_ref:
     kl_loss_coef: 0.001 # for grpo
     kl_loss_type: low_var_kl # for grpo
     ppo_epochs: 1
-    shuffle: False
+    shuffle: False # Set to False for sequential chunk processing (memory requires chunk order) Online Learning !!
     ulysses_sequence_parallel_size: 1 # sp size
     checkpoint:
       contents: ['model', 'hf_model', 'optimizer', 'extra']  # with 'hf_model' you can save whole model as hf format, now only use sharded model checkpoint to save space
@@ -104,6 +104,9 @@ actor_rollout_ref:
     enable_sleep_mode: True
     max_num_turns: 1
     stop_when_truncated: False
+    top_k_memories_for_operations: 20
+    top_k_memories_for_qa: 40
+    similarity_threshold: 0.1
     add_checking: True 
     # for hf rollout
     do_sample: True

@@ -16,6 +16,7 @@ FSDP PPO Trainer with Ray-based single controller.
 This trainer supports model-agonistic model initialization with huggingface
 """
 
+import json
 import os
 from pathlib import Path
 import uuid
@@ -39,9 +40,10 @@ from verl.single_controller.ray import RayResourcePool, RayWorkerGroup, RayClass
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.rema_trainer.ppo import core_algos
 from verl.rema_trainer.ppo.metric_utils import compute_data_metrics, compute_throughout_metrics, compute_timing_metrics, reduce_metrics
+from verl.rema_trainer.memory.teacher_model import TeacherModel
 from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
-from verl.utils.dataset.rema_dataset import RLHFDataset, collate_fn
+from verl.utils.dataset.rema_dataset import RLHFDataset, collate_fn, ChunkBatchSampler
 from verl.utils.tracking import ValidationGenerationsLogger
 from torch.utils.data import RandomSampler, SequentialSampler
 from torchdata.stateful_dataloader import StatefulDataLoader
@@ -527,6 +529,7 @@ class RayReMATrainer(object):
                                         #  tokenizer=self.tokenizer,
                                         #  processor=self.processor,
                                          prompt_key=self.config.data.prompt_key,
+                                         shuffle=self.config.data.shuffle,
                                         #  image_key=self.config.data.get('image_key', 'images'),
                                         #  max_prompt_length=self.config.data.max_prompt_length,
                                         #  filter_prompts=True,
@@ -540,25 +543,42 @@ class RayReMATrainer(object):
         #     'truncation', 'error'
         # ), f'dataset truncation {self.train_dataset.truncation} must be the same as config {self.config.data.get("truncation", "error")}'
         #########################################################
-        # use sampler for better ckpt resume
+        
+        # Use ChunkBatchSampler for training to ensure batches never span multiple chunk_ids
+        # This is critical for memory management where chunk N depends on chunk N-1's saved memory
+        # Note: ChunkBatchSampler doesn't support shuffle yet (processes chunks sequentially)
         if self.config.data.shuffle:
+            print("WARNING: shuffle=True is not supported with ChunkBatchSampler. Processing chunks sequentially.")
             train_dataloader_generator = torch.Generator()
             train_dataloader_generator.manual_seed(self.config.data.get('seed', 1))
             sampler = RandomSampler(data_source=self.train_dataset, generator=train_dataloader_generator)
-        else:
-            sampler = SequentialSampler(data_source=self.train_dataset)
-
-        self.train_dataloader = StatefulDataLoader(dataset=self.train_dataset,
+            self.train_dataloader = StatefulDataLoader(dataset=self.train_dataset,
                                                    batch_size=self.config.data.train_batch_size,
                                                    num_workers=8,
                                                    drop_last=True,
                                                    collate_fn=collate_fn,
                                                    sampler=sampler)
+        else:
+            print("INFO: Using ChunkBatchSampler for training dataloader to avoid cross-chunk memory issues.")
+            train_batch_sampler = ChunkBatchSampler(
+                dataset=self.train_dataset,
+                batch_size=self.config.data.train_batch_size,
+                drop_last=True  # Drop incomplete batches to maintain consistent batch size for training
+            )
+        
+            self.train_dataloader = StatefulDataLoader(
+                dataset=self.train_dataset,
+                # Use batch_sampler instead of batch_size + sampler
+                batch_sampler=train_batch_sampler,
+                num_workers=8,
+                collate_fn=collate_fn
+            )
 
         self.val_dataset = RLHFDataset(parquet_files=self.config.data.val_files,
                                     #    tokenizer=self.tokenizer,
                                     #    processor=self.processor,
                                        prompt_key=self.config.data.prompt_key,
+                                       shuffle=False,  # Validation should always be sequential
                                        #    image_key=self.config.data.get('image_key', 'images'),
                                        #    max_prompt_length=self.config.data.max_prompt_length,
                                        #    filter_prompts=True,
@@ -572,15 +592,35 @@ class RayReMATrainer(object):
         #     'truncation', 'error'
         # ), f'dataset truncation {self.val_dataset.truncation} must be the same as config {self.config.data.get("truncation", "error")}'
         #########################################################
+        
+        # Use ChunkBatchSampler for validation to ensure batches never span multiple chunk_ids
+        # This is critical for memory management where chunk N depends on chunk N-1's saved memory
+        
+        # if self.config.data.shuffle:
+        #     self.val_dataloader = StatefulDataLoader(
+        #         dataset=self.val_dataset,
+        #         # Validation datasets are sent to inference engines as a whole batch,
+        #         # which will schedule the memory themselves.
+        #         # batch_size=len(self.val_dataset),
+        #         batch_size=self.config.data.val_batch_size,
+        #         num_workers=8,
+        #         shuffle=False,
+        #         drop_last=False,
+        #         collate_fn=collate_fn)
+        # else:
+        
+        # ALL validation done with ChunkBatchSampler to avoid cross-chunk memory issues
+        val_batch_sampler = ChunkBatchSampler(
+            dataset=self.val_dataset,
+            batch_size=self.config.data.val_batch_size,
+            drop_last=False  # Keep all samples, pad incomplete batches with repeats from same chunk
+        )
+    
         self.val_dataloader = StatefulDataLoader(
             dataset=self.val_dataset,
-            # Validation datasets are sent to inference engines as a whole batch,
-            # which will schedule the memory themselves.
-            # batch_size=len(self.val_dataset),
-            batch_size=self.config.data.val_batch_size,
+            # Use batch_sampler instead of batch_size to control chunk-aware batching
+            batch_sampler=val_batch_sampler,
             num_workers=8,
-            shuffle=False,
-            drop_last=False,
             collate_fn=collate_fn)
 
         assert len(self.train_dataloader) >= 1
@@ -629,6 +669,10 @@ class RayReMATrainer(object):
         self.validation_generations_logger.log(self.config.trainer.logger, samples, self.global_steps)
 
     def _validate(self):
+        print("\n" + "="*80)
+        print("STARTING VALIDATION")
+        print("="*80)
+        
         reward_tensor_lst = []
         acc_tensor_lst = []
         data_source_lst = []
@@ -643,68 +687,105 @@ class RayReMATrainer(object):
         sample_scores = []
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
+        print(f"\n[VALIDATE] Configuring rollout meta_info with max_num_turns={max_num_turns}")
         if max_num_turns > 1:
-            from prompt.math.multi_turn_mamrp import MTA_SYSTEM_PRMOPT, RA_SYSTEM_PRMOPT
+            from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             from prompt import FINISH_FLAG
             rollout_meta_info = {
                 'agent_roles': ['meta_thinking', 'reasoning'],
-                'finish_flag': FINISH_FLAG,
+                'finish_flag': None, # changed this to None from FINISH_FLAG
                 'system_prompts': {
-                    'meta_thinking': MTA_SYSTEM_PRMOPT,
-                    'reasoning': RA_SYSTEM_PRMOPT
+                    'meta_thinking': MEMORY_REASONER_PROMPT,
+                    'reasoning': MEMORY_EXECUTOR_PROMPT
                 },
                 'max_num_turns': max_num_turns
             }
+            print(f"[VALIDATE] Multi-turn mode enabled with FINISH_FLAG")
+            print(f"[VALIDATE] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            print(f"[VALIDATE] agent_roles: {rollout_meta_info['agent_roles']}")
+            print(f"[VALIDATE] finish_flag: {rollout_meta_info['finish_flag'][:50] if rollout_meta_info['finish_flag'] else None}...")
         else:
-            from prompt.math.single_turn_mamrp import MTA_SYSTEM_PRMOPT, RA_SYSTEM_PRMOPT
+            from prompt.math.single_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             rollout_meta_info = {
                 'agent_roles': ['meta_thinking', 'reasoning'],
                 'finish_flag': None,
                 'system_prompts': {
-                    'meta_thinking': MTA_SYSTEM_PRMOPT,
-                    'reasoning': RA_SYSTEM_PRMOPT
+                    'meta_thinking': MEMORY_REASONER_PROMPT,
+                    'reasoning': MEMORY_EXECUTOR_PROMPT
                 },
                 'max_num_turns': max_num_turns
             }
+            print(f"[VALIDATE] Single-turn mode enabled (no FINISH_FLAG)")
+            print(f"[VALIDATE] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            print(f"[VALIDATE] agent_roles: {rollout_meta_info['agent_roles']}")
 
-        for test_data in self.val_dataloader:
-            # test_batch = DataProto.from_single_dict(test_data)
+        print(f"\n[VALIDATE] Starting validation loop: {len(self.val_dataloader)} batches")
+        
+        for batch_idx, test_data in enumerate(self.val_dataloader):
+            print(f"\n{'*'*80}")
+            print(f"VALIDATION BATCH {batch_idx + 1}/{len(self.val_dataloader)}")
+            print(f"{'*'*80}")
+            print(f"\n[VAL BATCH {batch_idx + 1}] Creating batch from dataloader...")
+            print(f"[VAL BATCH {batch_idx + 1}] Batch size: {len(test_data['question'])}")
+            print(f"[VAL BATCH {batch_idx + 1}] test_data keys: {list(test_data.keys())}")
+            print(f"[VAL BATCH {batch_idx + 1}] Sample question[0]: {test_data['question'][0][:100] if isinstance(test_data['question'][0], str) else test_data['question'][0]}...")
+            
             dummy_tensor = torch.arange(0, len(test_data['question']))
             test_data['batch_idx'] = dummy_tensor
-            test_batch: DataProto = DataProto.from_single_dict(test_data, meta_info=rollout_meta_info)          
+            
+            # Add validation epoch/split info
+            rollout_meta_info['epoch'] = self.global_steps  # validation epoch
+            rollout_meta_info['split'] = 'validation'
+            
+            test_batch: DataProto = DataProto.from_single_dict(test_data, meta_info=rollout_meta_info)
+            print(f"[VAL BATCH {batch_idx + 1}] test_batch.batch keys: {list(test_batch.batch.keys())}")
+            print(f"[VAL BATCH {batch_idx + 1}] test_batch.non_tensor_batch keys: {list(test_batch.non_tensor_batch.keys())}")
+            print(f"[VAL BATCH {batch_idx + 1}] test_batch.meta_info keys: {list(test_batch.meta_info.keys())}")
+
+            # Store original inputs and ground truths BEFORE repeating
+            input_texts = test_batch.non_tensor_batch['question']
+            sample_inputs.extend(input_texts)
+            print(f"[VAL BATCH {batch_idx + 1}] Collected {len(input_texts)} input texts")
+
+            # Store original ground truth if available
+            # TODO: support multi- groundtruths
+            ground_truths = [json.loads(x)[0]["answer"] if json.loads(x) else "N/A" for x in test_batch.non_tensor_batch['qa_pairs_json']]
+            sample_groundtruths.extend(ground_truths)
+            print(f"[VAL BATCH {batch_idx + 1}] Collected {len(ground_truths)} ground truths")
 
             # repeat test batch
             test_batch = test_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n,
                                            interleave=True)
-
+            print(f"[VAL BATCH {batch_idx + 1}] Repeated batch {self.config.actor_rollout_ref.rollout.val_kwargs.n} times. New size: {len(test_batch.batch)}")
+            
+            # save rollout idx to use it in memory management (AFTER repeating to get unique indices for each rollout)
+            rollout_idx = torch.arange(0, len(test_batch.batch))
+            test_batch.batch['rollout_idx'] = rollout_idx
+            
             # we only do validation on rule-based rm
             if self.config.reward_model.enable and test_batch[0].non_tensor_batch['reward_model']['style'] == 'model':
+                print(f"[VAL BATCH {batch_idx + 1}] Skipping model-based reward model validation")
                 return {}
 
-            # Store original inputs
-            # input_ids = test_batch.batch['input_ids']
-            # input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
-            input_texts = test_batch.non_tensor_batch['question']
-            sample_inputs.extend(input_texts)
-
-            # Store original ground truth if available
-            ground_truths = [x['ground_truth'] for x in test_data['reward_model'].tolist()]
-
-            sample_groundtruths.extend(ground_truths)
-
+            print(f"\n[VAL BATCH {batch_idx + 1}] Preparing generation batch...")
             if 'multi_modal_inputs' in test_batch.non_tensor_batch.keys():
-                raise NotImplementedError('validation is not implemented yet')
+                raise NotImplementedError('multi_modal_inputs validation not implemented yet')
                 test_gen_batch = test_batch.pop(
                     batch_keys=['input_ids', 'attention_mask', 'position_ids'],
                     non_tensor_batch_keys=['raw_prompt_ids', 'multi_modal_data', 'multi_modal_inputs'],
                 )
             else:
                 test_gen_batch = test_batch.select(
-                        batch_keys=['batch_idx'], 
-                        non_tensor_batch_keys=['question'], 
-                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts'], 
+                        batch_keys=['rollout_idx', 'batch_idx'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_questions', 'turns_json', 'session_id'], 
+                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'], 
                         deepcopy=True
                     )
+            
+            print(f"[VAL BATCH {batch_idx + 1}] Generation batch prepared with {len(test_gen_batch.batch)} samples")
+            print(f"[VAL BATCH {batch_idx + 1}] test_gen_batch.batch keys: {list(test_gen_batch.batch.keys())}")
+            print(f"[VAL BATCH {batch_idx + 1}] test_gen_batch.non_tensor_batch keys: {list(test_gen_batch.non_tensor_batch.keys())}")
+            print(f"[VAL BATCH {batch_idx + 1}] test_gen_batch.meta_info keys: {list(test_gen_batch.meta_info.keys())}")
             
             test_gen_batch.meta_info.update({
                 'eos_token_id': self.tokenizer.eos_token_id,
@@ -713,52 +794,77 @@ class RayReMATrainer(object):
                 'do_sample': self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
                 'validate': True,
             })
-            print(f'test_gen_batch meta info: {test_gen_batch.meta_info}')
+            print(f'[VAL BATCH {batch_idx + 1}] test_gen_batch meta_info: {test_gen_batch.meta_info}')
 
             # pad to be divisible by dp_size
+            print(f"\n[VAL BATCH {batch_idx + 1}] Padding to be divisible by world_size={self.actor_rollout_wg.world_size}...")
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
+            print(f"[VAL BATCH {batch_idx + 1}] Padded batch size: {len(test_gen_batch_padded.batch)}, pad_size: {pad_size}")
+            
+            print(f"[VAL BATCH {batch_idx + 1}] >>> Calling multi_turn_generate_sequences...")
             test_output_gen_batch_padded = self.actor_rollout_wg.multi_turn_generate_sequences(test_gen_batch_padded)
+            print(f"[VAL BATCH {batch_idx + 1}] <<< Generation complete")
 
             # unpad
+            print(f"[VAL BATCH {batch_idx + 1}] Unpadding batch...")
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
-            print('validation generation end')
+            print(f'[VAL BATCH {batch_idx + 1}] Validation generation end. Output batch size: {len(test_output_gen_batch.batch)}')
 
             # Store generated outputs
-            # output_ids = test_output_gen_batch.batch['responses']
-            # output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
+            print(f"\n[VAL BATCH {batch_idx + 1}] Processing outputs...")
             output_texts = test_output_gen_batch.non_tensor_batch['response']
             sample_outputs.extend(output_texts)
+            print(f"[VAL BATCH {batch_idx + 1}] Collected {len(output_texts)} output texts")
+            print(f"[VAL BATCH {batch_idx + 1}] Sample output[0]: {output_texts[0][:100] if isinstance(output_texts[0], str) else output_texts[0]}...")
 
+            print(f"[VAL BATCH {batch_idx + 1}] Merging generation output with test batch...")
             test_batch = test_batch.union(test_output_gen_batch)
             test_batch.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
             test_batch.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
+            
             # evaluate using reward_function
+            print(f"[VAL BATCH {batch_idx + 1}] Computing rewards...")
             reward_tensor = self.val_reward_fn(test_batch)
+            print(f"[VAL BATCH {batch_idx + 1}] Reward tensor keys: {list(reward_tensor.keys())}")
             reward_tensor_lst.append(reward_tensor['reasoning_turn_level_reward'])
             acc_tensor_lst.append(reward_tensor['acc'])
+            print(f"[VAL BATCH {batch_idx + 1}] reasoning_turn_level_reward shape: {reward_tensor['reasoning_turn_level_reward'].shape}")
+            print(f"[VAL BATCH {batch_idx + 1}] acc shape: {reward_tensor['acc'].shape}")
 
             # Store scores
             scores = reward_tensor['reasoning_turn_level_reward'].sum(-1).cpu().tolist()
             sample_scores.extend(scores)
+            print(f"[VAL BATCH {batch_idx + 1}] Sample scores[0]: {scores[0]}")
+            
             num_turns = torch.tensor(test_output_gen_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
             num_turns_lst.append(num_turns)
+            print(f"[VAL BATCH {batch_idx + 1}] num_turns: min={num_turns.min()}, max={num_turns.max()}, mean={num_turns.float().mean()}")
+            
             turn_level_completion_tokens = test_output_gen_batch.batch['meta_thinking_num_gen_tokens'].cpu() + \
                 test_output_gen_batch.batch['reasoning_num_gen_tokens'].cpu()
             completion_tokens = turn_level_completion_tokens.sum(dim=-1)
             completion_tokens_lst.append(completion_tokens)
+            print(f"[VAL BATCH {batch_idx + 1}] completion_tokens: min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
 
             # not use `data_source`, use `subset` instead
-            data_source_lst.append(test_batch.non_tensor_batch.get('subset', ['unknown'] * reward_tensor['reasoning_turn_level_reward'].shape[0]))
+            data_source_lst.append(test_batch.non_tensor_batch.get('subset', ['locomo'] * reward_tensor['reasoning_turn_level_reward'].shape[0]))
             
             history_lst.append(test_output_gen_batch.non_tensor_batch['history'].tolist())
+            print(f"[VAL BATCH {batch_idx + 1}] Batch processing complete\n")
 
+        print(f"\n[VALIDATE] All batches processed. Computing final metrics...")
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores, groundtruths=sample_groundtruths, histories=history_lst)
 
+        print(f"[VALIDATE] Concatenating reward tensors from {len(reward_tensor_lst)} batches...")
         reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
         acc_tensor = torch.cat(acc_tensor_lst, dim=0).cpu() #(batch_size,)
         data_sources = np.concatenate(data_source_lst, axis=0)
+        print(f"[VALIDATE] Total samples: {reward_tensor.shape[0]}")
+        print(f"[VALIDATE] Mean reward: {reward_tensor.mean().item():.4f}")
+        print(f"[VALIDATE] Mean accuracy: {acc_tensor.mean().item():.4f}")
 
         # evaluate test_score based on data source
+        print(f"[VALIDATE] Computing per-data-source metrics...")
         data_source_reward = {}
         data_source_acc = {}
         for i in range(reward_tensor.shape[0]):
@@ -773,8 +879,10 @@ class RayReMATrainer(object):
         metric_dict = {}
         for data_source, rewards in data_source_reward.items():
             metric_dict[f'val/test_score/{data_source}'] = np.mean(rewards)
+            print(f"[VALIDATE] {data_source} mean reward: {np.mean(rewards):.4f}")
         for data_source, accs in data_source_acc.items():
             metric_dict[f'val/acc/{data_source}'] = np.mean(accs)
+            print(f"[VALIDATE] {data_source} mean accuracy: {np.mean(accs):.4f}")
         
         # Add num_turns and completion_tokens metrics
         if num_turns_lst:
@@ -782,15 +890,18 @@ class RayReMATrainer(object):
             metric_dict['val/num_turns/mean'] = num_turns_tensor.float().mean().item()
             metric_dict['val/num_turns/max'] = num_turns_tensor.max().item()
             metric_dict['val/num_turns/min'] = num_turns_tensor.min().item()
+            print(f"[VALIDATE] num_turns: mean={metric_dict['val/num_turns/mean']:.2f}, max={metric_dict['val/num_turns/max']}, min={metric_dict['val/num_turns/min']}")
         
         if completion_tokens_lst:
             completion_tokens_tensor = torch.cat(completion_tokens_lst, dim=0)
             metric_dict['val/completion_tokens/mean'] = completion_tokens_tensor.float().mean().item()
             metric_dict['val/completion_tokens/max'] = completion_tokens_tensor.max().item()
             metric_dict['val/completion_tokens/min'] = completion_tokens_tensor.min().item()
+            print(f"[VALIDATE] completion_tokens: mean={metric_dict['val/completion_tokens/mean']:.2f}, max={metric_dict['val/completion_tokens/max']}, min={metric_dict['val/completion_tokens/min']}")
 
         # Save generation results to a JSON file
         if self.config.trainer.get('save_val_generations', False):
+            print(f"\n[VALIDATE] Saving validation generations...")
             output_dir = Path(self.config.trainer.default_local_dir) / 'eval_records'
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / f'val_step_{self.global_steps}.jsonl'
@@ -813,7 +924,10 @@ class RayReMATrainer(object):
             
             with jsonlines.open(output_file, 'w') as writer:
                 writer.write_all(results_to_save)
+            print(f"[VALIDATE] Saved {len(results_to_save)} validation results to {output_file}")
 
+        print(f"\n[VALIDATE] Validation complete. Final metrics: {metric_dict}")
+        print("="*80 + "\n")
         return metric_dict
 
     def init_workers(self):
@@ -999,10 +1113,16 @@ class RayReMATrainer(object):
         from verl.utils.tracking import Tracking
         from omegaconf import OmegaConf
 
+        print("\n" + "="*80)
+        print("STARTING PPO TRAINING LOOP (fit method)")
+        print("="*80)
+
         self.global_steps = 0
 
         # load checkpoint before doing anything
+        print("\n[FIT] Loading checkpoint...")
         self._load_checkpoint()
+        print(f"[FIT] Checkpoint loaded. Starting from global_steps={self.global_steps}")
 
         if self.config.trainer.get('fork_wandb_id', None) is not None:
             fork_wandb_id = self.config.trainer.fork_wandb_id
@@ -1014,6 +1134,8 @@ class RayReMATrainer(object):
         else:
             wandb_kwargs = {}
         
+        print(f"\n[FIT] Initializing logger: {self.config.trainer.logger}")
+        print(f"[FIT] Project: {self.config.trainer.project_name}, Experiment: {self.config.trainer.experiment_name}")
         logger = Tracking(project_name=self.config.trainer.project_name,
                           experiment_name=self.config.trainer.experiment_name,
                           default_backend=self.config.trainer.logger,
@@ -1024,10 +1146,12 @@ class RayReMATrainer(object):
         # perform validation before training
         # currently, we only support validation using the reward_function.
         if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
+            print("\n[FIT] Running initial validation before training...")
             val_metrics = self._validate()
             pprint(f'Initial validation metrics: {val_metrics}')
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get('val_only', False):
+                print("[FIT] Val-only mode enabled. Exiting after validation.")
                 return
 
         # we start from step 1
@@ -1035,30 +1159,38 @@ class RayReMATrainer(object):
         last_val_metrics = None
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
+        print(f"\n[FIT] Configuring rollout meta_info with max_num_turns={max_num_turns}")
         if max_num_turns > 1:
-            from prompt.math.multi_turn_mamrp import MTA_SYSTEM_PRMOPT, RA_SYSTEM_PRMOPT
+            from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             from prompt import FINISH_FLAG
             rollout_meta_info = {
                 'agent_roles': ['meta_thinking', 'reasoning'],
                 'finish_flag': FINISH_FLAG,
                 'system_prompts': {
-                    'meta_thinking': MTA_SYSTEM_PRMOPT,
-                    'reasoning': RA_SYSTEM_PRMOPT
+                    'meta_thinking': MEMORY_REASONER_PROMPT,
+                    'reasoning': MEMORY_EXECUTOR_PROMPT
                 },
                 'max_num_turns': max_num_turns
             }
+            print(f"[FIT] Multi-turn mode enabled with FINISH_FLAG")
+            print(f"[FIT] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            print(f"[FIT] agent_roles: {rollout_meta_info['agent_roles']}")
+            print(f"[FIT] finish_flag: {rollout_meta_info['finish_flag'][:50] if rollout_meta_info['finish_flag'] else None}...")
         else:
-            from prompt.math.single_turn_mamrp import MTA_SYSTEM_PRMOPT, RA_SYSTEM_PRMOPT
+            from prompt.math.single_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             from prompt import FINISH_FLAG
             rollout_meta_info = {
                 'agent_roles': ['meta_thinking', 'reasoning'],
                 'finish_flag': None,
                 'system_prompts': {
-                    'meta_thinking': MTA_SYSTEM_PRMOPT,
-                    'reasoning': RA_SYSTEM_PRMOPT
+                    'meta_thinking': MEMORY_REASONER_PROMPT,
+                    'reasoning': MEMORY_EXECUTOR_PROMPT
                 },
                 'max_num_turns': max_num_turns
             }
+            print(f"[FIT] Single-turn mode enabled (no FINISH_FLAG)")
+            print(f"[FIT] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            print(f"[FIT] agent_roles: {rollout_meta_info['agent_roles']}")
         
         batch = None
         num_prompt_in_batch = 0
@@ -1067,21 +1199,54 @@ class RayReMATrainer(object):
         all_negative_cnt = 0
         all_positive_cnt = 0
 
+        print(f"\n[FIT] Starting training loop: {self.config.trainer.total_epochs} epochs, {len(self.train_dataloader)} batches per epoch")
+        print(f"[FIT] Total training steps: {self.total_training_steps}")
+
         for epoch in range(self.config.trainer.total_epochs):
+            print(f"\n{'='*80}")
+            print(f"EPOCH {epoch + 1}/{self.config.trainer.total_epochs}")
+            print(f"{'='*80}")
             for batch_dict in self.train_dataloader:
+                print(f"\n{'*'*80}")
+                print(f"TRAINING STEP {self.global_steps}/{self.total_training_steps}")
+                print(f"{'*'*80}")
                 metrics = {}
                 timing_raw = {}
 
+                print("batch_dict[chunk_id]: ", batch_dict['chunk_id'] if 'chunk_id' in batch_dict else 'N/A')
+
                 # create a dummy tensor for the construction function
+                print(f"\n[STEP {self.global_steps}] Creating batch from dataloader...")
+                print(f"[STEP {self.global_steps}] Batch size: {len(batch_dict['question'])}")
+                print(f"[STEP {self.global_steps}] batch_dict keys: {list(batch_dict.keys())}")
+                print(f"[STEP {self.global_steps}] Sample question[0]: {batch_dict['question'][0][:100] if isinstance(batch_dict['question'][0], str) else batch_dict['question'][0]}...")
+                if 'reward_model' in batch_dict:
+                    print(f"[STEP {self.global_steps}] reward_model[0] keys: {list(batch_dict['reward_model'][0].keys()) if isinstance(batch_dict['reward_model'][0], dict) else 'N/A'}")
                 dummy_tensor = torch.arange(0, len(batch_dict['question']))
                 batch_dict['batch_idx'] = dummy_tensor
+                
+                # Add some meta_info to be used in rollouts
+                rollout_meta_info['epoch'] = epoch
+                rollout_meta_info['split'] = 'train'
+
                 new_batch: DataProto = DataProto.from_single_dict(batch_dict, meta_info=rollout_meta_info)
+                print(f"[STEP {self.global_steps}] new_batch.batch keys: {list(new_batch.batch.keys())}")
+                print(f"[STEP {self.global_steps}] new_batch.non_tensor_batch keys: {list(new_batch.non_tensor_batch.keys())}")
+                print(f"[STEP {self.global_steps}] new_batch.meta_info keys: {list(new_batch.meta_info.keys())}")
+                if 'batch_idx' in new_batch.batch:
+                    print(f"[STEP {self.global_steps}] batch_idx shape: {new_batch.batch['batch_idx'].shape}")
                 new_batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(new_batch.batch))],
                                                              dtype=object)
                 new_batch = new_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+
+                # save rollout idx to use it in memory management (AFTER repeating to get unique indices for each rollout)
+                rollout_idx = torch.arange(0, len(new_batch.batch))
+                new_batch.batch['rollout_idx'] = rollout_idx
+
                 num_gen_batches += 1
 
                 # pop those keys for generation
+                print(f"\n[STEP {self.global_steps}] Preparing generation batch...")
                 if 'multi_modal_inputs' in new_batch.non_tensor_batch.keys():
                     raise NotImplementedError('multi_modal_inputs is not implemented yet')
                     gen_batch = new_batch.pop(
@@ -1091,18 +1256,32 @@ class RayReMATrainer(object):
                 else:
                     # because verl originally calls this 'chat'
                     gen_batch = new_batch.select(
-                        batch_keys=['batch_idx'], 
-                        non_tensor_batch_keys=['question'], 
-                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts'], 
+                        batch_keys=['rollout_idx', 'batch_idx'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_questions', 'turns_json', 'session_id'], 
+                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'],
                         deepcopy=True
                     )
+                print(f"[STEP {self.global_steps}] Generation batch prepared with {len(gen_batch.batch)} samples")
+                print(f"[STEP {self.global_steps}] gen_batch.batch keys: {list(gen_batch.batch.keys())}")
+                print(f"[STEP {self.global_steps}] gen_batch.non_tensor_batch keys: {list(gen_batch.non_tensor_batch.keys())}")
+                print(f"[STEP {self.global_steps}] gen_batch.meta_info keys: {list(gen_batch.meta_info.keys())}")
 
                 is_last_step = self.global_steps >= self.total_training_steps
 
                 with _timer('step', timing_raw):
                     # generate a batch
+                    print(f"\n[STEP {self.global_steps}] >>> Calling multi_turn_generate_sequences...")
                     with _timer('gen', timing_raw):
                         gen_batch_output = self.actor_rollout_wg.multi_turn_generate_sequences(gen_batch)
+                    print(f"[STEP {self.global_steps}] <<< Generation complete. Output batch size: {len(gen_batch_output.batch)}")
+                    print(f"[STEP {self.global_steps}] gen_batch_output.batch keys: {list(gen_batch_output.batch.keys())}")
+                    print(f"[STEP {self.global_steps}] gen_batch_output.non_tensor_batch keys: {list(gen_batch_output.non_tensor_batch.keys())}")
+                    if 'meta_thinking_attention_mask' in gen_batch_output.batch:
+                        print(f"[STEP {self.global_steps}] meta_thinking_attention_mask shape: {gen_batch_output.batch['meta_thinking_attention_mask'].shape}")
+                    if 'reasoning_attention_mask' in gen_batch_output.batch:
+                        print(f"[STEP {self.global_steps}] reasoning_attention_mask shape: {gen_batch_output.batch['reasoning_attention_mask'].shape}")
+                    if 'response' in gen_batch_output.non_tensor_batch:
+                        print(f"[STEP {self.global_steps}] Sample response[0]: {gen_batch_output.non_tensor_batch['response'][0][:100] if isinstance(gen_batch_output.non_tensor_batch['response'][0], str) else gen_batch_output.non_tensor_batch['response'][0]}...")
                         
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
                         raise NotImplementedError('REMAX is not implemented yet')
@@ -1123,12 +1302,20 @@ class RayReMATrainer(object):
 
                     # # repeat to align with repeated responses in rollout
                     # batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+                    print(f"\n[STEP {self.global_steps}] Merging generation output with original batch...")
+                    print(f"[STEP {self.global_steps}] BEFORE union - gen_batch_output.batch keys: {list(gen_batch_output.batch.keys())}")                    
                     new_batch = new_batch.union(gen_batch_output)
+                    print(f"[STEP {self.global_steps}] AFTER union - Merged batch size: {len(new_batch.batch)}")
+                    print(f"[STEP {self.global_steps}] AFTER union - Merged new_batch.batch keys: {list(new_batch.batch.keys())}")
+                    print(f"[STEP {self.global_steps}] Merged new_batch.non_tensor_batch keys: {list(new_batch.non_tensor_batch.keys())}")
+                    if 'num_turns' in new_batch.non_tensor_batch:
+                        print(f"[STEP {self.global_steps}] Sample num_turns[0]: {new_batch.non_tensor_batch['num_turns'][0]}")
 
                     # balance the number of valid tokens on each dp rank.
                     # Note that this breaks the order of data inside the batch.
                     # Please take care when you implement group based adv computation such as GRPO and rloo
                     if self.config.trainer.balance_batch:
+                        print(f"[STEP {self.global_steps}] Balancing batch across DP ranks...")
                         self._balance_batch(new_batch, metrics=metrics)
 
                     # compute global_valid tokens
@@ -1152,6 +1339,7 @@ class RayReMATrainer(object):
                             batch = batch.union(values)
 
                     with _timer('reward', timing_raw):
+                        print(f"\n[STEP {self.global_steps}] Computing rewards...")
                         # compute scores. Support both model and function-based.
                         # We first compute the scores using reward model. Then, we call reward_fn to combine
                         # the results from reward model and rule-based results.
@@ -1164,13 +1352,20 @@ class RayReMATrainer(object):
                         # add mask_unfinished_reward to meta_info
                         new_batch.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
                         new_batch.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
+                        print(f"[STEP {self.global_steps}] Calling reward_fn (rule-based)...")
                         # rule-based rm build token-level reward_tensor_map for each agent
                         # {
                         #     "meta_thinking_turn_level_reward": tensor([...], device='cuda:0'),
                         #     "reasoning_turn_level_reward": tensor([...], device='cuda:0'),
                         # }
                         reward_tensor_map = self.reward_fn(new_batch)
+                        print(f"[STEP {self.global_steps}] Reward computed. Keys: {list(reward_tensor_map.keys())}")
+                        # for key in reward_tensor_map.keys():
+                        #     if isinstance(reward_tensor_map[key], torch.Tensor):
+                        #         print(f"[STEP {self.global_steps}] {key} shape: {reward_tensor_map[key].shape}, dtype: {reward_tensor_map[key].dtype}")
+                        #         print(f"[STEP {self.global_steps}] {key} : {reward_tensor_map[key]}")
                         new_batch.batch['acc'] = reward_tensor_map.pop('acc')
+                        print(f"[STEP {self.global_steps}] acc shape: {new_batch.batch['acc'].shape}, acc: {new_batch.batch['acc']}")
                         # batch.batch['token_level_scores'] = reward_tensor
                         for key_reward, reward_tensor in reward_tensor_map.items():
                             new_batch.batch[key_reward] = reward_tensor
@@ -1180,16 +1375,19 @@ class RayReMATrainer(object):
                             # compute turn_level return with turn_level_gamma
                             new_batch.batch[key_return] = core_algos.compute_turn_level_return(
                                 reward_tensor, turn_mask, self.config.algorithm.gamma_turn_level)
+                            # print(f"[STEP {self.global_steps}] After turn level reward/return computation: {key_return}: {new_batch.batch[key_return]}")
                     
                     
                     # statistics for group filter
                     if self.config.actor_rollout_ref.rollout.n > 1:
+                        print(f"\n[STEP {self.global_steps}] Computing group filter statistics...")
                         # key_reward = list(reward_tensor_map.keys())[0]
                         # one_agent_reward_tensor = reward_tensor_map[key_reward]
                         acc_tensor = new_batch.batch['acc']
                         id2acc = defaultdict(list)
                         for i_bsz, uid in enumerate(new_batch.non_tensor_batch['uid']):
                             id2acc[uid].append(acc_tensor[i_bsz])
+                        print(f"[STEP {self.global_steps}] Grouped {len(id2acc)} unique prompts")
 
                         kept_prompt_uids = []
                         for key_uid, acc_this_uid in id2acc.items():
@@ -1205,29 +1403,34 @@ class RayReMATrainer(object):
                     
                     if not self.config.algorithm.filter_groups.enable:
                         # if not enable group filter, keep all data
+                        print(f"[STEP {self.global_steps}] Group filter disabled. Keeping all data.")
                         batch = new_batch
                     else:
+                        print(f"[STEP {self.global_steps}] Group filter enabled. Filtering data...")
                         # filter data based on group filter statistics
                         num_prompt_in_batch += len(kept_prompt_uids)
+                        print(f"[STEP {self.global_steps}] Kept {len(kept_prompt_uids)} prompts. Total in batch: {num_prompt_in_batch}")
                         # get kept data batch
                         kept_traj_idxs = []
                         for idx, traj_from_prompt_uid in enumerate(new_batch.non_tensor_batch['uid']):
                             if traj_from_prompt_uid in kept_prompt_uids:
                                 kept_traj_idxs.append(idx)
                         new_batch = new_batch[kept_traj_idxs]
+                        print(f"[STEP {self.global_steps}] Filtered batch to {len(new_batch.batch)} trajectories")
                         if batch is None:
                             batch = new_batch
                         else:
                             batch = DataProto.concat([batch, new_batch])
+                            print(f"[STEP {self.global_steps}] Concatenated batches. Total size: {len(batch.batch)}")
                         
                         # check if we have enough data
                         prompt_bsz = self.config.data.train_batch_size
                         if num_prompt_in_batch < prompt_bsz:
                             # keep generating
-                            print(f'{num_prompt_in_batch=} < {prompt_bsz=}')
+                            print(f'[STEP {self.global_steps}] {num_prompt_in_batch=} < {prompt_bsz=}')
                             max_num_gen_batches = self.config.algorithm.filter_groups.max_num_gen_batches
                             if max_num_gen_batches <= 0 or num_gen_batches < max_num_gen_batches:
-                                print(f'{num_gen_batches=}. Keep generating...')
+                                print(f'[STEP {self.global_steps}] {num_gen_batches=}. Keep generating...')
                                 continue
                             else:
                                 raise ValueError(
@@ -1235,8 +1438,10 @@ class RayReMATrainer(object):
                                 )
                         else:
                             # Align the batch
+                            print(f"[STEP {self.global_steps}] Sufficient data collected. Aligning batch...")
                             traj_bsz = self.config.data.train_batch_size * self.config.actor_rollout_ref.rollout.n
                             batch = batch[:traj_bsz]
+                            print(f"[STEP {self.global_steps}] Batch aligned to {traj_bsz} trajectories")
 
                     if self.config.actor_rollout_ref.rollout.n > 1:
                         metrics.update({
@@ -1244,6 +1449,7 @@ class RayReMATrainer(object):
                             'rollout/all_positive_cnt': all_positive_cnt,
                             'rollout/total_prompt_cnt': total_prompt_cnt,
                             'rollout/num_gen_batches': num_gen_batches,
+                            'rollout/acc_mean': new_batch.batch['acc'].mean().item()
                         })
                     
                     with _timer('save_train_generation', timing_raw):
@@ -1252,12 +1458,22 @@ class RayReMATrainer(object):
                             self._save_train_generations(batch)
 
                     with _timer('adv', timing_raw):
+                        print(f"\n[STEP {self.global_steps}] Computing advantages...")
                         # Merge different role data into a single DataProto
+                        print(f"[STEP {self.global_steps}] Merging roles data...")
+                        print(f"[STEP {self.global_steps}] Before merge - batch.batch keys: {list(batch.batch.keys())}")
+                        print(f"[STEP {self.global_steps}] Before merge - batch.non_tensor_batch keys: {list(batch.non_tensor_batch.keys())}")
                         merged_batch = merge_roles_data(batch)
+                        print(f"[STEP {self.global_steps}] Merged batch size: {len(merged_batch.batch)}")
+                        print(f"[STEP {self.global_steps}] After merge - merged_batch.batch keys: {list(merged_batch.batch.keys())}")
+                        print(f"[STEP {self.global_steps}] After merge - merged_batch.non_tensor_batch keys: {list(merged_batch.non_tensor_batch.keys())}")
                         # assign turn_level scores to the last token of each turn, w/ step_ids
                         #  and then i'll call compute_advantage to distribute the score to all
                         #  tokens of each step.
+                        print(f"[STEP {self.global_steps}] Computing token-level scores...")
                         token_level_scores = compute_token_level_scores(merged_batch)
+                        print(f"[STEP {self.global_steps}] token_level_scores shape: {token_level_scores.shape}, dtype: {token_level_scores.dtype}")
+                        print(f"[STEP {self.global_steps}] token_level_scores sample[0, :10]: {token_level_scores[0, :10]}")
                         merged_batch.batch['token_level_scores'] = token_level_scores
                         batch = merged_batch
                         
@@ -1278,54 +1494,75 @@ class RayReMATrainer(object):
                         # to all tokens of each step.
                         # for GRPO, we use turn_level_reward.sum(-1) as the outcome reward and then
                         # assign each label token the normalized advantage.
+                        print(f"[STEP {self.global_steps}] Computing advantages with {self.config.algorithm.adv_estimator}...")
                         batch = compute_advantage(batch,
                                                   adv_estimator=self.config.algorithm.adv_estimator,
                                                   gamma=self.config.algorithm.gamma_token_level,
                                                   lam=self.config.algorithm.lam_token_level,
                                                   num_repeat=self.config.actor_rollout_ref.rollout.n)
+                        print(f"[STEP {self.global_steps}] Advantages computed.")
+                        print(f"[STEP {self.global_steps}] Final batch.batch keys: {list(batch.batch.keys())}")
+                        if 'advantages' in batch.batch:
+                            print(f"[STEP {self.global_steps}] advantages shape: {batch.batch['advantages'].shape}")
+                            print(f"[STEP {self.global_steps}] advantages sample[0, :10]: {batch.batch['advantages'][0, :10]}")
 
                     # recompute old_log_probs
                     with _timer('old_log_prob', timing_raw):
+                        print(f"\n[STEP {self.global_steps}] Computing old log probabilities...")
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
                         batch = batch.union(old_log_prob)
+                        print(f"[STEP {self.global_steps}] Old log probs computed.")
 
                     if self.use_reference_policy:
                         # compute reference log_prob
                         with _timer('ref', timing_raw):
+                            print(f"[STEP {self.global_steps}] Computing reference log probabilities...")
                             ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
                             batch = batch.union(ref_log_prob)
+                            print(f"[STEP {self.global_steps}] Reference log probs computed.")
 
 
                     # update critic
                     if self.use_critic:
                         with _timer('update_critic', timing_raw):
+                            print(f"\n[STEP {self.global_steps}] Updating critic...")
                             critic_output = self.critic_wg.update_critic(batch)
                         critic_output_metrics = reduce_metrics(critic_output.meta_info['metrics'])
                         metrics.update(critic_output_metrics)
+                        print(f"[STEP {self.global_steps}] Critic updated.")
 
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
                         with _timer('update_actor', timing_raw):
+                            print(f"\n[STEP {self.global_steps}] Updating actor...")
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
                         metrics.update(actor_output_metrics)
+                        print(f"[STEP {self.global_steps}] Actor updated.")
+                    else:
+                        print(f"\n[STEP {self.global_steps}] Skipping actor update (warmup: {self.global_steps}/{self.config.trainer.critic_warmup})")
 
                     # validate
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and \
                         (is_last_step or  self.global_steps % self.config.trainer.test_freq == 0):
                         with _timer('testing', timing_raw):
+                            print(f"\n[STEP {self.global_steps}] Running validation...")
                             val_metrics: dict = self._validate()
                             if is_last_step:
                                 last_val_metrics = val_metrics
+                            print(f"[STEP {self.global_steps}] Validation complete.")
                         metrics.update(val_metrics)
 
                     if self.config.trainer.save_freq > 0 and ( is_last_step or \
                             self.global_steps % self.config.trainer.save_freq == 0):
                         with _timer('save_checkpoint', timing_raw):
+                            print(f"\n[STEP {self.global_steps}] Saving checkpoint...")
                             self._save_checkpoint()
+                            print(f"[STEP {self.global_steps}] Checkpoint saved.")
 
                 # collect metrics
+                print(f"\n[STEP {self.global_steps}] Computing and logging metrics...")
                 metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
                 # TODO: implement actual tflpo and theoretical tflpo
@@ -1334,6 +1571,7 @@ class RayReMATrainer(object):
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
+                print(f"[STEP {self.global_steps}] Metrics logged. Step complete.\n")
 
                 batch = None
                 num_prompt_in_batch = 0
@@ -1343,10 +1581,14 @@ class RayReMATrainer(object):
                 total_prompt_cnt = 0
 
                 if is_last_step:
+                    print(f"\n{'='*80}")
+                    print(f"TRAINING COMPLETE")
+                    print(f"{'='*80}")
                     pprint(f'Final validation metrics: {last_val_metrics}')
                     return
 
                 self.global_steps += 1
+                print(f"[FIT] Incrementing global_steps to {self.global_steps}")
 
     def _save_train_generations(self, batch: DataProto):
         # save train generations
@@ -1359,9 +1601,11 @@ class RayReMATrainer(object):
         for i, data_item in enumerate(batch):
             uid = data_item.non_tensor_batch['uid']
             if uid not in results_dict:
+                qa_pairs = json.loads(data_item.non_tensor_batch['qa_pairs_json'])
                 results_dict[uid] = {
                     "question": data_item.non_tensor_batch['question'],
-                    "groundtruth": data_item.non_tensor_batch['reward_model']['ground_truth'],
+                    # TODO:: handle multi-questions case
+                    "groundtruth": qa_pairs[0]['answer'] if qa_pairs else "N/A",
                     "response": [],
                     "history": [],
                     "score": [],

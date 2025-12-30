@@ -647,13 +647,22 @@ class ActorRolloutRefWorker(Worker):
         
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def multi_turn_generate_sequences(self, prompts: DataProto):
+        print(f"\n{'='*80}")
+        print(f"FSDP_REMA_WORKERS: multi_turn_generate_sequences CALLED")
+        print(f"Rank: {self.rank}, World size: {self.world_size}")
+        print(f"{'='*80}\n")
         
         # Support all hardwares
         prompts = prompts.to(torch.cuda.current_device())
+        print(f"Rank {self.rank}: Prompts moved to CUDA")
+        print(f"Rank {self.rank}: Prompts meta_info keys: {list(prompts.meta_info.keys())}")
+        print(f"Rank {self.rank}: Prompts non_tensor_batch keys: {list(prompts.non_tensor_batch.keys())}")
 
         assert self._is_rollout
         if self._is_offload_param:
+            print(f"Rank {self.rank}: Loading FSDP model to GPU...")
             load_fsdp_model_to_gpu(self.actor_module_fsdp)
+            print(f"Rank {self.rank}: Model loaded to GPU")
 
         meta_info = {
             'eos_token_id':
@@ -664,18 +673,32 @@ class ActorRolloutRefWorker(Worker):
             is not None else self.tokenizer.pad_token_id,
         }
         prompts.meta_info.update(meta_info)
+        print(f"Rank {self.rank}: Updated meta_info with eos_token_id={meta_info['eos_token_id']}, pad_token_id={meta_info['pad_token_id']}")
+        
+        print(f"\nRank {self.rank}: Entering rollout_sharding_manager context...")
         with self.rollout_sharding_manager:
 
             # after parameters sync with rollout, offload actor model to CPU
             if self._is_offload_param:
+                print(f"Rank {self.rank}: Offloading actor model to CPU...")
                 offload_fsdp_model_to_cpu(self.actor_module_fsdp)
             if self._is_offload_optimizer:
+                print(f"Rank {self.rank}: Offloading optimizer...")
                 offload_fsdp_optimizer(optimizer=self.actor_optimizer)
 
             log_gpu_memory_usage('After entering rollout sharding manager',
                                  logger=logger)
 
+            print(f"Rank {self.rank}: Preprocessing data...")
             prompts = self.rollout_sharding_manager.preprocess_data(prompts)
+            print(f"Rank {self.rank}: Data preprocessed, batch size: {len(prompts.non_tensor_batch['sample_id']) if 'sample_id' in prompts.non_tensor_batch else 'N/A'}")
+            
+            print(f"\nRank {self.rank}: Calling rollout.multi_turn_generate_sequences...")
+            print(f"  max_num_turns: {self.config.rollout.max_num_turns}")
+            print(f"  finish_flag: {prompts.meta_info['finish_flag']}")
+            print(f"  agent_roles: {prompts.meta_info['agent_roles']}")
+            print(f"  system_prompts keys: {list(prompts.meta_info['system_prompts'].keys())}")
+            
             output = self.rollout.multi_turn_generate_sequences(
                 prompts=prompts,
                 tokenizer=self.tokenizer,
@@ -683,15 +706,38 @@ class ActorRolloutRefWorker(Worker):
                 finish_flag=prompts.meta_info['finish_flag'],
                 agent_roles=prompts.meta_info['agent_roles'],
                 system_prompts=prompts.meta_info['system_prompts'],
+                epoch=prompts.meta_info['epoch'],
             )
+            print(f"Rank {self.rank}: rollout.multi_turn_generate_sequences completed")
+            print(f"Rank {self.rank}: Output non_tensor_batch keys: {list(output.non_tensor_batch.keys())}")
+            
             log_gpu_memory_usage('After rollout generation', logger=logger)
 
+            print(f"Rank {self.rank}: Postprocessing output...")
             output = self.rollout_sharding_manager.postprocess_data(output)
+            print(f"Rank {self.rank}: Output postprocessed")
 
+        print(f"Rank {self.rank}: Moving output to CPU...")
         output = output.to('cpu')
+        print(f"Rank {self.rank}: Output moved to CPU")
 
         # clear kv cache
         log_gpu_memory_usage('After recompute log prob', logger=logger)
+        
+        print(f"\nRank {self.rank}: FSDP multi_turn_generate_sequences COMPLETED")
+        print(f"Rank {self.rank}: Final output non_tensor_batch keys: {list(output.non_tensor_batch.keys())}")
+        if 'response' in output.non_tensor_batch:
+            print(f"Rank {self.rank}: Number of responses: {len(output.non_tensor_batch['response'])}")
+            if len(output.non_tensor_batch['response']) > 0:
+                print(f"Rank {self.rank}: Sample response [0]: {output.non_tensor_batch['response'][0][:100]}...")
+        if 'num_turns' in output.non_tensor_batch:
+            if len(output.non_tensor_batch['num_turns']) > 0:
+                print(f"Rank {self.rank}: Sample num_turns [0]: {output.non_tensor_batch['num_turns'][0]}")
+        if 'finish_reason' in output.non_tensor_batch:
+            if len(output.non_tensor_batch['finish_reason']) > 0:
+                print(f"Rank {self.rank}: Sample finish_reason [0]: {output.non_tensor_batch['finish_reason'][0]}")
+        print(f"{'='*80}\n")
+        
         return output
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
