@@ -4,3 +4,8 @@ __pycache__/
 .venv
 .idea
 .vscode
+checkpoints/
+outputs/
+wandb/
+data/
+*.log
