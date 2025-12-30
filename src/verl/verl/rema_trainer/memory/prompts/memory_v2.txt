@@ -1,0 +1,9 @@
+The new retrieved facts are mentioned in the triple backticks. You have to analyze the new facts and determine whether information should be added, updated, or deleted in the memory.
+```
+{new_facts}
+```
+
+Below are the most relevant memories I have collected that relate to the new facts.
+```
+{existing_memory}
+```
