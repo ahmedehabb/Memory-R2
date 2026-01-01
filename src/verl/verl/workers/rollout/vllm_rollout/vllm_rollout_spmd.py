@@ -588,7 +588,6 @@ class vLLMRollout(BaseRollout):
             agent_roles=agent_roles,
             prompts=prompts,
             conversation_history=conversation_history,
-            rollout_batch_indices=rollout_batch_indices,  # Pass the stored batch indices
         )
 
         if self.config.add_checking:
@@ -1395,7 +1394,6 @@ class vLLMRollout(BaseRollout):
         agent_roles: List[str],
         prompts: DataProto,
         conversation_history: Dict[str, List[List[Dict[str, str]]]],
-        rollout_batch_indices: List[int],
     ):
         """Prepare final output"""
         print(f"\n_prepare_final_output called")
