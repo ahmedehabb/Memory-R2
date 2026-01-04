@@ -32,12 +32,16 @@ def format_turns_for_prompt(turns: List[Dict[str, Any]]) -> List[Dict[str, str]]
                 "speaker": "John",
                 "img_url": ["https://..."],
                 "blip_caption": "a photo of a cityscape with a view of a skyscraper",
-                "text": "Check out this pic from New York City!"
+                "query": "new york city skyline",
+                "text": "Check out this pic from New York City!",
+                "dia_id": "D9:6"
             },
             {
                 "session_id": 9,
+                "session_time": "6:59 pm on 26 August, 2023",
                 "speaker": "Tim",
-                "text": "Wow! That skyline looks amazing"
+                "text": "Wow! That skyline looks amazing",
+                "dia_id": "D9:7"
             }
         ]
         
@@ -45,11 +49,13 @@ def format_turns_for_prompt(turns: List[Dict[str, Any]]) -> List[Dict[str, str]]
         [
             {
                 "speaker": "John",
-                "text": "Check out this pic from New York City! [Image: a photo of a cityscape with a view of a skyscraper]"
+                "text": "Check out this pic from New York City! [Sent an image showing a photo of a cityscape with a view of a skyscraper]",
+                "dia_id": "D9:6"
             },
             {
                 "speaker": "Tim",
-                "text": "Wow! That skyline looks amazing"
+                "text": "Wow! That skyline looks amazing",
+                "dia_id": "D9:7"
             }
         ]
     """
@@ -58,15 +64,18 @@ def format_turns_for_prompt(turns: List[Dict[str, Any]]) -> List[Dict[str, str]]
     for turn in turns:
         speaker = turn.get("speaker", "Unknown")
         text = turn.get("text", "")
+        dia_id = turn.get("dia_id", "")
         
-        # Check if there's an image with BLIP caption
-        if turn.get("img_url") and turn.get("blip_caption"):
+        # Check if there's an image with BLIP caption (sometimes only blip_caption exists without img_url)
+        # if turn.get("img_url") and turn.get("blip_caption"):
+        if turn.get("blip_caption"):
             # Append image description to the text (text comes first, then image)
-            text = f"{text} [Image: {turn['blip_caption']}]"
+            text = f"{text} [Sent an image showing {turn['blip_caption']}]"
         
         formatted_turns.append({
             "speaker": speaker,
-            "text": text
+            "text": text,
+            "dia_id": dia_id
         })
     
     return formatted_turns
