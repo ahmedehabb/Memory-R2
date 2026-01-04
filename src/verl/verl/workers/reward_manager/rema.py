@@ -31,10 +31,10 @@ from verl.rema_trainer.memory.judge_llm import judge_with_llm
 
 def compute_score_fn(compute_score, params):
     # data_source, response, ground_truth, extra_info = params
-    qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, extra_info = params
-    return compute_score(qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, extra_info)
+    qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, extra_info = params
+    return compute_score(qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, extra_info)
 
-def locomo_score_exact_match(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, extra_info: dict=None) -> tuple[float, dict]:
+def locomo_score_exact_match(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, extra_info: dict=None) -> tuple[float, dict]:
     key = f"{conv_id}_chunk{chunk_id}"
     memory = MemoryManager().get_snapshot(sample_id=conv_id, chunk_id=chunk_id, epoch=epoch, split=split, index_in_batch=index)
     
@@ -49,7 +49,7 @@ def locomo_score_exact_match(qa_pairs: list[dict], conv_id: int, chunk_id: int, 
         gold_answer = str(qa_pair['answer']).strip()
 
         # Here we need to ask Question and get answer from response
-        prompt = generate_qa_prompt(memory, speaker_1=speakers[0], speaker_2=speakers[1], question=question, top_k_per_speaker=20, similarity_threshold=0.1, use_similarity=True)
+        prompt = generate_qa_prompt(memory, speaker_1=speakers[0], speaker_2=speakers[1], question=question, session_time=session_time, top_k_per_speaker=20, similarity_threshold=0.1, use_similarity=True)
         response = judge_with_llm(prompt)
         predicted_answer = extract_answer_from_text(response)
 
@@ -215,6 +215,7 @@ class ReMARewardManager:
              data.meta_info['epoch'],
              data.meta_info['split'],
              data[i].batch['rollout_idx'],  # Use rollout_idx computed AFTER repeating
+             data[i].non_tensor_batch['session_time'],
              data[i].non_tensor_batch.get('extra_info', None),
              )
             for i in range(len(data))
