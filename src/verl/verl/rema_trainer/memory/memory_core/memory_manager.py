@@ -58,7 +58,8 @@ class MemoryManager:
                 "session_id": 1,
                 "session_time": "11:01 am on 17 December, 2022",
                 "speaker": "John",
-                "content": "LLM-generated summary of the conversation turn"
+                "content": "LLM-generated summary of the conversation turn",
+                "dia_id": "D1:4"
             }
             
             {
@@ -69,7 +70,8 @@ class MemoryManager:
             {
                 "operation": "update",
                 "memory_id": "a1b2c3d4",
-                "content": "Updated summary of the conversation turn"
+                "content": "Updated summary of the conversation turn",
+                "dia_id": "D1:4"
             }
             
             {
