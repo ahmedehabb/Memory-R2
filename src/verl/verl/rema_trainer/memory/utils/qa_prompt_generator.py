@@ -87,6 +87,7 @@ def generate_qa_prompt(
     speaker_1: str,
     speaker_2: str,
     question: str,
+    session_time: str,
     top_k_per_speaker: int = 5,
     similarity_threshold: float = 0.3,
     use_similarity: bool = True,
@@ -148,5 +149,6 @@ def generate_qa_prompt(
     prompt = prompt.replace("{{speaker_1_memories}}", speaker_1_memories_json)
     prompt = prompt.replace("{{speaker_2_memories}}", speaker_2_memories_json)
     prompt = prompt.replace("{{question}}", question)
+    prompt = prompt.replace("{{session_time}}", session_time)
     
     return prompt

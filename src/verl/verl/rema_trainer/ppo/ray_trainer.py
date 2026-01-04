@@ -777,7 +777,7 @@ class RayReMATrainer(object):
             else:
                 test_gen_batch = test_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_questions', 'turns_json', 'session_id'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_questions', 'turns_json', 'session_id', 'session_time'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'], 
                         deepcopy=True
                     )
@@ -1257,7 +1257,7 @@ class RayReMATrainer(object):
                     # because verl originally calls this 'chat'
                     gen_batch = new_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_questions', 'turns_json', 'session_id'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_questions', 'turns_json', 'session_id', 'session_time'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'],
                         deepcopy=True
                     )
