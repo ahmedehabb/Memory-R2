@@ -109,7 +109,7 @@ class Memory:
     # --------------------------------------------------
     
     def insert(self, sample_id: str, session_id: int, session_time: str, 
-               speaker: str, content: str) -> Dict[str, any]:
+               speaker: str, content: str, dia_id: str) -> Dict[str, any]:
         """
         Insert a conversation turn with metadata.
         
@@ -119,6 +119,7 @@ class Memory:
             session_time: Timestamp of the session (e.g., "11:01 am on 17 December, 2022")
             speaker: Name of the speaker
             content: LLM-generated content to save (not raw text from data)
+            dia_id: Dialogue ID (e.g., "D3:6") to track source
             
         Returns:
             Dict with the inserted turn data including memory_id
@@ -139,7 +140,8 @@ class Memory:
             "session_id": session_id,
             "session_time": session_time,
             "speaker": speaker,
-            "content": content
+            "content": content,
+            "dia_ids": [dia_id]  # Store dia_id in array
         }
         
         self.memories.append(turn_data)
@@ -285,13 +287,14 @@ class Memory:
         
         return results
     
-    def update(self, memory_id: str, content: str) -> Dict[str, any]:
+    def update(self, memory_id: str, content: str, dia_id: str) -> Dict[str, any]:
         """
         Update the content of a conversation turn by its memory ID.
         
         Args:
             memory_id: The memory_id to update
             content: New content to replace the existing content
+            dia_id: Dialogue ID (e.g., "D5:4") to append to dia_ids array
             
         Returns:
             Updated turn dict if found, None if not found
@@ -300,6 +303,12 @@ class Memory:
             if turn["memory_id"] == memory_id:
                 # Update content
                 turn["content"] = content
+                
+                # Append dia_id to list (avoid duplicates)
+                if "dia_ids" not in turn:
+                    turn["dia_ids"] = []
+                if dia_id not in turn["dia_ids"]:
+                    turn["dia_ids"].append(dia_id)
                 
                 # Regenerate embedding for the new content
                 if memory_id in self.embedding_ids:

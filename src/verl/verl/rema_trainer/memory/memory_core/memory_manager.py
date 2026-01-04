@@ -186,6 +186,7 @@ class MemoryManager:
         session_time = command.get("session_time")
         speaker = command.get("speaker")
         content = command.get("content")
+        dia_id = command.get("dia_id")
         
         # Validate required fields
         if not sample_id:
@@ -198,6 +199,8 @@ class MemoryManager:
             return self._error_result("Missing 'speaker' field")
         if not content:
             return self._error_result("Missing 'content' field")
+        if not dia_id:
+            return self._error_result("Missing 'dia_id' field")
         
         try:
             turn_data = memory.insert(
@@ -205,7 +208,8 @@ class MemoryManager:
                 session_id=session_id,
                 session_time=session_time,
                 speaker=speaker,
-                content=content
+                content=content,
+                dia_id=dia_id
             )
             
             return {
@@ -222,15 +226,18 @@ class MemoryManager:
         """Handle update operation."""
         memory_id = command.get("memory_id")
         content = command.get("content")
+        dia_id = command.get("dia_id")
         
         # Validate required fields
         if not memory_id:
             return self._error_result("Missing 'memory_id' field")
         if not content:
             return self._error_result("Missing 'content' field")
+        if not dia_id:
+            return self._error_result("Missing 'dia_id' field")
         
         try:
-            updated_turn = memory.update(memory_id, content)
+            updated_turn = memory.update(memory_id, content, dia_id)
             
             if updated_turn:
                 return {
