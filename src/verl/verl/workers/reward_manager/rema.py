@@ -29,6 +29,46 @@ from verl.rema_trainer.memory.memory_core.memory_manager import MemoryManager
 from verl.rema_trainer.memory.utils.qa_prompt_generator import generate_qa_prompt
 from verl.rema_trainer.memory.judge_llm import judge_with_llm
 
+# these functions are heavily influenced by the HF squad_metrics.py script
+def normalize_text(s):
+    """Removing articles and punctuation, and standardizing whitespace are all typical text processing steps."""
+    import string, re
+
+    def remove_articles(text):
+        regex = re.compile(r"\b(a|an|the)\b", re.UNICODE)
+        return re.sub(regex, " ", text)
+
+    def white_space_fix(text):
+        return " ".join(text.split())
+
+    def remove_punc(text):
+        exclude = set(string.punctuation)
+        return "".join(ch for ch in text if ch not in exclude)
+
+    def lower(text):
+        return text.lower()
+
+    return white_space_fix(remove_articles(remove_punc(lower(s))))
+
+def compute_f1(prediction, truth):
+    pred_tokens = normalize_text(prediction).split()
+    truth_tokens = normalize_text(truth).split()
+    
+    # if either the prediction or the truth is no-answer then f1 = 1 if they agree, 0 otherwise
+    if len(pred_tokens) == 0 or len(truth_tokens) == 0:
+        return int(pred_tokens == truth_tokens)
+    
+    common_tokens = set(pred_tokens) & set(truth_tokens)
+    
+    # if there are no common tokens then f1 = 0
+    if len(common_tokens) == 0:
+        return 0
+    
+    prec = len(common_tokens) / len(pred_tokens)
+    rec = len(common_tokens) / len(truth_tokens)
+    
+    return 2 * (prec * rec) / (prec + rec)
+
 def compute_score_fn(compute_score, params):
     # data_source, response, ground_truth, extra_info = params
     qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, extra_info = params
@@ -39,49 +79,63 @@ def locomo_score_exact_match(qa_pairs: list[dict], conv_id: int, chunk_id: int, 
     memory = MemoryManager().get_snapshot(sample_id=conv_id, chunk_id=chunk_id, epoch=epoch, split=split, index_in_batch=index)
     
     # Compute score for all QA pairs and return average
-    total_score = 0.0
+    qa_scores = 0.0
     num_questions = len(qa_pairs)
+
+    # Variables to track evidence retrieval
+    total_evidences = 0
+    total_evidences_retrieved = 0
     
     print(f"[LocomoScore] Processing {num_questions} questions for conv {conv_id}, chunk {chunk_id}")
     
     for qa_idx, qa_pair in enumerate(qa_pairs):
         question = qa_pair['question']
         gold_answer = str(qa_pair['answer']).strip()
+        evidence = qa_pair.get('evidence', None)
 
         # Here we need to ask Question and get answer from response
-        prompt = generate_qa_prompt(memory, speaker_1=speakers[0], speaker_2=speakers[1], question=question, session_time=session_time, top_k_per_speaker=20, similarity_threshold=0.1, use_similarity=True)
+        # Will use all_dia_ids to check if the retrieved memories are relevant 
+        prompt, all_dia_ids = generate_qa_prompt(memory, speaker_1=speakers[0], speaker_2=speakers[1], question=question, session_time=session_time, top_k_per_speaker=20, similarity_threshold=0.1, use_similarity=True)
         response = judge_with_llm(prompt)
         predicted_answer = extract_answer_from_text(response)
 
-        # Will do exact matching for now
-        if predicted_answer is not None:
-            predicted_answer = str(predicted_answer).strip()
-        else:
-            predicted_answer = response.strip()  # Use full response if extraction fails
-        
-        # Clean up quotes if present
-        gold_answer = gold_answer.strip('\'"').lower()
-        predicted_answer = predicted_answer.strip('\'"').lower()
+        # Use f1 score as the metric
+        question_score = compute_f1(predicted_answer, gold_answer)
 
-        if gold_answer == "unknown":
-            question_score = 1.0 if predicted_answer == "unknown" else 0.0
-        else:
-            question_score = float(gold_answer in predicted_answer)
-
-        if question_score == 0.0:
+        if question_score != 1.0:
             print(f"[LocomoScore] Mismatch detected. Gold: {gold_answer}, full response: {response}")
             retrieved_memory = prompt.find("Memories for user")  # Find the start of the memories
             print(f"Retrieved Memory we got:\n{prompt[retrieved_memory:]}\n")
 
-        total_score += question_score
-        
+        qa_scores += question_score
+
+        # Now checking that evidence dia_ids are in retrieved dia_ids
+        evidences_retrieved = 0
+        total_evidences += len(evidence)
+        for evidence_dia_id in evidence:
+            if evidence_dia_id not in all_dia_ids:
+                print(f"[LocomoScore] Warning: Evidence dia_id {evidence_dia_id} not found in retrieved dia_ids {all_dia_ids}")
+            else:
+                evidences_retrieved += 1
+        total_evidences_retrieved += evidences_retrieved
+        print(f"[LocomoScore] Retrieved {evidences_retrieved}/{len(evidence)} evidence dia_ids.")
+
+
         print(f"[LocomoScore] Q{qa_idx+1}/{num_questions}: {question[:50]}...")
         print(f"[LocomoScore] Gold: {gold_answer}, Predicted: {predicted_answer}, Match: {question_score}")
     
     # Calculate average score
-    avg_score = total_score / num_questions if num_questions > 0 else 0.0
-    print(f"[LocomoScore] Average score: {avg_score:.3f} ({total_score}/{num_questions})")
-    
+    avg_score = qa_scores / num_questions if num_questions > 0 else 0.0
+    print(f"[LocomoScore] Average score: {avg_score:.3f} ({qa_scores}/{num_questions})")
+
+    # Calculate evidence retrieval efficiency (percentage of evidence dia_ids retrieved)
+    evidence_retrieval_efficiency = total_evidences_retrieved / total_evidences if total_evidences > 0 else 0.0
+    print(f"[LocomoScore] Evidence retrieval efficiency: {evidence_retrieval_efficiency:.3f}")
+
+    # Adjust final score based on evidence retrieval efficiency
+    final_score = avg_score + evidence_retrieval_efficiency
+    print(f"[LocomoScore] Final adjusted score: {final_score:.3f}")
+
     memory_info = {
         "key": key,
         "memory": memory,
@@ -90,7 +144,8 @@ def locomo_score_exact_match(qa_pairs: list[dict], conv_id: int, chunk_id: int, 
         "epoch": epoch,
         "split": split
     }
-    return avg_score, memory_info
+    # Return both avg_score (QA only) and final_score (QA + evidence reward)
+    return avg_score, evidence_retrieval_efficiency, final_score, memory_info
 
 def _rema_math_format_reward_fn(role, response_str):
     if 'boxed' in response_str:
@@ -227,6 +282,8 @@ class ReMARewardManager:
             print(f"  - extra_info: {params[0][2]}")
 
         scores = []
+        qa_scores = []  # Track QA accuracy separately
+        evidence_scores = [] # Track evidence scores separately
         memory_infos = []  # Collect memory info from each result
         print(f"\n[RewardManager] Starting score computation with ProcessPool...")
         with ProcessPool(max_workers=1) as pool:
@@ -236,21 +293,23 @@ class ReMARewardManager:
                 while True:
                     try:
                         result = next(iterator)
-                        if isinstance(result, tuple):
-                            score, memory_info = result
-                            scores.append(score)
-                            memory_infos.append(memory_info)
-                        else:
-                            # Fallback for old return format
-                            scores.append(result)
-                            memory_infos.append(None)
+                        # New format: (qa_score, evidence format, total_score, memory_info)
+                        qa_score, evidence_score, total_score, memory_info = result
+                        qa_scores.append(qa_score)
+                        evidence_scores.append(evidence_score)
+                        scores.append(total_score)
+                        memory_infos.append(memory_info)
                     except TimeoutError:
                         print('[RewardManager] Time Out')
+                        qa_scores.append(0.0)
                         scores.append(0.0)
+                        evidence_scores.append(0.0)
                         memory_infos.append(None)
                     except TimeoutException:
                         print('[RewardManager] Math verify internal timeout')
+                        qa_scores.append(0.0)
                         scores.append(0.0)
+                        evidence_scores.append(0.0)
                         memory_infos.append(None)
                     except StopIteration:
                         break
@@ -258,7 +317,7 @@ class ReMARewardManager:
                         print(f"[RewardManager] Error: {e}")
                         raise e
                     pbar.update(1)
-        print(f"[RewardManager] Score computation complete. Got {len(scores)} scores")
+        print(f"[RewardManager] Score computation complete. Got {len(scores)} total scores and {len(qa_scores)} QA scores")
         
         # Build memory_score_dict from collected results
         memory_score_dict = {}
@@ -271,8 +330,10 @@ class ReMARewardManager:
         print(f"[RewardManager] Built memory_score_dict with {len(memory_score_dict)} unique conversation-chunk pairs")
         
         assert len(scores) == len(data)
-        accuracy = torch.tensor(scores, dtype=torch.float32) # bsz
-        print(f"\n[RewardManager] Accuracy tensor shape: {accuracy.shape}, dtype: {accuracy.dtype}")
+        assert len(evidence_scores) == len(data)
+        assert len(qa_scores) == len(data)
+        accuracy = torch.tensor(qa_scores, dtype=torch.float32) # bsz - QA accuracy only
+        print(f"\n[RewardManager] Accuracy tensor (QA only) shape: {accuracy.shape}, dtype: {accuracy.dtype}")
         print(f"[RewardManager] Accuracy stats - mean: {accuracy.mean().item():.4f}, min: {accuracy.min().item():.4f}, max: {accuracy.max().item():.4f}")
         print(f"[RewardManager] Accuracy values: {accuracy[:min(5, len(accuracy))].tolist()}...")
         reward_tensor_map['acc'] = accuracy
@@ -290,11 +351,22 @@ class ReMARewardManager:
             #     ground_truth=ground_truth,
             #     extra_info=extra_info,
             # )
-            score = scores[i_bsz]
+
+            # Instead of using total score, try to separate the scores for each role
+            # score = scores[i_bsz]
+            qa_score = qa_scores[i_bsz]
+            evidence_score = evidence_scores[i_bsz]
             
             num_turns = data_item.non_tensor_batch['num_turns']
             
             for i_role, role in enumerate(agent_roles):
+                if i_role == 0:
+                    # fact retrieval role gets evidence score
+                    score = evidence_score
+                elif i_role == 1:
+                    # memory manager get qa score 
+                    score = qa_score
+
                 turn_finished = data_item.batch[f'{role}_turn_finished'].item()
                 if i_bsz == 0:
                     print(f"  - {role}_turn_finished: {turn_finished}")
