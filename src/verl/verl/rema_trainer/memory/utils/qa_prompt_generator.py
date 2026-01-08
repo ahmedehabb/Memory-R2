@@ -5,7 +5,7 @@ This module generates prompts for the LLM to answer questions based on
 memories from two speakers in a conversation.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import json
 from pathlib import Path
 from verl.rema_trainer.memory.memory_core.memory import Memory
@@ -18,7 +18,7 @@ def format_memories_for_speaker(
     top_k: int = 5,
     similarity_threshold: float = 0.3,
     use_similarity: bool = True
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], List[str]]:
     """
     Format memories for a specific speaker, optionally using similarity search.
     
@@ -52,25 +52,34 @@ def format_memories_for_speaker(
             top_k=top_k,
             search_method="text-embedding"
         )
-        
+        dia_ids_set = set()
         # Filter by similarity threshold, deduplicate by content, and format
         seen_contents = set()
         for memory_dict, similarity_score in search_results:
             if similarity_score >= similarity_threshold:
                 content = memory_dict.get("content")
+                session_time = memory_dict.get("session_time")
+                dia_ids = memory_dict.get("dia_ids", []) # dia_ids is a list of dia_id strings
+                if dia_ids:  # Only update if dia_ids is not None or empty
+                    dia_ids_set.update(dia_ids)
                 # Deduplicate by content
                 if content not in seen_contents:
                     seen_contents.add(content)
                     formatted_memories.append({
                         # "memory_id": memory_dict.get("memory_id"), # Removed memory_id from output
-                        "session_time": memory_dict.get("session_time"),
+                        "session_time": session_time,
                         "content": content
                     })
     else:
         # Fallback: return all memories for this speaker (original behavior)
         all_memories = memory.get()
         speaker_memories = [mem for mem in all_memories if mem.get("speaker") == speaker_name]
-        
+        dia_ids_set = set()
+        for mem in speaker_memories:
+            dia_ids = mem.get("dia_ids", []) # dia_ids is a list of dia_id strings
+            if dia_ids:  # Only update if dia_ids is not None or empty
+                dia_ids_set.update(dia_ids)
+
         # Format the memories
         for mem in speaker_memories:
             formatted_memories.append({
@@ -79,7 +88,7 @@ def format_memories_for_speaker(
                 "content": mem.get("content")
             })
     
-    return formatted_memories
+    return formatted_memories, list(dia_ids_set)
 
 
 def generate_qa_prompt(
@@ -92,7 +101,7 @@ def generate_qa_prompt(
     similarity_threshold: float = 0.3,
     use_similarity: bool = True,
     prompt_template_path: Optional[str] = None
-) -> str:
+) -> Tuple[str, List[str]]:
     """
     Generate the complete prompt for question answering based on memories.
     
@@ -122,7 +131,7 @@ def generate_qa_prompt(
         template = f.read()
     
     # Get memories for each speaker using similarity search
-    speaker_1_memories = format_memories_for_speaker(
+    speaker_1_memories, speaker_1_dia_ids = format_memories_for_speaker(
         memory=memory,
         speaker_name=speaker_1,
         query=question,
@@ -130,7 +139,7 @@ def generate_qa_prompt(
         similarity_threshold=similarity_threshold,
         use_similarity=use_similarity
     )
-    speaker_2_memories = format_memories_for_speaker(
+    speaker_2_memories, speaker_2_dia_ids = format_memories_for_speaker(
         memory=memory,
         speaker_name=speaker_2,
         query=question,
@@ -149,6 +158,10 @@ def generate_qa_prompt(
     prompt = prompt.replace("{{speaker_1_memories}}", speaker_1_memories_json)
     prompt = prompt.replace("{{speaker_2_memories}}", speaker_2_memories_json)
     prompt = prompt.replace("{{question}}", question)
-    prompt = prompt.replace("{{session_time}}", session_time)
     
-    return prompt
+    # Removed current session_time from qa prompt
+    # prompt = prompt.replace("{{session_time}}", session_time)
+
+    all_dia_ids = list(set(speaker_1_dia_ids + speaker_2_dia_ids))
+
+    return prompt, all_dia_ids

@@ -75,5 +75,8 @@ def extract_answer_from_text(text: str) -> str:
         match = re.search(r"Answer:\s*(.*)", text)
         if match:
             return match.group(1)
+
+        # If nothing matched return empty
+        return ""
     except ValueError:
         return text.strip()  # fallback: use whole output

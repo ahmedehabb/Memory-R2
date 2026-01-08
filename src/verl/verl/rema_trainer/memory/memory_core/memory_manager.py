@@ -204,6 +204,10 @@ class MemoryManager:
         if not dia_id:
             return self._error_result("Missing 'dia_id' field")
         
+        # Validate dia_id is a string, not a list
+        if isinstance(dia_id, list):
+            return self._error_result(f"dia_id must be a string, not a list. Got: {dia_id}")
+        
         try:
             turn_data = memory.insert(
                 sample_id=sample_id,
@@ -237,6 +241,10 @@ class MemoryManager:
             return self._error_result("Missing 'content' field")
         if not dia_id:
             return self._error_result("Missing 'dia_id' field")
+        
+        # Validate dia_id is a string, not a list
+        if isinstance(dia_id, list):
+            return self._error_result(f"dia_id must be a string, not a list. Got: {dia_id}")
         
         try:
             updated_turn = memory.update(memory_id, content, dia_id)
