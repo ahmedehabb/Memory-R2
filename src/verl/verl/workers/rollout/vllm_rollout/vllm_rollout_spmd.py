@@ -379,10 +379,11 @@ class vLLMRollout(BaseRollout):
 
             prompt = """The new conversations turns are mentioned in the triple backticks. You have to analyze the new turns and generate the new facts.
             ```
-            {question}
-            ```"""
+            {turns}
+            ```
+            """
             formatted_turns = format_turns_for_prompt(turns_data)
-            prompt = prompt.format(question=formatted_turns)
+            prompt = prompt.format(turns=formatted_turns)
             prompts.append(prompt)
 
         return prompts
@@ -595,7 +596,9 @@ class vLLMRollout(BaseRollout):
             # 1. test lengths of history and conversation_history
             #  len(history[i]) == len(conversation_history[role][i]) * len(agent_roles)
             for i in range(len(history)):
-                assert len(history[i]) == len(conversation_history[agent_roles[0]][i]), \
+                # assert len(history[i]) == len(conversation_history[agent_roles[0]][i]), \
+                # Change since now history contains only assistant outputs (8 messages for 4 turns × 2 agents), while conversation_history contains the full conversation with system, user, and assistant messages (9 = 1 system + 4 user + 4 assistant).
+                assert len(history[i]) == 2 * (len(conversation_history[agent_roles[0]][i]) - 1) // 2, \
                     f"len(history[i]) = {len(history[i])} != len(conversation_history[agent_roles[0]][i]) = {len(conversation_history[agent_roles[0]][i])}"
                 assert len(conversation_history[agent_roles[0]][i]) == len(conversation_history[agent_roles[1]][i]), \
                     f"len(conversation_history[agent_roles[0]][i]) = {len(conversation_history[agent_roles[0]][i])} != len(conversation_history[agent_roles[1]][i]) = {len(conversation_history[agent_roles[1]][i])}"
@@ -678,13 +681,8 @@ class vLLMRollout(BaseRollout):
                            stop_reason_lst: Dict[str, List[List[Optional[str]]]],
                            max_num_turns: int,
                            finish_reason: List[Optional[str]]):
-        # add last round output to make full conversation
-        for i_batch in range(len(last_round_responses)):
-            for role in last_round_responses[i_batch]:
-                conversation_history[role][i_batch].append({
-                    'role': 'assistant',
-                    'content': last_round_responses[i_batch][role]
-                })
+        # conversation_history already contains full conversations with assistant responses
+        # (added during generation loop, no need to append here)
         
         input_ids_lst = {role: [] for role in conversation_history.keys()}
         labels_lst = {role: [] for role in conversation_history.keys()}
@@ -726,12 +724,13 @@ class vLLMRollout(BaseRollout):
         for role in conversation_history.keys():
             # Find max length for padding
             max_length = max([len(ids) for ids in input_ids_lst[role]])
-            if max_length > self.config.response_length + self.config.prompt_length:
-                print(f"role: {role}, max_length={max_length} > {self.config.response_length + self.config.prompt_length}")
-                # raise RuntimeError(f"max_length={max_length} > {self.config.response_length + self.config.prompt_length}")
+            # self.config.max_prompt_length + self.config.max_response_length should be = 32768 (whole context length)
+            if max_length > self.config.max_prompt_length + self.config.max_response_length:
+                print(f"WARNING:: role: {role}, max_length={max_length} > {self.config.max_prompt_length + self.config.max_response_length}")
+                # raise RuntimeError(f"max_length={max_length} > {self.config.max_prompt_length + self.config.max_response_length}")
 
             # Use max length for padding and gathering
-            max_length = self.config.response_length + self.config.prompt_length
+            max_length = self.config.max_prompt_length + self.config.max_response_length
             
             # Pad and convert to tensors
             padded_input_ids = torch.full((batch_size, max_length), 
@@ -786,11 +785,6 @@ class vLLMRollout(BaseRollout):
                 },
             )
 
-        # remove side effect
-        for i_batch in range(len(last_round_responses)):
-            for role in last_round_responses[i_batch]:
-                conversation_history[role][i_batch].pop()
-        
         return tensor_dict
     
     def _initialize_conversation_state(self, batch_size):
@@ -876,6 +870,7 @@ class vLLMRollout(BaseRollout):
                     agent_roles,
                     system_prompts,
                     tokenizer,
+                    conversation_history,
                 )
 
                 # check current state length
@@ -919,6 +914,8 @@ class vLLMRollout(BaseRollout):
                                     "stop_reason": "completion_token_exceeded"}
                                 )
                                 # update conversation history for reasoning agent
+                                # TODO:: added dummy response for assistant in chat_lst so conversation history is of same lengths
+                                chat_lst[i].append({"role": "assistant", "content": ""})
                                 conversation_history[agent_roles[1]][idx] = chat_lst[i]
                             else:
                                 if i_turn == 0:
@@ -935,9 +932,6 @@ class vLLMRollout(BaseRollout):
                     chat_lst = new_chat_lst
                 
                 prompt_proto.meta_info.update(prompts.meta_info)
-                for i, chat in enumerate(chat_lst):
-                    idx = unfinished_indices[i]
-                    conversation_history[role][idx] = chat
 
                 # Generate responses for current role
                 print(f"  Generating responses...")
@@ -998,6 +992,11 @@ class vLLMRollout(BaseRollout):
                         output.replace(finish_flag, "").rstrip() for output in current_outputs
                     ]
                 
+                # Append assistant responses to chat_lst and store complete conversation
+                for i, output in enumerate(current_outputs):
+                    chat_lst[i].append({"role": "assistant", "content": output})
+                    idx = unfinished_indices[i]
+                    conversation_history[role][idx] = chat_lst[i]
 
                 # XXX(ziyu): side effect on `history`
                 print(f"  Updating history and checking finish conditions...")
@@ -1012,7 +1011,8 @@ class vLLMRollout(BaseRollout):
                     agent_roles,
                     num_gen_tokens,
                     stop_reasons,
-                    questions,
+                    fact_prompts,
+                    executor_prompts,
                     conversation_history,
                     system_prompts,
                     tokenizer,
@@ -1133,6 +1133,7 @@ class vLLMRollout(BaseRollout):
         agent_roles: List[str],
         system_prompts: Dict[str, str],
         tokenizer,
+        conversation_history: Dict[str, List[List[Dict[str, str]]]],
     ) -> Tuple[DataProto, List[List[Dict[str, str]]]]:
         """Prepare prompts for a specific role"""
         print(f"    _prepare_role_prompts called for role={role}")
@@ -1146,12 +1147,15 @@ class vLLMRollout(BaseRollout):
 
         # Build chat list
         print(f"      Building chat list for role...")
+        # Get existing conversations for unfinished samples
+        existing_convs = [conversation_history[role][idx] for idx in unfinished_indices]
         chat_lst = self._build_chat_list_for_role(
             role,
             current_history,
             current_questions,
             system_prompts,
             agent_roles,
+            existing_convs,
         )
         print(f"      Chat list built, count: {len(chat_lst)}")
 
@@ -1181,55 +1185,42 @@ class vLLMRollout(BaseRollout):
         questions: List[str],
         system_prompts: Dict[str, str],
         agent_roles: List[str],
+        existing_conversations: List[List[Dict[str, str]]] = None,
     ):
-        """Build chat list for a specific role"""
+        """Build chat list for a specific role by extending existing conversation with new question"""
         print(f"        _build_chat_list_for_role called for role={role}")
         print(f"          History list length: {len(history_list)}")
         print(f"          Questions count: {len(questions)}")
 
-        chat_lst = [[{
-            "role": "system",
-            "content": system_prompts[role]
-        }] for _ in range(len(history_list))]
-
-        for i, (hist, question) in enumerate(zip(history_list, questions)):
-            if role == agent_roles[0]: # meta-thinking
-                print(f"meta-thinking agent:: {question}\n")
-                chat_lst[i].append({"role": "user", "content": question})
-                for j in range(len(hist)):
-                    if j % 2 == 0:
-                        chat_lst[i].append({
-                            "role": "assistant",
-                            "content": hist[j]["content"]
-                        })
-                    else:
-                        chat_lst[i].append({
-                            "role": "user",
-                            "content": hist[j]["content"]
-                        })
-            else: # reasoning
-                print(f"reasoning agent:: {question}\n")
-                chat_lst[i].append({
-                    "role": "user",
-                    # TODO:: may need to remove hist[0] since now we are answering based on memory only ??? 
-                    # As i dont want to let executor agent see the memory thinking process ??
-                    "content": f'{question}',
-                })
-                for j in range(1, len(hist)):
-                    if (j + 1) % 2 == 0:
-                        chat_lst[i].append({
-                            "role": "assistant",
-                            "content": hist[j]["content"]
-                        })
-                    else:
-                        chat_lst[i].append({
-                            "role": "user",
-                            "content": hist[j]["content"]
-                        })
+        chat_lst = []
+        
+        for i, question in enumerate(questions):
+            # If existing conversation provided, extend it; otherwise start fresh
+            if existing_conversations and existing_conversations[i] is not None:
+                # Copy existing conversation and append new question
+                chat = existing_conversations[i].copy()
+                print(f"          Sample {i}: Extending existing conversation with {len(chat)} messages")
+            else:
+                # First turn - start with system prompt only
+                chat = [{
+                    "role": "system",
+                    "content": system_prompts[role]
+                }]
+                print(f"          Sample {i}: Starting fresh conversation")
+            
+            # Append the new question
+            chat.append({"role": "user", "content": question})
+            chat_lst.append(chat)
+            
+            if role == agent_roles[0]:
+                print(f"meta-thinking agent:: {question}...\n")
+            else:
+                print(f"reasoning agent:: {question}...\n")
         
         print(f"          Built {len(chat_lst)} chat sequences")
         if len(chat_lst) > 0:
             print(f"          Sample chat [0] length: {len(chat_lst[0])} messages")
+            # print(f"          Sample chat [0]: {chat_lst[0]}")
 
         return chat_lst
 
@@ -1304,7 +1295,8 @@ class vLLMRollout(BaseRollout):
         agent_roles: List[str],
         num_gen_tokens: List[int],
         stop_reasons: List[Optional[str]],
-        questions: List[str],
+        fact_prompts: List[str],
+        executor_prompts: List[str],
         conversation_history: Dict[str, List[List[Dict[str, str]]]],
         system_prompts: Dict[str, str],
         tokenizer: PreTrainedTokenizer,
@@ -1351,15 +1343,19 @@ class vLLMRollout(BaseRollout):
                     finish_reason[idx] = "stop_when_truncated"
                     if role == agent_roles[0]:
                         # update conversation for reasoning agent
+                        # Use executor_prompts for reasoning agent, not fact_prompts
                         _, new_conversation = self._prepare_role_prompts(
                             agent_roles[1],
                             [idx],
                             history,
-                            questions,
+                            executor_prompts,
                             agent_roles,
                             system_prompts,
                             tokenizer,
+                            conversation_history,
                         )
+                        # Append empty assistant response to match conversation structure
+                        new_conversation[0].append({"role": "assistant", "content": ""})
                         conversation_history[agent_roles[1]][idx] = new_conversation[0]
 
                         # add dummy history of reasoning agent
@@ -1412,8 +1408,9 @@ class vLLMRollout(BaseRollout):
         padded_history = _pad_history(history, 2 * self.config.max_num_turns)
         padded_conversation_history = {
             role:
+            # 1 + 2 * self.config.max_num_turns to account for system prompt
             _pad_history(conversation_history[role],
-                         2 * self.config.max_num_turns)
+                         1 + 2 * self.config.max_num_turns)
             for role in agent_roles
         }
 
@@ -1459,6 +1456,7 @@ def encode_conversation(conversation: List[Dict[str, str]],
                         num_gen_tokens: List[int], 
                         stop_reasons: List[Optional[str]]):
     IGNORE_INDEX = -100
+    input_ids = []
     labels = [] 
     step_ids = []
     cur_len = 0
