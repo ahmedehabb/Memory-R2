@@ -115,8 +115,13 @@ def format_memory_for_prompt_for_facts(
     """
     formatted_memory = []
     seen_memory_ids = set()  # Track unique memories to avoid duplicates
-    facts_list = facts.get("facts", [])
-    if use_similarity and facts_list:
+    facts_list = facts.get("facts", []) if facts else []
+    
+    # If no facts provided or facts list is empty, return empty memory
+    if not facts_list:
+        return formatted_memory
+    
+    if use_similarity:
         # Calculate top_k per turn to reach approximately top_k total memories
         # (accounting for potential duplicates across turns)
         num_facts = len(facts_list)
@@ -155,16 +160,6 @@ def format_memory_for_prompt_for_facts(
                             "speaker": memory_dict.get("speaker"),
                             "content": memory_dict.get("content")
                         })
-    else:
-        # Fallback: return all memories (original behavior)
-        memory_list = memory.get()  # Get all memories from Memory instance
-        
-        for mem in memory_list:
-            formatted_memory.append({
-                "memory_id": mem.get("memory_id"),
-                "speaker": mem.get("speaker"),
-                "content": mem.get("content")
-            })
     
     return formatted_memory
 
@@ -204,6 +199,9 @@ def format_memory_for_prompt(
     formatted_memory = []
     seen_memory_ids = set()  # Track unique memories to avoid duplicates
     
+    if not query_turns:
+        return formatted_memory
+
     if use_similarity and query_turns:
         # Calculate top_k per turn to reach approximately top_k total memories
         # (accounting for potential duplicates across turns)
