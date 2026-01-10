@@ -2,6 +2,7 @@
 import os
 import json
 import hashlib
+import atexit
 # from openai import OpenAI
 import google.generativeai as genai
 from filelock import FileLock
@@ -15,12 +16,20 @@ MAIN_CACHE_FILE = os.path.join(CACHE_DIR, "judge_cache.json")
 PROCESS_CACHE_FILE = os.path.join(CACHE_DIR, f"judge_cache_{os.getpid()}.json")
 LOCK_FILE = MAIN_CACHE_FILE + ".lock"
 
-# Load per-process cache
-if os.path.exists(PROCESS_CACHE_FILE):
-    with open(PROCESS_CACHE_FILE, "r") as f:
-        JUDGE_CACHE = json.load(f)
-else:
-    JUDGE_CACHE = {}
+# Load main cache first to avoid redundant API calls
+JUDGE_CACHE = {}
+if os.path.exists(MAIN_CACHE_FILE):
+    try:
+        with FileLock(LOCK_FILE, timeout=10):
+            with open(MAIN_CACHE_FILE, "r") as f:
+                JUDGE_CACHE = json.load(f)
+        print(f"[cache init] Loaded {len(JUDGE_CACHE)} entries from main cache")
+    except Exception as e:
+        print(f"[cache init] Could not load main cache: {e}")
+        JUDGE_CACHE = {}
+
+# Track new entries added by THIS process only
+_NEW_ENTRIES_THIS_PROCESS = set()
 
 # OpenAI client (commented out)
 # client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
@@ -36,76 +45,65 @@ def _hash_prompt(prompt: str) -> str:
     """Stable hash so slight whitespace differences produce different keys."""
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
-def _save_process_cache():
-    """Save per-process cache to disk (non-blocking)."""
-    with open(PROCESS_CACHE_FILE, "w") as f:
-        json.dump(JUDGE_CACHE, f, indent=2)
-
 def merge_to_main_cache():
-    """Merge per-process cache into the main cache safely and sync back."""
-    global JUDGE_CACHE
+    """Merge per-process new entries into the main cache safely."""
+    global JUDGE_CACHE, _NEW_ENTRIES_THIS_PROCESS
     
-    # Don't merge if we have no new entries
-    if not JUDGE_CACHE:
+    # Only merge if we have new entries from this process
+    if not _NEW_ENTRIES_THIS_PROCESS:
         return
     
-    max_retries = 3
+    # Build dict of only NEW entries to merge
+    new_entries = {key: JUDGE_CACHE[key] for key in _NEW_ENTRIES_THIS_PROCESS if key in JUDGE_CACHE}
+    if not new_entries:
+        return
+    
+    max_retries = 5
     for attempt in range(max_retries):
         try:
-            with FileLock(LOCK_FILE, timeout=60):
+            with FileLock(LOCK_FILE, timeout=120):
                 # Read current main cache
+                main_cache = {}
                 if os.path.exists(MAIN_CACHE_FILE):
                     try:
                         with open(MAIN_CACHE_FILE, "r") as f:
                             main_cache = json.load(f)
-                    except json.JSONDecodeError as e:
-                        print(f"[merge error] Corrupted main cache on attempt {attempt+1}, creating backup: {e}")
+                    except (json.JSONDecodeError, IOError) as e:
+                        print(f"[merge] Corrupted main cache on attempt {attempt+1}: {e}")
                         # Backup corrupted file
-                        backup_file = MAIN_CACHE_FILE + ".corrupted." + str(os.getpid())
-                        if os.path.exists(MAIN_CACHE_FILE):
-                            try:
+                        backup_file = MAIN_CACHE_FILE + f".corrupted.{os.getpid()}.bak"
+                        try:
+                            if os.path.exists(MAIN_CACHE_FILE):
                                 os.rename(MAIN_CACHE_FILE, backup_file)
-                            except:
-                                pass
+                                print(f"[merge] Backed up corrupted cache to {backup_file}")
+                        except:
+                            pass
                         main_cache = {}
-                else:
-                    main_cache = {}
                 
-                # Merge new entries from this process
+                # Merge only new entries from this process
                 original_size = len(main_cache)
-                main_cache.update(JUDGE_CACHE)
+                main_cache.update(new_entries)
                 new_size = len(main_cache)
+                added = new_size - original_size
                 
-                # Atomic write with validation
-                tmp_file = MAIN_CACHE_FILE + ".tmp." + str(os.getpid())
+                # Atomic write
+                tmp_file = MAIN_CACHE_FILE + f".tmp.{os.getpid()}"
                 try:
                     with open(tmp_file, "w") as f:
                         json.dump(main_cache, f, indent=2, ensure_ascii=False)
                     
-                    # Validate the temp file before replacing
-                    with open(tmp_file, "r") as f:
-                        validated = json.load(f)
-                        if len(validated) != new_size:
-                            raise ValueError(f"Size mismatch: expected {new_size}, got {len(validated)}")
-                    
                     # Atomic replace
                     os.replace(tmp_file, MAIN_CACHE_FILE)
                     
-                    # Verify the write was successful
-                    with open(MAIN_CACHE_FILE, "r") as f:
-                        final_check = json.load(f)
-                        if len(final_check) != new_size:
-                            raise ValueError(f"Write verification failed: expected {new_size}, got {len(final_check)}")
+                    print(f"[merge success] Merged {added} new entries from process {os.getpid()} (total: {new_size})")
                     
-                    print(f"[merge success] Merged {new_size - original_size} new entries (total: {new_size})")
-                    
-                    # Update our local cache with merged result
+                    # Update local cache and clear tracking
                     JUDGE_CACHE.update(main_cache)
-                    _save_process_cache()
+                    _NEW_ENTRIES_THIS_PROCESS.clear()
                     return  # Success!
                     
-                except (json.JSONDecodeError, ValueError) as e:
-                    print(f"[merge error] Validation failed on attempt {attempt+1}: {e}")
+                except Exception as e:
+                    print(f"[merge error] Write failed on attempt {attempt+1}: {e}")
                     if os.path.exists(tmp_file):
                         try:
                             os.remove(tmp_file)
@@ -113,25 +111,27 @@ def merge_to_main_cache():
                             pass
                     if attempt < max_retries - 1:
                         import time
-                        time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                        time.sleep(0.1 * (2 ** attempt))  # Exponential backoff
                         continue
                     else:
-                        print(f"[merge error] Failed after {max_retries} attempts, keeping process cache only")
+                        print(f"[merge error] Failed after {max_retries} attempts")
                         return
                         
         except Exception as e:
             print(f"[merge error] Attempt {attempt+1} failed: {e}")
             if attempt < max_retries - 1:
                 import time
-                time.sleep(0.5 * (attempt + 1))
+                time.sleep(0.1 * (2 ** attempt))
                 continue
             else:
                 print(f"[merge error] All {max_retries} attempts failed")
                 return
 
-# Counter for new entries
-_NEW_ENTRIES_COUNT = 0
-MERGE_EVERY_N = 20  # merge after every 20 new entries (reduce lock contention)
+# Merge every N new entries OR when process exits
+MERGE_EVERY_N = 20  # Lower threshold since atexit may not always run
+
+# Register cleanup: merge cache when process exits (best effort)
+atexit.register(merge_to_main_cache)
 
 
 def judge_with_llm(prompt: str) -> str:
@@ -142,11 +142,11 @@ def judge_with_llm(prompt: str) -> str:
     Note: Name kept as 'judge_with_llm' for backward compatibility,
     but actually uses Gemini API now.
     """
-    global _NEW_ENTRIES_COUNT
+    global _NEW_ENTRIES_THIS_PROCESS
 
     key = _hash_prompt(prompt)
 
-    # Return cached result if exists in process cache
+    # Return cached result if exists
     if key in JUDGE_CACHE:
         return JUDGE_CACHE[key]
 
@@ -165,15 +165,13 @@ def judge_with_llm(prompt: str) -> str:
         print(f"[judge error] {e}")
         result = ""
 
-    # Save to per-process cache
+    # Save to cache and track as new entry
     JUDGE_CACHE[key] = result
-    _save_process_cache()  # non-blocking save
+    _NEW_ENTRIES_THIS_PROCESS.add(key)
 
-    # Increment counter and merge if threshold reached
-    _NEW_ENTRIES_COUNT += 1
-    if _NEW_ENTRIES_COUNT >= MERGE_EVERY_N:
+    # Periodically merge to main cache
+    if len(_NEW_ENTRIES_THIS_PROCESS) >= MERGE_EVERY_N:
         merge_to_main_cache()
-        _NEW_ENTRIES_COUNT = 0
 
     return result
 
@@ -189,7 +187,7 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
     Returns:
         List of response strings (same order as input prompts)
     """
-    global _NEW_ENTRIES_COUNT
+    global _NEW_ENTRIES_THIS_PROCESS
     
     if not prompts:
         return []
@@ -209,7 +207,7 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
     
     # Process uncached prompts concurrently
     if uncached_prompts:
-        print(f"[judge_with_llm_batch] Processing {len(uncached_prompts)} uncached prompts concurrently...")
+        print(f"[judge_batch] Processing {len(uncached_prompts)} uncached prompts concurrently...")
         
         generation_config = genai.types.GenerationConfig(
             temperature=0.0,
@@ -229,7 +227,6 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
                 return orig_idx, prompt, "", str(e)
         
         # Use ThreadPoolExecutor for concurrent API calls
-        new_entries = 0
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {executor.submit(call_api, (orig_idx, prompt)): orig_idx 
                       for orig_idx, prompt in zip(uncached_indices, uncached_prompts)}
@@ -238,27 +235,20 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
                 orig_idx, prompt, response_text, error = future.result()
                 
                 if error:
-                    print(f"[judge_with_llm_batch] API error for idx {orig_idx}: {error}")
+                    print(f"[judge_batch] API error for idx {orig_idx}: {error}")
                     results[orig_idx] = ""
                 else:
-                    # Cache the response
+                    # Cache the response and track as new entry
                     key = _hash_prompt(prompt)
                     JUDGE_CACHE[key] = response_text
+                    _NEW_ENTRIES_THIS_PROCESS.add(key)
                     results[orig_idx] = response_text
-                    new_entries += 1
         
-        # Update global counter after all processing
-        _NEW_ENTRIES_COUNT += new_entries
-        
-        # Save process cache once after all responses
-        _save_process_cache()
-        
-        # Merge to main cache if threshold reached
-        if _NEW_ENTRIES_COUNT >= MERGE_EVERY_N:
+        # Merge if we've accumulated enough new entries
+        if len(_NEW_ENTRIES_THIS_PROCESS) >= MERGE_EVERY_N:
             merge_to_main_cache()
-            _NEW_ENTRIES_COUNT = 0
         
-        print(f"[judge_with_llm_batch] Completed: {len(prompts) - len(uncached_prompts)} cache hits, {len(uncached_prompts)} API calls")
+        print(f"[judge_batch] Completed: {len(prompts) - len(uncached_prompts)} cache hits, {len(uncached_prompts)} API calls")
     
     return results
 

@@ -74,7 +74,7 @@ def compute_score_fn(compute_score, params):
     qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, extra_info = params
     return compute_score(qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, extra_info)
 
-def locomo_score_exact_match(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, extra_info: dict=None) -> tuple[float, dict]:
+def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, extra_info: dict=None) -> tuple[float, dict]:
     key = f"{conv_id}_chunk{chunk_id}"
     memory = MemoryManager().get_snapshot(sample_id=conv_id, chunk_id=chunk_id, epoch=epoch, split=split, index_in_batch=index)
     
@@ -185,7 +185,7 @@ class ReMARewardManager:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         # self.compute_score = compute_score or _default_compute_score
-        self.compute_score = locomo_score_exact_match
+        self.compute_score = locomo_score
         self.top_k_percentage = top_k_percentage  # sample from top k% of memories (e.g., 0.3 = top 30%)
 
     def verify(self, data):
@@ -286,7 +286,7 @@ class ReMARewardManager:
         evidence_scores = [] # Track evidence scores separately
         memory_infos = []  # Collect memory info from each result
         print(f"\n[RewardManager] Starting score computation with ProcessPool...")
-        with ProcessPool(max_workers=1) as pool:
+        with ProcessPool(max_workers=8) as pool:  # Parallel processing with 8 workers
             future = pool.map(partial(compute_score_fn, self.compute_score), params, timeout=300)
             iterator = future.result()
             with tqdm(total=len(data), desc="Computing scores") as pbar:
