@@ -127,17 +127,14 @@ def merge_to_main_cache():
                 print(f"[merge error] All {max_retries} attempts failed")
                 return
 
-# Merge every N new entries OR when process exits
-MERGE_EVERY_N = 20  # Lower threshold since atexit may not always run
-
-# Register cleanup: merge cache when process exits (best effort)
+# Register cleanup: merge cache when process exits (best effort, but explicit merge is primary)
 atexit.register(merge_to_main_cache)
 
 
 def judge_with_llm(prompt: str) -> str:
     """
     Call Gemini Flash model deterministically and cache the output.
-    Merges per-process cache to main cache every N new entries.
+    Cache is merged to disk by explicit merge_to_main_cache() calls.
     
     Note: Name kept as 'judge_with_llm' for backward compatibility,
     but actually uses Gemini API now.
@@ -169,88 +166,7 @@ def judge_with_llm(prompt: str) -> str:
     JUDGE_CACHE[key] = result
     _NEW_ENTRIES_THIS_PROCESS.add(key)
 
-    # Periodically merge to main cache
-    if len(_NEW_ENTRIES_THIS_PROCESS) >= MERGE_EVERY_N:
-        merge_to_main_cache()
-
     return result
-
-
-def judge_with_llm_batch(prompts: List[str]) -> List[str]:
-    """
-    Call Gemini Flash model for multiple prompts with concurrent processing.
-    Uses caching and concurrent API calls for efficiency.
-    
-    Args:
-        prompts: List of prompt strings to evaluate
-        
-    Returns:
-        List of response strings (same order as input prompts)
-    """
-    global _NEW_ENTRIES_THIS_PROCESS
-    
-    if not prompts:
-        return []
-    
-    # Check cache first
-    results = [None] * len(prompts)
-    uncached_indices = []
-    uncached_prompts = []
-    
-    for idx, prompt in enumerate(prompts):
-        key = _hash_prompt(prompt)
-        if key in JUDGE_CACHE:
-            results[idx] = JUDGE_CACHE[key]
-        else:
-            uncached_indices.append(idx)
-            uncached_prompts.append(prompt)
-    
-    # Process uncached prompts concurrently
-    if uncached_prompts:
-        print(f"[judge_batch] Processing {len(uncached_prompts)} uncached prompts concurrently...")
-        
-        generation_config = genai.types.GenerationConfig(
-            temperature=0.0,
-            top_p=1.0,
-        )
-        
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        
-        def call_api(idx_prompt_pair):
-            """Helper function for concurrent API calls"""
-            orig_idx, prompt = idx_prompt_pair
-            try:
-                response = gemini_model.generate_content(prompt, generation_config=generation_config)
-                response_text = response.text.strip()
-                return orig_idx, prompt, response_text, None
-            except Exception as e:
-                return orig_idx, prompt, "", str(e)
-        
-        # Use ThreadPoolExecutor for concurrent API calls
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {executor.submit(call_api, (orig_idx, prompt)): orig_idx 
-                      for orig_idx, prompt in zip(uncached_indices, uncached_prompts)}
-            
-            for future in as_completed(futures):
-                orig_idx, prompt, response_text, error = future.result()
-                
-                if error:
-                    print(f"[judge_batch] API error for idx {orig_idx}: {error}")
-                    results[orig_idx] = ""
-                else:
-                    # Cache the response and track as new entry
-                    key = _hash_prompt(prompt)
-                    JUDGE_CACHE[key] = response_text
-                    _NEW_ENTRIES_THIS_PROCESS.add(key)
-                    results[orig_idx] = response_text
-        
-        # Merge if we've accumulated enough new entries
-        if len(_NEW_ENTRIES_THIS_PROCESS) >= MERGE_EVERY_N:
-            merge_to_main_cache()
-        
-        print(f"[judge_batch] Completed: {len(prompts) - len(uncached_prompts)} cache hits, {len(uncached_prompts)} API calls")
-    
-    return results
 
 
 # OpenAI implementation (commented out for reference)
