@@ -673,9 +673,6 @@ class RayReMATrainer(object):
         print("STARTING VALIDATION")
         print("="*80)
         
-        reward_tensor_lst = []
-        acc_tensor_lst = []
-        data_source_lst = []
         num_turns_lst = []
         history_lst = []
         sample_groundtruths = []
@@ -685,6 +682,13 @@ class RayReMATrainer(object):
         sample_inputs = []
         sample_outputs = []
         sample_scores = []
+        
+        # Lists to collect metrics
+        reward_tensor_lst = []
+        reward_tensor_dict_lst = []  # Store full dicts to access category metrics
+        acc_tensor_lst = []
+        bleu_tensor_lst = []
+        data_source_lst = []
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
         print(f"\n[VALIDATE] Configuring rollout meta_info with max_num_turns={max_num_turns}")
@@ -827,9 +831,12 @@ class RayReMATrainer(object):
             reward_tensor = self.val_reward_fn(test_batch)
             print(f"[VAL BATCH {batch_idx + 1}] Reward tensor keys: {list(reward_tensor.keys())}")
             reward_tensor_lst.append(reward_tensor['reasoning_turn_level_reward'])
+            reward_tensor_dict_lst.append(reward_tensor)  # Store full dict
             acc_tensor_lst.append(reward_tensor['acc'])
+            bleu_tensor_lst.append(reward_tensor['bleu'])
             print(f"[VAL BATCH {batch_idx + 1}] reasoning_turn_level_reward shape: {reward_tensor['reasoning_turn_level_reward'].shape}")
             print(f"[VAL BATCH {batch_idx + 1}] acc shape: {reward_tensor['acc'].shape}")
+            print(f"[VAL BATCH {batch_idx + 1}] bleu shape: {reward_tensor['bleu'].shape}")
 
             # Store scores
             scores = reward_tensor['reasoning_turn_level_reward'].sum(-1).cpu().tolist()
@@ -862,11 +869,13 @@ class RayReMATrainer(object):
         print(f"[VALIDATE] Total samples: {reward_tensor.shape[0]}")
         print(f"[VALIDATE] Mean reward: {reward_tensor.mean().item():.4f}")
         print(f"[VALIDATE] Mean accuracy: {acc_tensor.mean().item():.4f}")
+        print(f"[VALIDATE] Mean BLEU: {bleu_tensor.mean().item():.4f}")
 
         # evaluate test_score based on data source
         print(f"[VALIDATE] Computing per-data-source metrics...")
         data_source_reward = {}
         data_source_acc = {}
+        data_source_bleu = {}
         for i in range(reward_tensor.shape[0]):
             data_source = data_sources[i]
             if data_source not in data_source_reward:
@@ -883,6 +892,44 @@ class RayReMATrainer(object):
         for data_source, accs in data_source_acc.items():
             metric_dict[f'val/acc/{data_source}'] = np.mean(accs)
             print(f"[VALIDATE] {data_source} mean accuracy: {np.mean(accs):.4f}")
+        for data_source, bleus in data_source_bleu.items():
+            metric_dict[f'val/bleu/{data_source}'] = np.mean(bleus)
+            print(f"[VALIDATE] {data_source} mean BLEU: {np.mean(bleus):.4f}")
+        
+        # Stage 2 aggregation: Combine per-category metrics across ALL validation batches
+        # Each batch returns sum and count (not averages), so we just accumulate them
+        print(f"\n[VALIDATE] Aggregating per-category metrics across {len(reward_tensor_dict_lst)} batches...")
+        if len(reward_tensor_dict_lst) > 0:
+            category_names = ['multi_hop', 'single_hop', 'temporal', 'open_domain', 'adversarial', 'unknown']
+            category_aggregates = {}
+            
+            # Accumulate sums and counts from all batches (no multiplication needed!)
+            for batch_idx, reward_dict in enumerate(reward_tensor_dict_lst):
+                for cat_name in category_names:
+                    f1_sum_key = f'{cat_name}_f1_sum'
+                    if f1_sum_key in reward_dict:
+                        if cat_name not in category_aggregates:
+                            category_aggregates[cat_name] = {'f1_sum': 0.0, 'bleu_sum': 0.0, 'count': 0}
+                        
+                        # Directly accumulate sums and counts
+                        category_aggregates[cat_name]['f1_sum'] += reward_dict[f1_sum_key].item()
+                        category_aggregates[cat_name]['bleu_sum'] += reward_dict[f'{cat_name}_bleu_sum'].item()
+                        category_aggregates[cat_name]['count'] += int(reward_dict[f'{cat_name}_count'].item())
+            
+            # Compute global averages (only once, at the end)
+            if len(category_aggregates) > 0:
+                print(f"[VALIDATE] Found {len(category_aggregates)} categories with data")
+                for cat_name in sorted(category_aggregates.keys()):
+                    agg = category_aggregates[cat_name]
+                    if agg['count'] > 0:
+                        metric_dict[f'val/{cat_name}_f1'] = agg['f1_sum'] / agg['count']
+                        metric_dict[f'val/{cat_name}_bleu'] = agg['bleu_sum'] / agg['count']
+                        metric_dict[f'val/{cat_name}_count'] = agg['count']
+                        print(f"[VALIDATE] {cat_name}: F1={metric_dict[f'val/{cat_name}_f1']:.4f}, BLEU={metric_dict[f'val/{cat_name}_bleu']:.4f}, count={metric_dict[f'val/{cat_name}_count']:.0f}")
+            else:
+                print(f"[VALIDATE] Warning: No category data found in any batch")
+        else:
+            print(f"[VALIDATE] No batches with category data")
         
         # Add num_turns and completion_tokens metrics
         if num_turns_lst:
@@ -927,6 +974,345 @@ class RayReMATrainer(object):
             print(f"[VALIDATE] Saved {len(results_to_save)} validation results to {output_file}")
 
         print(f"\n[VALIDATE] Validation complete. Final metrics: {metric_dict}")
+        print("="*80 + "\n")
+        return metric_dict
+
+    def _test(self):
+        """Test pipeline - runs multi-turn generation on all batches and evaluates QA only for finished conversations (non-empty qa_pairs_json)"""
+        print("\n" + "="*80)
+        print("STARTING TEST")
+        print("="*80)
+        
+        sample_groundtruths = []
+        sample_inputs = []
+        sample_outputs = []
+        history_lst = []
+        
+        # Accumulate rewards/metrics for all finished conversations across batches
+        reward_tensor_lst = []
+        reward_tensor_dict_lst = []  # Store full dicts to access category metrics
+        acc_tensor_lst = []
+        bleu_tensor_lst = []
+        data_source_lst = []
+        num_turns_lst = []
+        completion_tokens_lst = []
+        sample_scores = []
+
+        max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
+        print(f"\n[TEST] Configuring rollout meta_info with max_num_turns={max_num_turns}")
+        if max_num_turns > 1:
+            from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
+            from prompt import FINISH_FLAG
+            rollout_meta_info = {
+                'agent_roles': ['meta_thinking', 'reasoning'],
+                'finish_flag': None,
+                'system_prompts': {
+                    'meta_thinking': MEMORY_REASONER_PROMPT,
+                    'reasoning': MEMORY_EXECUTOR_PROMPT
+                },
+                'max_num_turns': max_num_turns
+            }
+            print(f"[TEST] Multi-turn mode enabled")
+            print(f"[TEST] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            print(f"[TEST] agent_roles: {rollout_meta_info['agent_roles']}")
+        else:
+            from prompt.math.single_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
+            rollout_meta_info = {
+                'agent_roles': ['meta_thinking', 'reasoning'],
+                'finish_flag': None,
+                'system_prompts': {
+                    'meta_thinking': MEMORY_REASONER_PROMPT,
+                    'reasoning': MEMORY_EXECUTOR_PROMPT
+                },
+                'max_num_turns': max_num_turns
+            }
+            print(f"[TEST] Single-turn mode enabled")
+            print(f"[TEST] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            print(f"[TEST] agent_roles: {rollout_meta_info['agent_roles']}")
+
+        print(f"\n[TEST] Starting test loop: {len(self.val_dataloader)} batches")
+        print(f"[TEST] Strategy: Check qa_pairs_json for each sample - if non-empty, conversation has ended and will be evaluated")
+        total_batches = len(self.val_dataloader)
+        
+        for batch_idx, test_data in enumerate(self.val_dataloader):
+            print(f"\n{'*'*80}")
+            print(f"TEST BATCH {batch_idx + 1}/{total_batches}")
+            print(f"{'*'*80}")
+            print(f"\n[TEST BATCH {batch_idx + 1}] Creating batch from dataloader...")
+            print(f"[TEST BATCH {batch_idx + 1}] Batch size: {len(test_data['question'])}")
+            print(f"[TEST BATCH {batch_idx + 1}] test_data keys: {list(test_data.keys())}")
+            
+            dummy_tensor = torch.arange(0, len(test_data['question']))
+            test_data['batch_idx'] = dummy_tensor
+            
+            # Add test epoch/split info
+            rollout_meta_info['epoch'] = self.global_steps
+            rollout_meta_info['split'] = 'test'
+            
+            test_batch: DataProto = DataProto.from_single_dict(test_data, meta_info=rollout_meta_info)
+            print(f"[TEST BATCH {batch_idx + 1}] test_batch.batch keys: {list(test_batch.batch.keys())}")
+            print(f"[TEST BATCH {batch_idx + 1}] test_batch.non_tensor_batch keys: {list(test_batch.non_tensor_batch.keys())}")
+
+            # Check which samples have finished (non-zero num_questions) BEFORE repeating
+            num_questions_list = test_batch.non_tensor_batch['num_questions']
+            finished_mask = [num_questions > 0 for num_questions in num_questions_list]
+            num_finished = sum(finished_mask)
+            print(f"[TEST BATCH {batch_idx + 1}] Found {num_finished}/{len(finished_mask)} finished conversations (with non-empty qa_pairs_json)")
+
+            # Store original inputs and ground truths BEFORE repeating
+            input_texts = test_batch.non_tensor_batch['question']
+            sample_inputs.extend(input_texts)
+            print(f"[TEST BATCH {batch_idx + 1}] Collected {len(input_texts)} input texts")
+
+            # Store original ground truth if available
+            ground_truths = [json.loads(x)[0]["answer"] if json.loads(x) else "N/A" for x in test_batch.non_tensor_batch['qa_pairs_json']]
+            sample_groundtruths.extend(ground_truths)
+            print(f"[TEST BATCH {batch_idx + 1}] Collected {len(ground_truths)} ground truths")
+
+            # repeat test batch
+            test_batch = test_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n,
+                                           interleave=True)
+            print(f"[TEST BATCH {batch_idx + 1}] Repeated batch {self.config.actor_rollout_ref.rollout.val_kwargs.n} times. New size: {len(test_batch.batch)}")
+            
+            # save rollout idx to use it in memory management (AFTER repeating to get unique indices for each rollout)
+            rollout_idx = torch.arange(0, len(test_batch.batch))
+            test_batch.batch['rollout_idx'] = rollout_idx
+            
+            # we only do test on rule-based rm
+            if self.config.reward_model.enable and test_batch[0].non_tensor_batch['reward_model']['style'] == 'model':
+                print(f"[TEST BATCH {batch_idx + 1}] Skipping model-based reward model test")
+                return {}
+
+            print(f"\n[TEST BATCH {batch_idx + 1}] Preparing generation batch...")
+            if 'multi_modal_inputs' in test_batch.non_tensor_batch.keys():
+                raise NotImplementedError('multi_modal_inputs test not implemented yet')
+            else:
+                test_gen_batch = test_batch.select(
+                        batch_keys=['rollout_idx', 'batch_idx'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_questions', 'turns_json', 'session_id', 'session_time'], 
+                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'], 
+                        deepcopy=True
+                    )
+            
+            print(f"[TEST BATCH {batch_idx + 1}] Generation batch prepared with {len(test_gen_batch.batch)} samples")
+            
+            test_gen_batch.meta_info.update({
+                'eos_token_id': self.tokenizer.eos_token_id,
+                'pad_token_id': self.tokenizer.pad_token_id,
+                'recompute_log_prob': False,
+                'do_sample': self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
+                'validate': True,
+            })
+            print(f'[TEST BATCH {batch_idx + 1}] test_gen_batch meta_info: {test_gen_batch.meta_info}')
+
+            # pad to be divisible by dp_size
+            print(f"\n[TEST BATCH {batch_idx + 1}] Padding to be divisible by world_size={self.actor_rollout_wg.world_size}...")
+            test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
+            print(f"[TEST BATCH {batch_idx + 1}] Padded batch size: {len(test_gen_batch_padded.batch)}, pad_size: {pad_size}")
+            
+            print(f"[TEST BATCH {batch_idx + 1}] >>> Calling multi_turn_generate_sequences...")
+            test_output_gen_batch_padded = self.actor_rollout_wg.multi_turn_generate_sequences(test_gen_batch_padded)
+            print(f"[TEST BATCH {batch_idx + 1}] <<< Generation complete")
+
+            # unpad
+            print(f"[TEST BATCH {batch_idx + 1}] Unpadding batch...")
+            test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
+            print(f'[TEST BATCH {batch_idx + 1}] Test generation end. Output batch size: {len(test_output_gen_batch.batch)}')
+
+            # Store generated outputs
+            print(f"\n[TEST BATCH {batch_idx + 1}] Processing outputs...")
+            output_texts = test_output_gen_batch.non_tensor_batch['response']
+            sample_outputs.extend(output_texts)
+            print(f"[TEST BATCH {batch_idx + 1}] Collected {len(output_texts)} output texts")
+            print(f"[TEST BATCH {batch_idx + 1}] Sample output[0]: {output_texts[0][:100] if isinstance(output_texts[0], str) else output_texts[0]}...")
+
+            history_lst.append(test_output_gen_batch.non_tensor_batch['history'].tolist())
+            
+            # Check if any conversations finished in this batch and evaluate them
+            if num_finished > 0:
+                print(f"[TEST BATCH {batch_idx + 1}] Evaluating {num_finished} finished conversations...")
+                print(f"[TEST BATCH {batch_idx + 1}] Merging generation output with test batch...")
+                test_batch_with_gen = test_batch.union(test_output_gen_batch)
+                test_batch_with_gen.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
+                test_batch_with_gen.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
+                
+                # Filter to only finished conversations (after repeating, mask needs to be replicated)
+                repeat_times = self.config.actor_rollout_ref.rollout.val_kwargs.n
+                finished_indices = []
+                for i, is_finished in enumerate(finished_mask):
+                    if is_finished:
+                        # Add all repeated versions of this finished sample
+                        finished_indices.extend([i * repeat_times + j for j in range(repeat_times)])
+                
+                print(f"[TEST BATCH {batch_idx + 1}] Filtering to {len(finished_indices)} samples (finished conversations after repeating)")
+                
+                # Select only finished samples
+                finished_test_batch = test_batch_with_gen.select_items(finished_indices)
+                
+                # Compute rewards for finished conversations
+                print(f"[TEST BATCH {batch_idx + 1}] Computing rewards for finished conversations...")
+                reward_tensor = self.val_reward_fn(finished_test_batch)
+                print(f"[TEST BATCH {batch_idx + 1}] Reward tensor keys: {list(reward_tensor.keys())}")
+                
+                reward_tensor_lst.append(reward_tensor['reasoning_turn_level_reward'])
+                reward_tensor_dict_lst.append(reward_tensor)  # Store full dict
+                acc_tensor_lst.append(reward_tensor['acc'])
+                bleu_tensor_lst.append(reward_tensor['bleu'])
+                print(f"[TEST BATCH {batch_idx + 1}] reasoning_turn_level_reward shape: {reward_tensor['reasoning_turn_level_reward'].shape}")
+                print(f"[TEST BATCH {batch_idx + 1}] acc shape: {reward_tensor['acc'].shape}")
+                print(f"[TEST BATCH {batch_idx + 1}] bleu shape: {reward_tensor['bleu'].shape}")
+                
+                # Store scores
+                scores = reward_tensor['reasoning_turn_level_reward'].sum(-1).cpu().tolist()
+                sample_scores.extend(scores)
+                print(f"[TEST BATCH {batch_idx + 1}] Sample scores[0]: {scores[0]}")
+                
+                # Get finished samples from output batch
+                finished_output_batch = test_output_gen_batch.select_items(finished_indices)
+                
+                num_turns = torch.tensor(finished_output_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
+                num_turns_lst.append(num_turns)
+                print(f"[TEST BATCH {batch_idx + 1}] num_turns: min={num_turns.min()}, max={num_turns.max()}, mean={num_turns.float().mean()}")
+                
+                turn_level_completion_tokens = finished_output_batch.batch['meta_thinking_num_gen_tokens'].cpu() + \
+                    finished_output_batch.batch['reasoning_num_gen_tokens'].cpu()
+                completion_tokens = turn_level_completion_tokens.sum(dim=-1)
+                completion_tokens_lst.append(completion_tokens)
+                print(f"[TEST BATCH {batch_idx + 1}] completion_tokens: min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
+                
+                # Get data sources from finished samples
+                data_source_lst.append(finished_test_batch.non_tensor_batch.get('subset', ['locomo'] * reward_tensor['reasoning_turn_level_reward'].shape[0]))
+            else:
+                print(f"[TEST BATCH {batch_idx + 1}] No finished conversations in this batch, skipping reward computation")
+            
+            print(f"[TEST BATCH {batch_idx + 1}] Batch processing complete\n")
+
+        # Now compute final metrics from all finished conversations across all batches
+        print(f"\n[TEST] All batches processed. Computing final metrics...")
+        
+        if len(reward_tensor_lst) == 0:
+            print("[TEST] WARNING: No finished conversations found across all batches!")
+            return {}
+        
+        # Log generations
+        self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores, groundtruths=sample_groundtruths, histories=history_lst)
+
+        # Concatenate all accumulated tensors
+        print(f"[TEST] Concatenating reward tensors from {len(reward_tensor_lst)} batches with finished conversations...")
+        reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (total_finished_samples,)
+        acc_tensor = torch.cat(acc_tensor_lst, dim=0).cpu()  # (total_finished_samples,)
+        bleu_tensor = torch.cat(bleu_tensor_lst, dim=0).cpu()  # (total_finished_samples,)
+        data_sources = np.concatenate(data_source_lst, axis=0)
+        print(f"[TEST] Total finished samples evaluated: {reward_tensor.shape[0]}")
+        print(f"[TEST] Mean reward: {reward_tensor.mean().item():.4f}")
+        print(f"[TEST] Mean accuracy: {acc_tensor.mean().item():.4f}")
+        print(f"[TEST] Mean BLEU: {bleu_tensor.mean().item():.4f}")
+
+        # Compute metrics for all finished conversations
+        data_source_reward = {}
+        data_source_acc = {}
+        data_source_bleu = {}
+        for i in range(reward_tensor.shape[0]):
+            data_source = data_sources[i]
+            if data_source not in data_source_reward:
+                data_source_reward[data_source] = []
+            data_source_reward[data_source].append(reward_tensor[i].item())
+            if data_source not in data_source_acc:
+                data_source_acc[data_source] = []
+            data_source_acc[data_source].append(acc_tensor[i].item())
+            if data_source not in data_source_bleu:
+                data_source_bleu[data_source] = []
+            data_source_bleu[data_source].append(bleu_tensor[i].item())
+
+        metric_dict = {}
+        for data_source, rewards in data_source_reward.items():
+            metric_dict[f'test/test_score/{data_source}'] = np.mean(rewards)
+            print(f"[TEST] {data_source} mean reward: {np.mean(rewards):.4f}")
+        for data_source, accs in data_source_acc.items():
+            metric_dict[f'test/acc/{data_source}'] = np.mean(accs)
+            print(f"[TEST] {data_source} mean accuracy: {np.mean(accs):.4f}")
+        for data_source, bleus in data_source_bleu.items():
+            metric_dict[f'test/bleu/{data_source}'] = np.mean(bleus)
+            print(f"[TEST] {data_source} mean BLEU: {np.mean(bleus):.4f}")
+        
+        # Stage 2 aggregation: Combine per-category metrics across ALL test batches
+        # Each batch returns sum and count (not averages), so we just accumulate them
+        print(f"\n[TEST] Aggregating per-category metrics across {len(reward_tensor_dict_lst)} batches...")
+        if len(reward_tensor_dict_lst) > 0:
+            category_names = ['multi_hop', 'single_hop', 'temporal', 'open_domain', 'adversarial', 'unknown']
+            category_aggregates = {}
+            
+            # Accumulate sums and counts from all batches (no multiplication needed!)
+            for batch_idx, reward_dict in enumerate(reward_tensor_dict_lst):
+                for cat_name in category_names:
+                    f1_sum_key = f'{cat_name}_f1_sum'
+                    if f1_sum_key in reward_dict:
+                        if cat_name not in category_aggregates:
+                            category_aggregates[cat_name] = {'f1_sum': 0.0, 'bleu_sum': 0.0, 'count': 0}
+                        
+                        # Directly accumulate sums and counts
+                        category_aggregates[cat_name]['f1_sum'] += reward_dict[f1_sum_key].item()
+                        category_aggregates[cat_name]['bleu_sum'] += reward_dict[f'{cat_name}_bleu_sum'].item()
+                        category_aggregates[cat_name]['count'] += int(reward_dict[f'{cat_name}_count'].item())
+            
+            # Compute global averages (only once, at the end)
+            if len(category_aggregates) > 0:
+                print(f"[TEST] Found {len(category_aggregates)} categories with data")
+                for cat_name in sorted(category_aggregates.keys()):
+                    agg = category_aggregates[cat_name]
+                    if agg['count'] > 0:
+                        metric_dict[f'test/{cat_name}_f1'] = agg['f1_sum'] / agg['count']
+                        metric_dict[f'test/{cat_name}_bleu'] = agg['bleu_sum'] / agg['count']
+                        metric_dict[f'test/{cat_name}_count'] = agg['count']
+                        print(f"[TEST] {cat_name}: F1={metric_dict[f'test/{cat_name}_f1']:.4f}, BLEU={metric_dict[f'test/{cat_name}_bleu']:.4f}, count={metric_dict[f'test/{cat_name}_count']:.0f}")
+            else:
+                print(f"[TEST] Warning: No category data found in any batch")
+        else:
+            print(f"[TEST] No batches with category data")
+        
+        # Add num_turns and completion_tokens metrics
+        if num_turns_lst:
+            num_turns_tensor = torch.cat(num_turns_lst, dim=0)
+            metric_dict['test/num_turns/mean'] = num_turns_tensor.float().mean().item()
+            metric_dict['test/num_turns/max'] = num_turns_tensor.max().item()
+            metric_dict['test/num_turns/min'] = num_turns_tensor.min().item()
+            print(f"[TEST] num_turns: mean={metric_dict['test/num_turns/mean']:.2f}, max={metric_dict['test/num_turns/max']}, min={metric_dict['test/num_turns/min']}")
+        
+        if completion_tokens_lst:
+            completion_tokens_tensor = torch.cat(completion_tokens_lst, dim=0)
+            metric_dict['test/completion_tokens/mean'] = completion_tokens_tensor.float().mean().item()
+            metric_dict['test/completion_tokens/max'] = completion_tokens_tensor.max().item()
+            metric_dict['test/completion_tokens/min'] = completion_tokens_tensor.min().item()
+            print(f"[TEST] completion_tokens: mean={metric_dict['test/completion_tokens/mean']:.2f}, max={metric_dict['test/completion_tokens/max']}, min={metric_dict['test/completion_tokens/min']}")
+
+        # Save generation results to a JSON file
+        if self.config.trainer.get('save_val_generations', False):
+            print(f"\n[TEST] Saving test generations...")
+            output_dir = Path(self.config.trainer.default_local_dir) / 'eval_records'
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_file = output_dir / f'test_step_{self.global_steps}.jsonl'
+            
+            # Concatenate history lists from different batches
+            all_histories = []
+            for history_batch in history_lst:
+                all_histories.extend(history_batch)
+            
+            results_to_save = []
+            for inp, outp, gt, hist, score in zip(sample_inputs, sample_outputs, sample_groundtruths, all_histories, sample_scores):
+                unpad_history = [x for x in hist if x['role'] != 'padding']
+                results_to_save.append({
+                    'question': inp,
+                    'answer': outp, 
+                    'groundtruth': gt,
+                    'history': unpad_history,
+                    'score': score
+                })
+            
+            with jsonlines.open(output_file, 'w') as writer:
+                writer.write_all(results_to_save)
+            print(f"[TEST] Saved {len(results_to_save)} test results to {output_file}")
+
+        print(f"\n[TEST] Test complete. Final metrics: {metric_dict}")
         print("="*80 + "\n")
         return metric_dict
 
@@ -1142,6 +1528,15 @@ class RayReMATrainer(object):
                           config=OmegaConf.to_container(self.config, resolve=True),
                           wandb_kwargs=wandb_kwargs
                           )
+
+        # perform test if test_only mode is enabled
+        if self.val_reward_fn is not None and self.config.trainer.get('test_only', False):
+            print("\n[FIT] Test-only mode enabled. Running test and exiting...")
+            test_metrics = self._test()
+            pprint(f'Test metrics: {test_metrics}')
+            logger.log(data=test_metrics, step=self.global_steps)
+            print("[FIT] Test-only mode complete. Exiting.")
+            return
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
@@ -1365,7 +1760,9 @@ class RayReMATrainer(object):
                         #         print(f"[STEP {self.global_steps}] {key} shape: {reward_tensor_map[key].shape}, dtype: {reward_tensor_map[key].dtype}")
                         #         print(f"[STEP {self.global_steps}] {key} : {reward_tensor_map[key]}")
                         new_batch.batch['acc'] = reward_tensor_map.pop('acc')
+                        new_batch.batch['bleu'] = reward_tensor_map.pop('bleu')
                         print(f"[STEP {self.global_steps}] acc shape: {new_batch.batch['acc'].shape}, acc: {new_batch.batch['acc']}")
+                        print(f"[STEP {self.global_steps}] bleu shape: {new_batch.batch['bleu'].shape}, bleu: {new_batch.batch['bleu']}")
                         # batch.batch['token_level_scores'] = reward_tensor
                         for key_reward, reward_tensor in reward_tensor_map.items():
                             new_batch.batch[key_reward] = reward_tensor
