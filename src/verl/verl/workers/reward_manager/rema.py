@@ -15,6 +15,9 @@
 from functools import partial
 import json
 import random
+import math
+from collections import Counter
+
 from typing import Dict
 
 from tqdm import tqdm
@@ -28,6 +31,17 @@ from verl.rema_trainer.memory.utils.parse_response import extract_answer_from_te
 from verl.rema_trainer.memory.memory_core.memory_manager import MemoryManager
 from verl.rema_trainer.memory.utils.qa_prompt_generator import generate_qa_prompt
 from verl.rema_trainer.memory.judge_llm import judge_with_llm
+
+# Category ID to human-readable name mapping
+# Used for per-category metrics (F1 and BLEU scores)
+CATEGORY_NAMES = {
+    1: 'multi_hop',
+    2: 'single_hop',
+    3: 'temporal',
+    4: 'open_domain',
+    5: 'adversarial',
+    0: 'unknown'  # fallback for unexpected category IDs
+}
 
 # these functions are heavily influenced by the HF squad_metrics.py script
 def normalize_text(s):
@@ -69,6 +83,24 @@ def compute_f1(prediction, truth):
     
     return 2 * (prec * rec) / (prec + rec)
 
+def compute_bleu(prediction, truth):
+    pred_tokens = normalize_text(prediction).split()
+    truth_tokens = normalize_text(truth).split()
+
+    if len(pred_tokens) == 0:
+        return 0.0
+
+    truth_count = Counter(truth_tokens)
+    pred_count = Counter(pred_tokens)
+
+    clipped = sum(min(pred_count[t], truth_count[t]) for t in pred_count)
+    precision = clipped / len(pred_tokens) if pred_tokens else 0.0
+    if pred_tokens and truth_tokens:
+        bp = 1.0 if len(pred_tokens) >= len(truth_tokens) else math.exp(1 - len(truth_tokens)/len(pred_tokens))
+    else:
+        bp = 0.0
+    return bp * precision
+
 def compute_score_fn(compute_score, params):
     # data_source, response, ground_truth, extra_info = params
     qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, extra_info = params
@@ -80,7 +112,12 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     
     # Compute score for all QA pairs and return average
     qa_scores = 0.0
+    bleu_scores = 0.0
     num_questions = len(qa_pairs)
+
+    # Per-category tracking
+    category_f1_scores = {}  # {category: [f1_scores]}
+    category_bleu_scores = {}  # {category: [bleu_scores]}
 
     # Variables to track evidence retrieval
     total_evidences = 0
@@ -92,6 +129,7 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         question = qa_pair['question']
         gold_answer = str(qa_pair['answer']).strip()
         evidence = qa_pair.get('evidence', None)
+        category = qa_pair.get('category', 0)
 
         # Here we need to ask Question and get answer from response
         # Will use all_dia_ids to check if the retrieved memories are relevant 
@@ -99,15 +137,25 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         response = judge_with_llm(prompt)
         predicted_answer = extract_answer_from_text(response)
 
-        # Use f1 score as the metric
+        # Use f1, bleu scores as the metrics
         question_score = compute_f1(predicted_answer, gold_answer)
+        bleu_score = compute_bleu(predicted_answer, gold_answer)
+
+        # Track per-category scores for aggregation later
+        if category not in category_f1_scores:
+            category_f1_scores[category] = []
+            category_bleu_scores[category] = []
+        category_f1_scores[category].append(question_score)
+        category_bleu_scores[category].append(bleu_score)
 
         if question_score != 1.0:
             print(f"[LocomoScore] Mismatch detected. Gold: {gold_answer}, full response: {response}")
             retrieved_memory = prompt.find("Memories for user")  # Find the start of the memories
             print(f"Retrieved Memory we got:\n{prompt[retrieved_memory:]}\n")
 
+        # Accumulate scores for averaging
         qa_scores += question_score
+        bleu_scores += bleu_score
 
         # Now checking that evidence dia_ids are in retrieved dia_ids
         evidences_retrieved = 0
@@ -120,21 +168,28 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         total_evidences_retrieved += evidences_retrieved
         print(f"[LocomoScore] Retrieved {evidences_retrieved}/{len(evidence)} evidence dia_ids.")
 
-
         print(f"[LocomoScore] Q{qa_idx+1}/{num_questions}: {question[:50]}...")
-        print(f"[LocomoScore] Gold: {gold_answer}, Predicted: {predicted_answer}, Match: {question_score}")
+        print(f"[LocomoScore] Gold: {gold_answer}, Predicted: {predicted_answer}, F1: {question_score}, BLEU: {bleu_score}")
     
-    # Calculate average score
-    avg_score = qa_scores / num_questions if num_questions > 0 else 0.0
-    print(f"[LocomoScore] Average score: {avg_score:.3f} ({qa_scores}/{num_questions})")
+    # Calculate average scores
+    avg_f1_score = qa_scores / num_questions if num_questions > 0 else 0.0
+    avg_bleu_score = bleu_scores / num_questions if num_questions > 0 else 0.0
+    print(f"[LocomoScore] Average F1 score: {avg_f1_score:.3f} ({qa_scores}/{num_questions})")
+    print(f"[LocomoScore] Average BLEU score: {avg_bleu_score:.3f} ({bleu_scores}/{num_questions})")
 
     # Calculate evidence retrieval efficiency (percentage of evidence dia_ids retrieved)
     evidence_retrieval_efficiency = total_evidences_retrieved / total_evidences if total_evidences > 0 else 0.0
     print(f"[LocomoScore] Evidence retrieval efficiency: {evidence_retrieval_efficiency:.3f}")
 
     # Adjust final score based on evidence retrieval efficiency
-    final_score = avg_score + evidence_retrieval_efficiency
+    final_score = avg_f1_score + evidence_retrieval_efficiency
     print(f"[LocomoScore] Final adjusted score: {final_score:.3f}")
+
+    # Return raw category scores (not averages) for global aggregation
+    category_raw_scores = {
+        'f1_scores': category_f1_scores,  # {category: [individual_f1_scores]}
+        'bleu_scores': category_bleu_scores  # {category: [individual_bleu_scores]}
+    }
 
     memory_info = {
         "key": key,
@@ -144,38 +199,14 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         "epoch": epoch,
         "split": split
     }
-    # Return both avg_score (QA only) and final_score (QA + evidence reward)
-    return avg_score, evidence_retrieval_efficiency, final_score, memory_info
-
-def _rema_math_format_reward_fn(role, response_str):
-    if 'boxed' in response_str:
-        if role == 'meta_thinking':
-            return -0.25
-        elif role == 'reasoning':
-            return 0.25
-        else:
-            raise ValueError(f"Unknown {role=}") 
-    else: return 0.0
-
-def _rema_laaj_format_reward_fn(role, response_str):
-    from verl.utils.reward_score.pairwise_laaj import extract_final_verdict
-    ans = extract_final_verdict(response_str)
-    if ans is not None:
-        if role == 'meta_thinking':
-            return -0.25
-        elif role == 'reasoning':
-            return 0.25
-        else:
-            raise ValueError(f"Unknown {role=}") 
-    else: return 0.0
-
-def compute_format_r(data_source, role, response_str):
-    if data_source == "ReMA-math":
-        return _rema_math_format_reward_fn(role, response_str)
-    elif data_source == 'ReMA-laaj':
-        return _rema_laaj_format_reward_fn(role, response_str)
-    else:
-        raise ValueError(f'Unknown {data_source=} for format reward.')
+    
+    # Cache is never used, since we always get new stuff due to (generation, retrieval, ... ) randomness
+    # Force merge cache before returning (critical for ProcessPool workers)
+    # from verl.rema_trainer.memory.judge_llm import merge_to_main_cache
+    # merge_to_main_cache()
+    
+    # Return F1 score, BLEU score, evidence score, final_score (QA + evidence reward), category_raw_scores, and memory_info
+    return avg_f1_score, avg_bleu_score, evidence_retrieval_efficiency, final_score, category_raw_scores, memory_info
 
 class ReMARewardManager:
     """The reward manager.
@@ -282,34 +313,42 @@ class ReMARewardManager:
             print(f"  - extra_info: {params[0][2]}")
 
         scores = []
-        qa_scores = []  # Track QA accuracy separately
+        qa_scores = []  # Track QA accuracy (F1) separately
+        bleu_scores = []  # Track BLEU scores separately
         evidence_scores = [] # Track evidence scores separately
+        category_stats_list = []  # Track per-category stats
         memory_infos = []  # Collect memory info from each result
         print(f"\n[RewardManager] Starting score computation with ProcessPool...")
-        with ProcessPool(max_workers=8) as pool:  # Parallel processing with 8 workers
-            future = pool.map(partial(compute_score_fn, self.compute_score), params, timeout=300)
+        with ProcessPool(max_workers=16) as pool:  # Parallel processing with 16 workers
+            future = pool.map(partial(compute_score_fn, self.compute_score), params, timeout=1000)
             iterator = future.result()
             with tqdm(total=len(data), desc="Computing scores") as pbar:
                 while True:
                     try:
                         result = next(iterator)
-                        # New format: (qa_score, evidence format, total_score, memory_info)
-                        qa_score, evidence_score, total_score, memory_info = result
+                        # New format: (f1_score, bleu_score, evidence_score, total_score, category_stats, memory_info)
+                        qa_score, bleu_score, evidence_score, total_score, category_stats, memory_info = result
                         qa_scores.append(qa_score)
+                        bleu_scores.append(bleu_score)
                         evidence_scores.append(evidence_score)
                         scores.append(total_score)
+                        category_stats_list.append(category_stats)
                         memory_infos.append(memory_info)
                     except TimeoutError:
                         print('[RewardManager] Time Out')
                         qa_scores.append(0.0)
+                        bleu_scores.append(0.0)
                         scores.append(0.0)
                         evidence_scores.append(0.0)
+                        category_stats_list.append({'f1_scores': {}, 'bleu_scores': {}})
                         memory_infos.append(None)
                     except TimeoutException:
                         print('[RewardManager] Math verify internal timeout')
                         qa_scores.append(0.0)
+                        bleu_scores.append(0.0)
                         scores.append(0.0)
                         evidence_scores.append(0.0)
+                        category_stats_list.append({'f1_scores': {}, 'bleu_scores': {}})
                         memory_infos.append(None)
                     except StopIteration:
                         break
@@ -317,7 +356,7 @@ class ReMARewardManager:
                         print(f"[RewardManager] Error: {e}")
                         raise e
                     pbar.update(1)
-        print(f"[RewardManager] Score computation complete. Got {len(scores)} total scores and {len(qa_scores)} QA scores")
+        print(f"[RewardManager] Score computation complete. Got {len(scores)} total scores, {len(qa_scores)} F1 scores, and {len(bleu_scores)} BLEU scores")
         
         # Build memory_score_dict from collected results
         memory_score_dict = {}
@@ -332,25 +371,84 @@ class ReMARewardManager:
         assert len(scores) == len(data)
         assert len(evidence_scores) == len(data)
         assert len(qa_scores) == len(data)
-        accuracy = torch.tensor(qa_scores, dtype=torch.float32) # bsz - QA accuracy only
-        print(f"\n[RewardManager] Accuracy tensor (QA only) shape: {accuracy.shape}, dtype: {accuracy.dtype}")
+        assert len(bleu_scores) == len(data)
+        assert len(category_stats_list) == len(data)
+        accuracy = torch.tensor(qa_scores, dtype=torch.float32) # bsz - F1 accuracy
+        bleu = torch.tensor(bleu_scores, dtype=torch.float32) # bsz - BLEU scores
+        print(f"\n[RewardManager] Accuracy tensor (F1) shape: {accuracy.shape}, dtype: {accuracy.dtype}")
         print(f"[RewardManager] Accuracy stats - mean: {accuracy.mean().item():.4f}, min: {accuracy.min().item():.4f}, max: {accuracy.max().item():.4f}")
         print(f"[RewardManager] Accuracy values: {accuracy[:min(5, len(accuracy))].tolist()}...")
+        print(f"\n[RewardManager] BLEU tensor shape: {bleu.shape}, dtype: {bleu.dtype}")
+        print(f"[RewardManager] BLEU stats - mean: {bleu.mean().item():.4f}, min: {bleu.min().item():.4f}, max: {bleu.max().item():.4f}")
+        print(f"[RewardManager] BLEU values: {bleu[:min(5, len(bleu))].tolist()}...")
         reward_tensor_map['acc'] = accuracy
+        reward_tensor_map['bleu'] = bleu
+        
+        # Only compute category statistics during validation/test (when validate flag is True)
+        # During training, we skip this computation to save time
+        is_validate = data.meta_info.get('validate', False)
+        if is_validate:
+            print(f"\n[RewardManager] Validation/test mode: Computing per-category statistics...")
+            
+            # Two-stage aggregation for per-category metrics:
+            # Stage 1 (here): Aggregate raw scores from all samples in THIS BATCH
+            # Stage 2 (in ray_trainer): Aggregate batch-level stats across MULTIPLE BATCHES
+            
+            batch_category_stats = {}
+            
+            # Collect all individual scores for each category across all samples in this batch
+            for sample_idx, sample_category_raw in enumerate(category_stats_list):
+                # sample_category_raw = {'f1_scores': {cat: [scores]}, 'bleu_scores': {cat: [scores]}}
+                for cat in sample_category_raw['f1_scores'].keys():
+                    if cat not in batch_category_stats:
+                        batch_category_stats[cat] = {'f1_scores': [], 'bleu_scores': []}
+                    # Extend with individual scores from this sample (no averaging yet)
+                    batch_category_stats[cat]['f1_scores'].extend(sample_category_raw['f1_scores'][cat])
+                    batch_category_stats[cat]['bleu_scores'].extend(sample_category_raw['bleu_scores'][cat])
+            
+            # Compute batch-level aggregated statistics (sum + count, not average yet)
+            # We compute the average later in the trainer to avoid re-computing sums
+            final_category_stats = {}
+            for cat, scores_dict in batch_category_stats.items():
+                f1_list = scores_dict['f1_scores']
+                bleu_list = scores_dict['bleu_scores']
+                if len(f1_list) > 0:
+                    final_category_stats[cat] = {
+                        'f1_sum': sum(f1_list),  # Keep as sum, not average
+                        'bleu_sum': sum(bleu_list),  # Keep as sum, not average
+                        'count': len(f1_list)
+                    }
+                    # For logging, compute average
+                    avg_f1 = final_category_stats[cat]['f1_sum'] / final_category_stats[cat]['count']
+                    avg_bleu = final_category_stats[cat]['bleu_sum'] / final_category_stats[cat]['count']
+                    print(f"[RewardManager] Category {cat}: F1={avg_f1:.4f}, BLEU={avg_bleu:.4f}, count={final_category_stats[cat]['count']}")
+            
+            # Add per-category metrics to reward_tensor_map as scalar tensors
+            if len(final_category_stats) > 0:
+                print(f"[RewardManager] Adding {len(final_category_stats)} category metrics to reward_tensor_map...")
+                for cat, stats in final_category_stats.items():
+                    # Get human-readable category name
+                    cat_name = CATEGORY_NAMES.get(cat, f'unknown_cat_{cat}')
+                    if cat not in CATEGORY_NAMES:
+                        print(f"[RewardManager] Warning: Unknown category ID {cat}, using fallback name")
+                    
+                    # Add batch-level sum and count as scalar tensors (not averages)
+                    # Trainer will compute the global average from these sums
+                    reward_tensor_map[f'{cat_name}_f1_sum'] = torch.tensor(stats['f1_sum'], dtype=torch.float32)
+                    reward_tensor_map[f'{cat_name}_bleu_sum'] = torch.tensor(stats['bleu_sum'], dtype=torch.float32)
+                    reward_tensor_map[f'{cat_name}_count'] = torch.tensor(stats['count'], dtype=torch.float32)
+                    # For logging
+                    avg_f1 = stats['f1_sum'] / stats['count']
+                    avg_bleu = stats['bleu_sum'] / stats['count']
+                    print(f"[RewardManager] Added {cat_name}: F1={avg_f1:.4f}, BLEU={avg_bleu:.4f}, count={stats['count']}")
+            else:
+                print(f"[RewardManager] No category data found in this batch")
+        else:
+            print(f"\n[RewardManager] Training mode: Skipping per-category statistics computation")
         
         print(f"\n[RewardManager] Processing {len(data)} data items to assign rewards...")
         for i_bsz in range(len(data)):
             data_item = data[i_bsz]  # DataProtoItem
-            # response_str = data_item.non_tensor_batch['response']
-            # ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
-            # data_source = data_item.non_tensor_batch['data_source']
-            # extra_info = data_item.non_tensor_batch.get('extra_info', None)
-            # score = self.compute_score(
-            #     data_source=data_source,
-            #     solution_str=response_str,
-            #     ground_truth=ground_truth,
-            #     extra_info=extra_info,
-            # )
 
             # Instead of using total score, try to separate the scores for each role
             # score = scores[i_bsz]
@@ -447,7 +545,11 @@ class ReMARewardManager:
                 print(f"[RewardManager] {key} shape: {tensor.shape}, dtype: {tensor.dtype}")
                 if tensor.numel() > 0:
                     print(f"[RewardManager] {key} stats - mean: {tensor.mean().item():.4f}, min: {tensor.min().item():.4f}, max: {tensor.max().item():.4f}")
-                    print(f"[RewardManager] {key} sample values[0]: {tensor[0]}")
+                    # Handle 0-dim tensors (scalars) vs 1+dim tensors
+                    if tensor.dim() == 0:
+                        print(f"[RewardManager] {key} value: {tensor.item()}")
+                    else:
+                        print(f"[RewardManager] {key} sample values[0]: {tensor[0]}")
         print("="*80)
         print("REWARD MANAGER __call__ COMPLETED")
         print("="*80 + "\n")
