@@ -161,18 +161,17 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     
     print(f"[LocomoScore] Processing {num_questions} questions for conv {conv_id}, chunk {chunk_id}")
     
-    # Parallelize QA processing when there are multiple questions
-    if num_questions > 1:
+    # Handle different question counts
+    if num_questions == 0:
+        # No questions - empty results will naturally produce zero scores
+        results = []
+    else:
+        # Use parallel processing for any number of questions
         print(f"[LocomoScore] Using parallel processing for {num_questions} questions")
         with ThreadPoolExecutor(max_workers=min(num_questions, 8)) as executor:
-            # Submit all QA pairs for parallel processing
             futures = [executor.submit(process_single_qa, qa_pair, memory, speakers, session_time) 
                       for qa_pair in qa_pairs]
-            # Collect results
             results = [future.result() for future in futures]
-    else:
-        # Single question - no need for parallelization overhead
-        results = [process_single_qa(qa_pairs[0], memory, speakers, session_time)]
     
     # Process results
     for qa_idx, result in enumerate(results):
