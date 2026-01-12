@@ -422,67 +422,66 @@ class ReMARewardManager:
         reward_tensor_map['acc'] = accuracy
         reward_tensor_map['bleu'] = bleu
         
-        # Only compute category statistics during validation/test (when validate flag is True)
-        # During training, we skip this computation to save time
+        # Compute category statistics for all modes (training, validation, test)
+        # For training: metrics are reported per-batch (not accumulated)
+        # For validation/test: metrics are accumulated across batches
         is_validate = data.meta_info.get('validate', False)
-        if is_validate:
-            print(f"\n[RewardManager] Validation/test mode: Computing per-category statistics...")
-            
-            # Two-stage aggregation for per-category metrics:
-            # Stage 1 (here): Aggregate raw scores from all samples in THIS BATCH
-            # Stage 2 (in ray_trainer): Aggregate batch-level stats across MULTIPLE BATCHES
-            
-            batch_category_stats = {}
-            
-            # Collect all individual scores for each category across all samples in this batch
-            for sample_idx, sample_category_raw in enumerate(category_stats_list):
-                # sample_category_raw = {'f1_scores': {cat: [scores]}, 'bleu_scores': {cat: [scores]}}
-                for cat in sample_category_raw['f1_scores'].keys():
-                    if cat not in batch_category_stats:
-                        batch_category_stats[cat] = {'f1_scores': [], 'bleu_scores': []}
-                    # Extend with individual scores from this sample (no averaging yet)
-                    batch_category_stats[cat]['f1_scores'].extend(sample_category_raw['f1_scores'][cat])
-                    batch_category_stats[cat]['bleu_scores'].extend(sample_category_raw['bleu_scores'][cat])
-            
-            # Compute batch-level aggregated statistics (sum + count, not average yet)
-            # We compute the average later in the trainer to avoid re-computing sums
-            final_category_stats = {}
-            for cat, scores_dict in batch_category_stats.items():
-                f1_list = scores_dict['f1_scores']
-                bleu_list = scores_dict['bleu_scores']
-                if len(f1_list) > 0:
-                    final_category_stats[cat] = {
-                        'f1_sum': sum(f1_list),  # Keep as sum, not average
-                        'bleu_sum': sum(bleu_list),  # Keep as sum, not average
-                        'count': len(f1_list)
-                    }
-                    # For logging, compute average
-                    avg_f1 = final_category_stats[cat]['f1_sum'] / final_category_stats[cat]['count']
-                    avg_bleu = final_category_stats[cat]['bleu_sum'] / final_category_stats[cat]['count']
-                    print(f"[RewardManager] Category {cat}: F1={avg_f1:.4f}, BLEU={avg_bleu:.4f}, count={final_category_stats[cat]['count']}")
-            
-            # Add per-category metrics to reward_tensor_map as scalar tensors
-            if len(final_category_stats) > 0:
-                print(f"[RewardManager] Adding {len(final_category_stats)} category metrics to reward_tensor_map...")
-                for cat, stats in final_category_stats.items():
-                    # Get human-readable category name
-                    cat_name = CATEGORY_NAMES.get(cat, f'unknown_cat_{cat}')
-                    if cat not in CATEGORY_NAMES:
-                        print(f"[RewardManager] Warning: Unknown category ID {cat}, using fallback name")
-                    
-                    # Add batch-level sum and count as scalar tensors (not averages)
-                    # Trainer will compute the global average from these sums
-                    reward_tensor_map[f'{cat_name}_f1_sum'] = torch.tensor(stats['f1_sum'], dtype=torch.float32)
-                    reward_tensor_map[f'{cat_name}_bleu_sum'] = torch.tensor(stats['bleu_sum'], dtype=torch.float32)
-                    reward_tensor_map[f'{cat_name}_count'] = torch.tensor(stats['count'], dtype=torch.float32)
-                    # For logging
-                    avg_f1 = stats['f1_sum'] / stats['count']
-                    avg_bleu = stats['bleu_sum'] / stats['count']
-                    print(f"[RewardManager] Added {cat_name}: F1={avg_f1:.4f}, BLEU={avg_bleu:.4f}, count={stats['count']}")
-            else:
-                print(f"[RewardManager] No category data found in this batch")
+        current_split = data.meta_info.get('split', 'train')
+        print(f"\n[RewardManager] Split={current_split}, validate={is_validate}: Computing per-category statistics...")
+        
+        # Two-stage aggregation for per-category metrics:
+        # Stage 1 (here): Aggregate raw scores from all samples in THIS BATCH
+        # Stage 2 (in ray_trainer): Aggregate batch-level stats across MULTIPLE BATCHES
+        
+        batch_category_stats = {}
+        
+        # Collect all individual scores for each category across all samples in this batch
+        for sample_idx, sample_category_raw in enumerate(category_stats_list):
+            # sample_category_raw = {'f1_scores': {cat: [scores]}, 'bleu_scores': {cat: [scores]}}
+            for cat in sample_category_raw['f1_scores'].keys():
+                if cat not in batch_category_stats:
+                    batch_category_stats[cat] = {'f1_scores': [], 'bleu_scores': []}
+                # Extend with individual scores from this sample (no averaging yet)
+                batch_category_stats[cat]['f1_scores'].extend(sample_category_raw['f1_scores'][cat])
+                batch_category_stats[cat]['bleu_scores'].extend(sample_category_raw['bleu_scores'][cat])
+        
+        # Compute batch-level aggregated statistics (sum + count, not average yet)
+        # We compute the average later in the trainer to avoid re-computing sums
+        final_category_stats = {}
+        for cat, scores_dict in batch_category_stats.items():
+            f1_list = scores_dict['f1_scores']
+            bleu_list = scores_dict['bleu_scores']
+            if len(f1_list) > 0:
+                final_category_stats[cat] = {
+                    'f1_sum': sum(f1_list),  # Keep as sum, not average
+                    'bleu_sum': sum(bleu_list),  # Keep as sum, not average
+                    'count': len(f1_list)
+                }
+                # For logging, compute average
+                avg_f1 = final_category_stats[cat]['f1_sum'] / final_category_stats[cat]['count']
+                avg_bleu = final_category_stats[cat]['bleu_sum'] / final_category_stats[cat]['count']
+                print(f"[RewardManager] Category {cat}: F1={avg_f1:.4f}, BLEU={avg_bleu:.4f}, count={final_category_stats[cat]['count']}")
+        
+        # Add per-category metrics to reward_tensor_map as scalar tensors
+        if len(final_category_stats) > 0:
+            print(f"[RewardManager] Adding {len(final_category_stats)} category metrics to reward_tensor_map...")
+            for cat, stats in final_category_stats.items():
+                # Get human-readable category name
+                cat_name = CATEGORY_NAMES.get(cat, f'unknown_cat_{cat}')
+                if cat not in CATEGORY_NAMES:
+                    print(f"[RewardManager] Warning: Unknown category ID {cat}, using fallback name")
+                
+                # Add batch-level sum and count as scalar tensors (not averages)
+                # Trainer will compute the global average from these sums
+                reward_tensor_map[f'{cat_name}_f1_sum'] = torch.tensor(stats['f1_sum'], dtype=torch.float32)
+                reward_tensor_map[f'{cat_name}_bleu_sum'] = torch.tensor(stats['bleu_sum'], dtype=torch.float32)
+                reward_tensor_map[f'{cat_name}_count'] = torch.tensor(stats['count'], dtype=torch.float32)
+                # For logging
+                avg_f1 = stats['f1_sum'] / stats['count']
+                avg_bleu = stats['bleu_sum'] / stats['count']
+                print(f"[RewardManager] Added {cat_name}: F1={avg_f1:.4f}, BLEU={avg_bleu:.4f}, count={stats['count']}")
         else:
-            print(f"\n[RewardManager] Training mode: Skipping per-category statistics computation")
+            print(f"[RewardManager] No category data found in this batch")
         
         print(f"\n[RewardManager] Processing {len(data)} data items to assign rewards...")
         for i_bsz in range(len(data)):
