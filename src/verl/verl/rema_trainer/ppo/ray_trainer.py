@@ -548,6 +548,7 @@ class RayReMATrainer(object):
         # This is critical for memory management where chunk N depends on chunk N-1's saved memory
         # Note: ChunkBatchSampler doesn't support shuffle yet (processes chunks sequentially)
         if self.config.data.shuffle:
+            raise NotImplementedError("shuffle=True is not supported with ChunkBatchSampler. Processing chunks sequentially.")
             print("WARNING: shuffle=True is not supported with ChunkBatchSampler. Processing chunks sequentially.")
             train_dataloader_generator = torch.Generator()
             train_dataloader_generator.manual_seed(self.config.data.get('seed', 1))
@@ -592,23 +593,7 @@ class RayReMATrainer(object):
         #     'truncation', 'error'
         # ), f'dataset truncation {self.val_dataset.truncation} must be the same as config {self.config.data.get("truncation", "error")}'
         #########################################################
-        
-        # Use ChunkBatchSampler for validation to ensure batches never span multiple chunk_ids
-        # This is critical for memory management where chunk N depends on chunk N-1's saved memory
-        
-        # if self.config.data.shuffle:
-        #     self.val_dataloader = StatefulDataLoader(
-        #         dataset=self.val_dataset,
-        #         # Validation datasets are sent to inference engines as a whole batch,
-        #         # which will schedule the memory themselves.
-        #         # batch_size=len(self.val_dataset),
-        #         batch_size=self.config.data.val_batch_size,
-        #         num_workers=8,
-        #         shuffle=False,
-        #         drop_last=False,
-        #         collate_fn=collate_fn)
-        # else:
-        
+                
         # ALL validation done with ChunkBatchSampler to avoid cross-chunk memory issues
         val_batch_sampler = ChunkBatchSampler(
             dataset=self.val_dataset,
@@ -622,6 +607,31 @@ class RayReMATrainer(object):
             batch_sampler=val_batch_sampler,
             num_workers=8,
             collate_fn=collate_fn)
+
+        # Create test dataset and dataloader if test_only mode is enabled
+        if self.config.trainer.get('test_only', False):
+            print("INFO: test_only mode enabled, creating test dataset and dataloader")
+            self.test_dataset = RLHFDataset(parquet_files=self.config.data.test_files,
+                                           prompt_key=self.config.data.prompt_key,
+                                           shuffle=False,  # Test should always be sequential
+                                           )
+            
+            test_batch_sampler = ChunkBatchSampler(
+                dataset=self.test_dataset,
+                batch_size=self.config.data.get('test_batch_size', self.config.data.val_batch_size),
+                drop_last=False  # Keep all samples for test
+            )
+            
+            self.test_dataloader = StatefulDataLoader(
+                dataset=self.test_dataset,
+                batch_sampler=test_batch_sampler,
+                num_workers=8,
+                collate_fn=collate_fn)
+            
+            print(f'Size of test dataloader: {len(self.test_dataloader)}')
+        else:
+            self.test_dataset = None
+            self.test_dataloader = None
 
         assert len(self.train_dataloader) >= 1
         # assert len(
@@ -781,7 +791,7 @@ class RayReMATrainer(object):
             else:
                 test_gen_batch = test_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_questions', 'turns_json', 'session_id', 'session_time'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'], 
                         deepcopy=True
                     )
@@ -1030,11 +1040,12 @@ class RayReMATrainer(object):
             print(f"[TEST] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
             print(f"[TEST] agent_roles: {rollout_meta_info['agent_roles']}")
 
-        print(f"\n[TEST] Starting test loop: {len(self.val_dataloader)} batches")
+        print(f"\n[TEST] Starting test loop: {len(self.test_dataloader)} batches")
+
         print(f"[TEST] Strategy: Check qa_pairs_json for each sample - if non-empty, conversation has ended and will be evaluated")
-        total_batches = len(self.val_dataloader)
+        total_batches = len(self.test_dataloader)
         
-        for batch_idx, test_data in enumerate(self.val_dataloader):
+        for batch_idx, test_data in enumerate(self.test_dataloader):
             print(f"\n{'*'*80}")
             print(f"TEST BATCH {batch_idx + 1}/{total_batches}")
             print(f"{'*'*80}")
@@ -1054,7 +1065,7 @@ class RayReMATrainer(object):
             print(f"[TEST BATCH {batch_idx + 1}] test_batch.non_tensor_batch keys: {list(test_batch.non_tensor_batch.keys())}")
 
             # Check which samples have finished (non-zero num_questions) BEFORE repeating
-            num_questions_list = test_batch.non_tensor_batch['num_questions']
+            num_questions_list = test_batch.non_tensor_batch['num_qas']
             finished_mask = [num_questions > 0 for num_questions in num_questions_list]
             num_finished = sum(finished_mask)
             print(f"[TEST BATCH {batch_idx + 1}] Found {num_finished}/{len(finished_mask)} finished conversations (with non-empty qa_pairs_json)")
@@ -1089,7 +1100,7 @@ class RayReMATrainer(object):
             else:
                 test_gen_batch = test_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_questions', 'turns_json', 'session_id', 'session_time'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'], 
                         deepcopy=True
                     )
@@ -1652,7 +1663,7 @@ class RayReMATrainer(object):
                     # because verl originally calls this 'chat'
                     gen_batch = new_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_questions', 'turns_json', 'session_id', 'session_time'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'],
                         deepcopy=True
                     )
