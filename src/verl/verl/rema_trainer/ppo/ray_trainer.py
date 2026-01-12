@@ -1770,6 +1770,24 @@ class RayReMATrainer(object):
                         # }
                         reward_tensor_map = self.reward_fn(new_batch)
                         print(f"[STEP {self.global_steps}] Reward computed. Keys: {list(reward_tensor_map.keys())}")
+                        
+                        # Extract per-category metrics for training (report per-batch, not accumulated)
+                        category_names = ['multi_hop', 'single_hop', 'temporal', 'open_domain', 'adversarial', 'unknown']
+                        for cat_name in category_names:
+                            f1_sum_key = f'{cat_name}_f1_sum'
+                            if f1_sum_key in reward_tensor_map:
+                                # Compute average from sum and count for this batch
+                                f1_sum = reward_tensor_map.pop(f1_sum_key).item()
+                                bleu_sum = reward_tensor_map.pop(f'{cat_name}_bleu_sum').item()
+                                count = int(reward_tensor_map.pop(f'{cat_name}_count').item())
+                                
+                                if count > 0:
+                                    # Report batch-level average (not accumulated)
+                                    metrics[f'train/{cat_name}_f1'] = f1_sum / count
+                                    metrics[f'train/{cat_name}_bleu'] = bleu_sum / count
+                                    metrics[f'train/{cat_name}_count'] = count
+                                    print(f"[STEP {self.global_steps}] Batch category {cat_name}: F1={metrics[f'train/{cat_name}_f1']:.4f}, BLEU={metrics[f'train/{cat_name}_bleu']:.4f}, count={count}")
+                        
                         # for key in reward_tensor_map.keys():
                         #     if isinstance(reward_tensor_map[key], torch.Tensor):
                         #         print(f"[STEP {self.global_steps}] {key} shape: {reward_tensor_map[key].shape}, dtype: {reward_tensor_map[key].dtype}")
