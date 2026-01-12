@@ -193,16 +193,61 @@ class DataProto:
             return self.non_tensor_batch[random_key].shape[0]
         else:
             return 0
+    
+    def slice(self, start=None, end=None, step=None):
+        """
+        Slice the DataProto and return a new DataProto object.
+        This is an improved version of direct slicing which returns a DataProtoItem.
+
+        Args:
+            start (int, optional): Start index. Defaults to None (start from beginning).
+            end (int, optional): End index (exclusive). Defaults to None (go to end).
+            step (int, optional): Step size. Defaults to None (step=1).
+
+        Returns:
+            DataProto: A new DataProto containing the sliced data
+
+        Examples:
+            # Using the slice method directly
+            sliced_data = data_proto.slice(10, 20)
+
+            # Using enhanced indexing (returns DataProto)
+            sliced_data = data_proto[10:20]
+            sliced_data = data_proto[::2]  # Every other element
+
+            # Using list indexing (returns DataProto)
+            indices = [1, 5, 10]
+            selected_data = data_proto[indices]
+
+            # Single index still returns DataProtoItem
+            single_item = data_proto[5]
+        """
+        # Create a slice object
+        slice_obj = slice(start, end, step)
+
+        # Handle the batch data
+        if self.batch is not None:
+            # Use TensorDict's built-in slicing capabilities
+            sliced_batch = self.batch[slice_obj]
+        else:
+            sliced_batch = None
+
+        # Handle the non-tensor batch data
+        sliced_non_tensor = {}
+        for key, val in self.non_tensor_batch.items():
+            sliced_non_tensor[key] = val[slice_obj]
+
+        # Return a new DataProto object
+        return type(self)(batch=sliced_batch, non_tensor_batch=sliced_non_tensor, meta_info=self.meta_info)
 
     # Got from https://github.com/volcengine/verl/blob/main/verl/protocol.py#L686
     def __getitem__(self, item):
-
-        # Case 1: Slice object (Commented out for now)
-        # if isinstance(item, slice):
-            # return self.slice(item.start, item.stop, item.step)
+        # Case 1: Slice object
+        if isinstance(item, slice):
+            return self.slice(item.start, item.stop, item.step)
 
         # Case 2: List, numpy array, or torch tensor - use select_idxs
-        if isinstance(item, list | np.ndarray | torch.Tensor):
+        elif isinstance(item, list | np.ndarray | torch.Tensor):
             return self.select_idxs(item)
 
         # Case 3: Single integer - return DataProtoItem for backward compatibility
