@@ -48,12 +48,15 @@ def collate_fn(data_list: list[dict]) -> dict:
 class ChunkBatchSampler(Sampler):
     """
     Custom batch sampler that ensures batches never span multiple chunk_ids.
-    When a chunk has fewer samples than batch_size, it pads with repetitions from the same chunk.
+    
+    For training: Pads incomplete batches by repeating samples from the same chunk (acts like extra rollouts)
+    For validation/test: Returns actual batch sizes without padding (pad_incomplete=False)
     """
-    def __init__(self, dataset: 'RLHFDataset', batch_size: int, drop_last: bool = False):
+    def __init__(self, dataset: 'RLHFDataset', batch_size: int, drop_last: bool = False, pad_incomplete: bool = True):
         self.dataset = dataset
         self.batch_size = batch_size
         self.drop_last = drop_last
+        self.pad_incomplete = pad_incomplete  # Whether to pad batches with repetitions
         
         if not hasattr(dataset, 'chunk_groups') or dataset.chunk_groups is None:
             raise ValueError("Dataset must have chunk_groups (requires chunk_id column)")
@@ -71,18 +74,25 @@ class ChunkBatchSampler(Sampler):
             i = 0
             while i < chunk_size:
                 batch_indices = []
+                
+                # Collect samples for this batch
                 for j in range(self.batch_size):
                     if i + j < chunk_size:
-                        # Use actual index
                         batch_indices.append(chunk_indices[i + j])
-                    else:
-                        # Pad with repeated samples from the same chunk (cycle within chunk)
+                    elif self.pad_incomplete:
+                        # For training: pad with repeated samples from same chunk (acts like extra rollouts)
                         repeat_idx = (i + j) % chunk_size
                         batch_indices.append(chunk_indices[repeat_idx])
+                    # For validation/test: don't pad, just use what we have
                 
-                # Only yield if we have a full batch or drop_last=False
-                if len(batch_indices) == self.batch_size or not self.drop_last:
+                # Yield batch if we should keep it
+                if len(batch_indices) == self.batch_size:
+                    # Full batch - always yield
                     yield batch_indices
+                elif not self.drop_last:
+                    # Incomplete batch - yield if drop_last=False
+                    yield batch_indices
+                # else: drop incomplete batch (drop_last=True)
                 
                 i += self.batch_size
     

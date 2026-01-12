@@ -564,7 +564,8 @@ class RayReMATrainer(object):
             train_batch_sampler = ChunkBatchSampler(
                 dataset=self.train_dataset,
                 batch_size=self.config.data.train_batch_size,
-                drop_last=True  # Drop incomplete batches to maintain consistent batch size for training
+                drop_last=False,  # Not needed since pad_incomplete=True always creates full batches
+                pad_incomplete=True  # Pad training batches with repeats (acts like extra rollouts)
             )
         
             self.train_dataloader = StatefulDataLoader(
@@ -598,7 +599,8 @@ class RayReMATrainer(object):
         val_batch_sampler = ChunkBatchSampler(
             dataset=self.val_dataset,
             batch_size=self.config.data.val_batch_size,
-            drop_last=False  # Keep all samples, pad incomplete batches with repeats from same chunk
+            drop_last=False,  # Keep all samples
+            pad_incomplete=False  # Don't pad validation batches - use actual sizes
         )
     
         self.val_dataloader = StatefulDataLoader(
@@ -619,7 +621,8 @@ class RayReMATrainer(object):
             test_batch_sampler = ChunkBatchSampler(
                 dataset=self.test_dataset,
                 batch_size=self.config.data.get('test_batch_size', self.config.data.val_batch_size),
-                drop_last=False  # Keep all samples for test
+                drop_last=False,  # Keep all samples for test
+                pad_incomplete=False  # Don't pad test batches - use actual sizes
             )
             
             self.test_dataloader = StatefulDataLoader(
