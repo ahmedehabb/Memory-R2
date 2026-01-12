@@ -405,36 +405,40 @@ class ReMARewardManager:
             #     print("[score]", score)
             #     print("[history]", history)
 
-        # Now in the end we save the best memories based on accuracy
-        print(f"\n[RewardManager] Saving memories (sampling from top {self.top_k_percentage*100:.0f}% by reward)...")
-        for key, score_memory_list in memory_score_dict.items():
-            # score_memory_list: list of (score, memory)
-            if len(score_memory_list) == 0:
-                print(f"[RewardManager] No memory found for {key}, skipping save.")
-                continue
-            
-            # Sort by score in descending order
-            sorted_list = sorted(score_memory_list, key=lambda x: x[0], reverse=True)
-            
-            # Calculate top k% of memories (at least 1)
-            num_top_k = max(1, int(len(sorted_list) * self.top_k_percentage))
-            top_k_candidates = sorted_list[:num_top_k]
-            
-            # Sample one from top k%
-            selected_score, selected_memory_info = random.choice(top_k_candidates)
-            
-            if selected_memory_info is not None:
-                # Online learning, save the sampled memory to be used in next batch
-                memory_manager.cache_snapshot(
-                    selected_memory_info["memory"], 
-                    sample_id=selected_memory_info["conv_id"], 
-                    chunk_id=selected_memory_info["chunk_id"], 
-                    epoch=selected_memory_info["epoch"], 
-                    split=selected_memory_info["split"]
-                )
-                print(f"[RewardManager] Saved memory for {key} with score {selected_score:.4f} (sampled from top {num_top_k}/{len(sorted_list)}, best={sorted_list[0][0]:.4f})")
-            else:
-                print(f"[RewardManager] Selected memory is None for {key}, skipping save.")
+        # Only cache memories during training (test/validation are read-only)
+        current_split = data.meta_info['split']
+        if current_split == "train":
+            print(f"\n[RewardManager] Training mode: Saving memories (sampling from top {self.top_k_percentage*100:.0f}% by reward)...")
+            for key, score_memory_list in memory_score_dict.items():
+                # score_memory_list: list of (score, memory)
+                if len(score_memory_list) == 0:
+                    print(f"[RewardManager] No memory found for {key}, skipping save.")
+                    continue
+                
+                # Sort by score in descending order
+                sorted_list = sorted(score_memory_list, key=lambda x: x[0], reverse=True)
+                
+                # Calculate top k% of memories (at least 1)
+                num_top_k = max(1, int(len(sorted_list) * self.top_k_percentage))
+                top_k_candidates = sorted_list[:num_top_k]
+                
+                # Sample one from top k%
+                selected_score, selected_memory_info = random.choice(top_k_candidates)
+                
+                if selected_memory_info is not None:
+                    # Online learning, save the sampled memory to be used in next batch
+                    memory_manager.cache_snapshot(
+                        selected_memory_info["memory"], 
+                        sample_id=selected_memory_info["conv_id"], 
+                        chunk_id=selected_memory_info["chunk_id"], 
+                        epoch=selected_memory_info["epoch"], 
+                        split=selected_memory_info["split"]
+                    )
+                    print(f"[RewardManager] Saved memory for {key} with score {selected_score:.4f} (sampled from top {num_top_k}/{len(sorted_list)}, best={sorted_list[0][0]:.4f})")
+                else:
+                    print(f"[RewardManager] Selected memory is None for {key}, skipping save.")
+        else:
+            print(f"\n[RewardManager] Split={current_split}: Skipping memory caching (test/validation are read-only)")
 
         # Return both reward tensors in a dictionary
         print(f"\n[RewardManager] Final reward_tensor_map keys: {list(reward_tensor_map.keys())}")

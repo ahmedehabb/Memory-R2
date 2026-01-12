@@ -419,13 +419,16 @@ class MemoryManager:
             base_dir = os.environ.get('MEMORY_CACHE_DIR')
         elif split == "validation":
             base_dir = os.environ.get('MEMORY_CACHE_DIR_VAL')
+        elif split == "test":
+            base_dir = os.environ.get('MEMORY_CACHE_DIR_TEST')
         
         if base_dir is None:
             base_dir = os.path.join(os.getcwd(), 'memory_snapshots')
         
         # Construct directory path: base/epoch_N/conv-ID/
         snapshot_dir = Path(base_dir) / f"epoch_{epoch}" / sample_id
-        if index_in_batch >= 0:
+        # Only use index_in_batch suffix for train split (test/validation have no repeated indices)
+        if split == "train" and index_in_batch >= 0:
             snapshot_name = f"chunk_{chunk_id}_idx_{index_in_batch}"
         else:
             snapshot_name = f"chunk_{chunk_id}"
@@ -506,13 +509,16 @@ class MemoryManager:
             base_dir = os.environ.get('MEMORY_CACHE_DIR')
         elif split == "validation":
             base_dir = os.environ.get('MEMORY_CACHE_DIR_VAL')
+        elif split == "test":
+            base_dir = os.environ.get('MEMORY_CACHE_DIR_TEST')
 
         if base_dir is None:
             base_dir = os.path.join(os.getcwd(), 'memory_snapshots')
         
         # Construct directory path: base/epoch_N/conv-ID/
         snapshot_dir = Path(base_dir) / f"epoch_{epoch}" / sample_id
-        if index_in_batch >= 0:
+        # Only use index_in_batch suffix for train split (test/validation have no repeated indices)
+        if split == "train" and index_in_batch >= 0:
             snapshot_name = f"chunk_{chunk_id}_idx_{index_in_batch}"
         else:
             snapshot_name = f"chunk_{chunk_id}"

@@ -371,6 +371,8 @@ class Memory:
                 directory = os.environ.get('MEMORY_CACHE_DIR')
             elif split == "validation":
                 directory = os.environ.get('MEMORY_CACHE_DIR_VAL')
+            elif split == "test":
+                directory = os.environ.get('MEMORY_CACHE_DIR_TEST')
 
             if directory is None:
                 # Use current directory + '/memory_store'
