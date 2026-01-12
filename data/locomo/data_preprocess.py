@@ -19,12 +19,13 @@ MIN_FUTURE_QA = 1             # Always include at least 1 future QA (only used i
 # RANDOM_SEED = 41              # For reproducibility
 
 # Train/Test/Val split
-TRAIN_CONVS = 1
-TEST_CONVS = 8
+TRAIN_CONVS = 4
+TEST_CONVS = 5
 VAL_CONVS = 1
 
-# Post-processing for test data
+# Post-processing for test data, validation data
 MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_TEST = True  # If True, move all QAs to last chunk for test conversations only
+MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_VAL = True  # If True, move all QAs to last chunk for val conversations only
 
 # Micro training set for overfitting experiments
 CREATE_MICRO_TRAIN = True  # Set to True to create micro_train.{json,parquet}
@@ -570,6 +571,51 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                 all_qas_in_conv.extend(chunk['qa_pairs'])
             
             print(f"   📝 Test conv {conv_id}: Collected {len(all_qas_in_conv)} QAs from {len(conv_chunks)} chunks")
+            
+            # Clear QAs from all chunks except the last one
+            for i, chunk in enumerate(conv_chunks):
+                if i < len(conv_chunks) - 1:
+                    # Not the last chunk - clear QAs
+                    chunk['qa_pairs'] = []
+                    chunk['num_questions'] = 0
+                    chunk['qa_stats'] = {'current': 0, 'recent': 0, 'distant': 0, 'future': 0}
+                else:
+                    # Last chunk - assign ALL QAs
+                    chunk['qa_pairs'] = all_qas_in_conv
+                    chunk['num_questions'] = len(all_qas_in_conv)
+                    
+                    # Recount QA stats for last chunk
+                    qa_type_counts = {'current': 0, 'recent': 0, 'distant': 0, 'future': 0}
+                    for qa in all_qas_in_conv:
+                        qa_type = qa.get('qa_type', 'current')
+                        qa_type_counts[qa_type] += 1
+                    chunk['qa_stats'] = qa_type_counts
+            
+            print(f"      ✅ Moved all {len(all_qas_in_conv)} QAs to chunk {len(conv_chunks)} (last chunk)")
+
+    # ===== POST-PROCESSING: Move all QAs to last chunk for VAL conversations only =====
+    if MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_VAL:
+        print(f"\n🔄 POST-PROCESSING: Moving all QAs to last chunk for val conversations...")
+        
+        # Group val_chunks by conversation
+        val_chunks_by_conv = {}
+        for chunk in val_chunks:
+            conv_id = chunk['sample_id']
+            if conv_id not in val_chunks_by_conv:
+                val_chunks_by_conv[conv_id] = []
+            val_chunks_by_conv[conv_id].append(chunk)
+        
+        # Process each val conversation
+        for conv_id, conv_chunks in val_chunks_by_conv.items():
+            if not conv_chunks:
+                continue
+            
+            # Collect ALL QA pairs from all chunks
+            all_qas_in_conv = []
+            for chunk in conv_chunks:
+                all_qas_in_conv.extend(chunk['qa_pairs'])
+            
+            print(f"   📝 Val conv {conv_id}: Collected {len(all_qas_in_conv)} QAs from {len(conv_chunks)} chunks")
             
             # Clear QAs from all chunks except the last one
             for i, chunk in enumerate(conv_chunks):
