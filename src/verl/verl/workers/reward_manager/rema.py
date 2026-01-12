@@ -17,6 +17,7 @@ import json
 import random
 import math
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 
 from typing import Dict
 
@@ -106,6 +107,41 @@ def compute_score_fn(compute_score, params):
     qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, extra_info = params
     return compute_score(qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, extra_info)
 
+def process_single_qa(qa_pair, memory, speakers, session_time):
+    """Process a single QA pair - to be called in parallel"""
+    question = qa_pair['question']
+    gold_answer = str(qa_pair['answer']).strip()
+    evidence = qa_pair.get('evidence', None)
+    category = qa_pair.get('category', 0)
+
+    # Generate prompt and get LLM response
+    prompt, all_dia_ids = generate_qa_prompt(memory, speaker_1=speakers[0], speaker_2=speakers[1], 
+                                             question=question, session_time=session_time, 
+                                             top_k_per_speaker=20, similarity_threshold=0.1, use_similarity=True)
+    response = judge_with_llm(prompt)
+    predicted_answer = extract_answer_from_text(response)
+
+    # Compute scores
+    question_score = compute_f1(predicted_answer, gold_answer)
+    bleu_score = compute_bleu(predicted_answer, gold_answer)
+
+    # Check evidence retrieval
+    evidences_retrieved = sum(1 for evidence_dia_id in evidence if evidence_dia_id in all_dia_ids)
+    
+    return {
+        'question': question,
+        'gold_answer': gold_answer,
+        'predicted_answer': predicted_answer,
+        'response': response,
+        'question_score': question_score,
+        'bleu_score': bleu_score,
+        'category': category,
+        'evidence': evidence,
+        'all_dia_ids': all_dia_ids,
+        'evidences_retrieved': evidences_retrieved,
+        'prompt': prompt
+    }
+
 def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, extra_info: dict=None) -> tuple[float, dict]:
     key = f"{conv_id}_chunk{chunk_id}"
     memory = MemoryManager().get_snapshot(sample_id=conv_id, chunk_id=chunk_id, epoch=epoch, split=split, index_in_batch=index)
@@ -125,22 +161,25 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     
     print(f"[LocomoScore] Processing {num_questions} questions for conv {conv_id}, chunk {chunk_id}")
     
-    for qa_idx, qa_pair in enumerate(qa_pairs):
-        question = qa_pair['question']
-        gold_answer = str(qa_pair['answer']).strip()
-        evidence = qa_pair.get('evidence', None)
-        category = qa_pair.get('category', 0)
-
-        # Here we need to ask Question and get answer from response
-        # Will use all_dia_ids to check if the retrieved memories are relevant 
-        prompt, all_dia_ids = generate_qa_prompt(memory, speaker_1=speakers[0], speaker_2=speakers[1], question=question, session_time=session_time, top_k_per_speaker=20, similarity_threshold=0.1, use_similarity=True)
-        response = judge_with_llm(prompt)
-        predicted_answer = extract_answer_from_text(response)
-
-        # Use f1, bleu scores as the metrics
-        question_score = compute_f1(predicted_answer, gold_answer)
-        bleu_score = compute_bleu(predicted_answer, gold_answer)
-
+    # Parallelize QA processing when there are multiple questions
+    if num_questions > 1:
+        print(f"[LocomoScore] Using parallel processing for {num_questions} questions")
+        with ThreadPoolExecutor(max_workers=min(num_questions, 8)) as executor:
+            # Submit all QA pairs for parallel processing
+            futures = [executor.submit(process_single_qa, qa_pair, memory, speakers, session_time) 
+                      for qa_pair in qa_pairs]
+            # Collect results
+            results = [future.result() for future in futures]
+    else:
+        # Single question - no need for parallelization overhead
+        results = [process_single_qa(qa_pairs[0], memory, speakers, session_time)]
+    
+    # Process results
+    for qa_idx, result in enumerate(results):
+        question_score = result['question_score']
+        bleu_score = result['bleu_score']
+        category = result['category']
+        
         # Track per-category scores for aggregation later
         if category not in category_f1_scores:
             category_f1_scores[category] = []
@@ -148,28 +187,28 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         category_f1_scores[category].append(question_score)
         category_bleu_scores[category].append(bleu_score)
 
-        if question_score != 1.0:
-            print(f"[LocomoScore] Mismatch detected. Gold: {gold_answer}, full response: {response}")
-            retrieved_memory = prompt.find("Memories for user")  # Find the start of the memories
-            print(f"Retrieved Memory we got:\n{prompt[retrieved_memory:]}\n")
+        # if question_score != 1.0:
+        #     print(f"[LocomoScore] Mismatch detected. Gold: {result['gold_answer']}, full response: {result['response']}")
+        #     retrieved_memory = result['prompt'].find("Memories for user")
+        #     if retrieved_memory != -1:
+        #         print(f"Retrieved Memory we got:\n{result['prompt'][retrieved_memory:]}\n")
 
         # Accumulate scores for averaging
         qa_scores += question_score
         bleu_scores += bleu_score
 
-        # Now checking that evidence dia_ids are in retrieved dia_ids
-        evidences_retrieved = 0
-        total_evidences += len(evidence)
-        for evidence_dia_id in evidence:
-            if evidence_dia_id not in all_dia_ids:
-                print(f"[LocomoScore] Warning: Evidence dia_id {evidence_dia_id} not found in retrieved dia_ids {all_dia_ids}")
-            else:
-                evidences_retrieved += 1
+        # Evidence tracking
+        evidences_retrieved = result['evidences_retrieved']
+        total_evidences += len(result['evidence'])
         total_evidences_retrieved += evidences_retrieved
-        print(f"[LocomoScore] Retrieved {evidences_retrieved}/{len(evidence)} evidence dia_ids.")
-
-        print(f"[LocomoScore] Q{qa_idx+1}/{num_questions}: {question[:50]}...")
-        print(f"[LocomoScore] Gold: {gold_answer}, Predicted: {predicted_answer}, F1: {question_score}, BLEU: {bleu_score}")
+        
+        if evidences_retrieved < len(result['evidence']):
+            missing = [eid for eid in result['evidence'] if eid not in result['all_dia_ids']]
+            print(f"[LocomoScore] Warning: Missing {len(missing)} evidence dia_ids: {missing}")
+        
+        print(f"[LocomoScore] Retrieved {evidences_retrieved}/{len(result['evidence'])} evidence dia_ids.")
+        print(f"[LocomoScore] Q{qa_idx+1}/{num_questions}: {result['question'][:50]}...")
+        print(f"[LocomoScore] Gold: {result['gold_answer']}, Predicted: {result['predicted_answer']}, F1: {question_score}, BLEU: {bleu_score}")
     
     # Calculate average scores
     avg_f1_score = qa_scores / num_questions if num_questions > 0 else 0.0
@@ -320,7 +359,7 @@ class ReMARewardManager:
         memory_infos = []  # Collect memory info from each result
         print(f"\n[RewardManager] Starting score computation with ProcessPool...")
         with ProcessPool(max_workers=16) as pool:  # Parallel processing with 16 workers
-            future = pool.map(partial(compute_score_fn, self.compute_score), params, timeout=1000)
+            future = pool.map(partial(compute_score_fn, self.compute_score), params, timeout=7200)
             iterator = future.result()
             with tqdm(total=len(data), desc="Computing scores") as pbar:
                 while True:
