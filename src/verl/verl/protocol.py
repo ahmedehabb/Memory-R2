@@ -194,11 +194,57 @@ class DataProto:
         else:
             return 0
 
+    # Got from https://github.com/volcengine/verl/blob/main/verl/protocol.py#L686
     def __getitem__(self, item):
-        tensor_data = self.batch[item]
-        non_tensor_data = {key: val[item] for key, val in self.non_tensor_batch.items()}
-        return_type = DataProto if isinstance(item, slice) else DataProtoItem
-        return return_type(batch=tensor_data, non_tensor_batch=non_tensor_data, meta_info=self.meta_info)
+
+        # Case 1: Slice object (Commented out for now)
+        # if isinstance(item, slice):
+            # return self.slice(item.start, item.stop, item.step)
+
+        # Case 2: List, numpy array, or torch tensor - use select_idxs
+        if isinstance(item, list | np.ndarray | torch.Tensor):
+            return self.select_idxs(item)
+
+        # Case 3: Single integer - return DataProtoItem for backward compatibility
+        elif isinstance(item, int | np.integer):
+            tensor_data = self.batch[item] if self.batch is not None else None
+            non_tensor_data = {key: val[item] for key, val in self.non_tensor_batch.items()}
+            return DataProtoItem(batch=tensor_data, non_tensor_batch=non_tensor_data, meta_info=self.meta_info)
+
+        # Case 4: Unsupported type
+        else:
+            raise TypeError(f"Indexing with {type(item)} is not supported")
+
+    def select_idxs(self, idxs):
+        if isinstance(idxs, list):
+            idxs = torch.tensor(idxs)
+            if idxs.dtype != torch.bool:
+                idxs = idxs.type(torch.int32)
+
+        if isinstance(idxs, np.ndarray):
+            idxs_np = idxs
+            idxs_torch = torch.from_numpy(idxs)
+        else:  # torch.Tensor
+            idxs_torch = idxs
+            idxs_np = idxs.detach().cpu().numpy()
+
+        batch_size = int(idxs_np.sum()) if idxs_np.dtype == bool else idxs_np.shape[0]
+
+        if self.batch is not None:
+            # Use TensorDict's built-in indexing capabilities
+            selected_batch = TensorDict(
+                source={key: tensor[idxs_torch] for key, tensor in self.batch.items()},
+                batch_size=(batch_size,),
+                device=self.batch.device,
+            )
+        else:
+            selected_batch = None
+
+        selected_non_tensor = {}
+        for key, val in self.non_tensor_batch.items():
+            selected_non_tensor[key] = val[idxs_np]
+
+        return type(self)(batch=selected_batch, non_tensor_batch=selected_non_tensor, meta_info=self.meta_info)
 
     def __getstate__(self):
         import io
