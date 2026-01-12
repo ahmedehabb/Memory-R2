@@ -1046,6 +1046,7 @@ class RayReMATrainer(object):
         total_batches = len(self.test_dataloader)
         
         for batch_idx, test_data in enumerate(self.test_dataloader):
+            if batch_idx < 18: continue
             print(f"\n{'*'*80}")
             print(f"TEST BATCH {batch_idx + 1}/{total_batches}")
             print(f"{'*'*80}")
@@ -1158,7 +1159,7 @@ class RayReMATrainer(object):
                 print(f"[TEST BATCH {batch_idx + 1}] Filtering to {len(finished_indices)} samples (finished conversations after repeating)")
                 
                 # Select only finished samples
-                finished_test_batch = test_batch_with_gen.select_items(finished_indices)
+                finished_test_batch = test_batch_with_gen[finished_indices]
                 
                 # Compute rewards for finished conversations
                 print(f"[TEST BATCH {batch_idx + 1}] Computing rewards for finished conversations...")
@@ -1179,7 +1180,7 @@ class RayReMATrainer(object):
                 print(f"[TEST BATCH {batch_idx + 1}] Sample scores[0]: {scores[0]}")
                 
                 # Get finished samples from output batch
-                finished_output_batch = test_output_gen_batch.select_items(finished_indices)
+                finished_output_batch = test_output_gen_batch[finished_indices]
                 
                 num_turns = torch.tensor(finished_output_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
                 num_turns_lst.append(num_turns)
