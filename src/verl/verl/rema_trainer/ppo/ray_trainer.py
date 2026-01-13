@@ -737,15 +737,16 @@ class RayReMATrainer(object):
             print(f"[VALIDATE] agent_roles: {rollout_meta_info['agent_roles']}")
 
         print(f"\n[VALIDATE] Starting validation loop: {len(self.val_dataloader)} batches")
+        print(f"[VALIDATE] Strategy: Check qa_pairs_json for each sample - if non-empty, conversation has ended and will be evaluated")
+        total_batches = len(self.val_dataloader)
         
         for batch_idx, test_data in enumerate(self.val_dataloader):
             print(f"\n{'*'*80}")
-            print(f"VALIDATION BATCH {batch_idx + 1}/{len(self.val_dataloader)}")
+            print(f"VALIDATION BATCH {batch_idx + 1}/{total_batches}")
             print(f"{'*'*80}")
             print(f"\n[VAL BATCH {batch_idx + 1}] Creating batch from dataloader...")
             print(f"[VAL BATCH {batch_idx + 1}] Batch size: {len(test_data['question'])}")
             print(f"[VAL BATCH {batch_idx + 1}] test_data keys: {list(test_data.keys())}")
-            print(f"[VAL BATCH {batch_idx + 1}] Sample question[0]: {test_data['question'][0][:100] if isinstance(test_data['question'][0], str) else test_data['question'][0]}...")
             
             dummy_tensor = torch.arange(0, len(test_data['question']))
             test_data['batch_idx'] = dummy_tensor
@@ -757,7 +758,12 @@ class RayReMATrainer(object):
             test_batch: DataProto = DataProto.from_single_dict(test_data, meta_info=rollout_meta_info)
             print(f"[VAL BATCH {batch_idx + 1}] test_batch.batch keys: {list(test_batch.batch.keys())}")
             print(f"[VAL BATCH {batch_idx + 1}] test_batch.non_tensor_batch keys: {list(test_batch.non_tensor_batch.keys())}")
-            print(f"[VAL BATCH {batch_idx + 1}] test_batch.meta_info keys: {list(test_batch.meta_info.keys())}")
+
+            # Check which samples have finished (non-zero num_questions) BEFORE repeating
+            num_questions_list = test_batch.non_tensor_batch['num_qas']
+            finished_mask = [num_questions > 0 for num_questions in num_questions_list]
+            num_finished = sum(finished_mask)
+            print(f"[VAL BATCH {batch_idx + 1}] Found {num_finished}/{len(finished_mask)} finished conversations (with non-empty qa_pairs_json)")
 
             # Store original inputs and ground truths BEFORE repeating
             input_texts = test_batch.non_tensor_batch['question']
@@ -834,58 +840,89 @@ class RayReMATrainer(object):
             print(f"[VAL BATCH {batch_idx + 1}] Collected {len(output_texts)} output texts")
             print(f"[VAL BATCH {batch_idx + 1}] Sample output[0]: {output_texts[0][:100] if isinstance(output_texts[0], str) else output_texts[0]}...")
 
-            print(f"[VAL BATCH {batch_idx + 1}] Merging generation output with test batch...")
-            test_batch = test_batch.union(test_output_gen_batch)
-            test_batch.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
-            test_batch.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
-            
-            # evaluate using reward_function
-            print(f"[VAL BATCH {batch_idx + 1}] Computing rewards...")
-            reward_tensor = self.val_reward_fn(test_batch)
-            print(f"[VAL BATCH {batch_idx + 1}] Reward tensor keys: {list(reward_tensor.keys())}")
-            reward_tensor_lst.append(reward_tensor['reasoning_turn_level_reward'])
-            reward_tensor_dict_lst.append(reward_tensor)  # Store full dict
-            acc_tensor_lst.append(reward_tensor['acc'])
-            bleu_tensor_lst.append(reward_tensor['bleu'])
-            print(f"[VAL BATCH {batch_idx + 1}] reasoning_turn_level_reward shape: {reward_tensor['reasoning_turn_level_reward'].shape}")
-            print(f"[VAL BATCH {batch_idx + 1}] acc shape: {reward_tensor['acc'].shape}")
-            print(f"[VAL BATCH {batch_idx + 1}] bleu shape: {reward_tensor['bleu'].shape}")
-
-            # Store scores
-            scores = reward_tensor['reasoning_turn_level_reward'].sum(-1).cpu().tolist()
-            sample_scores.extend(scores)
-            print(f"[VAL BATCH {batch_idx + 1}] Sample scores[0]: {scores[0]}")
-            
-            num_turns = torch.tensor(test_output_gen_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
-            num_turns_lst.append(num_turns)
-            print(f"[VAL BATCH {batch_idx + 1}] num_turns: min={num_turns.min()}, max={num_turns.max()}, mean={num_turns.float().mean()}")
-            
-            turn_level_completion_tokens = test_output_gen_batch.batch['meta_thinking_num_gen_tokens'].cpu() + \
-                test_output_gen_batch.batch['reasoning_num_gen_tokens'].cpu()
-            completion_tokens = turn_level_completion_tokens.sum(dim=-1)
-            completion_tokens_lst.append(completion_tokens)
-            print(f"[VAL BATCH {batch_idx + 1}] completion_tokens: min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
-
-            # not use `data_source`, use `subset` instead
-            data_source_lst.append(test_batch.non_tensor_batch.get('subset', ['locomo'] * reward_tensor['reasoning_turn_level_reward'].shape[0]))
-            
             history_lst.append(test_output_gen_batch.non_tensor_batch['history'].tolist())
+            
+            # Check if any conversations finished in this batch and evaluate them
+            if num_finished > 0:
+                print(f"[VAL BATCH {batch_idx + 1}] Evaluating {num_finished} finished conversations...")
+                print(f"[VAL BATCH {batch_idx + 1}] Merging generation output with test batch...")
+                test_batch_with_gen = test_batch.union(test_output_gen_batch)
+                test_batch_with_gen.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
+                test_batch_with_gen.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
+                
+                # Filter to only finished conversations (after repeating, mask needs to be replicated)
+                repeat_times = self.config.actor_rollout_ref.rollout.val_kwargs.n
+                finished_indices = []
+                for i, is_finished in enumerate(finished_mask):
+                    if is_finished:
+                        # Add all repeated versions of this finished sample
+                        finished_indices.extend([i * repeat_times + j for j in range(repeat_times)])
+                
+                print(f"[VAL BATCH {batch_idx + 1}] Filtering to {len(finished_indices)} samples (finished conversations after repeating)")
+                
+                # Select only finished samples
+                finished_test_batch = test_batch_with_gen[finished_indices]
+                
+                # Compute rewards for finished conversations
+                print(f"[VAL BATCH {batch_idx + 1}] Computing rewards for finished conversations...")
+                reward_tensor = self.val_reward_fn(finished_test_batch)
+                print(f"[VAL BATCH {batch_idx + 1}] Reward tensor keys: {list(reward_tensor.keys())}")
+                
+                reward_tensor_lst.append(reward_tensor['reasoning_turn_level_reward'])
+                reward_tensor_dict_lst.append(reward_tensor)  # Store full dict
+                acc_tensor_lst.append(reward_tensor['acc'])
+                bleu_tensor_lst.append(reward_tensor['bleu'])
+                print(f"[VAL BATCH {batch_idx + 1}] reasoning_turn_level_reward shape: {reward_tensor['reasoning_turn_level_reward'].shape}")
+                print(f"[VAL BATCH {batch_idx + 1}] acc shape: {reward_tensor['acc'].shape}")
+                print(f"[VAL BATCH {batch_idx + 1}] bleu shape: {reward_tensor['bleu'].shape}")
+                
+                # Store scores
+                scores = reward_tensor['reasoning_turn_level_reward'].sum(-1).cpu().tolist()
+                sample_scores.extend(scores)
+                print(f"[VAL BATCH {batch_idx + 1}] Sample scores[0]: {scores[0]}")
+                
+                # Get finished samples from output batch
+                finished_output_batch = test_output_gen_batch[finished_indices]
+                
+                num_turns = torch.tensor(finished_output_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
+                num_turns_lst.append(num_turns)
+                print(f"[VAL BATCH {batch_idx + 1}] num_turns: min={num_turns.min()}, max={num_turns.max()}, mean={num_turns.float().mean()}")
+                
+                turn_level_completion_tokens = finished_output_batch.batch['meta_thinking_num_gen_tokens'].cpu() + \
+                    finished_output_batch.batch['reasoning_num_gen_tokens'].cpu()
+                completion_tokens = turn_level_completion_tokens.sum(dim=-1)
+                completion_tokens_lst.append(completion_tokens)
+                print(f"[VAL BATCH {batch_idx + 1}] completion_tokens: min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
+                
+                # Get data sources from finished samples
+                data_source_lst.append(finished_test_batch.non_tensor_batch.get('subset', ['locomo'] * reward_tensor['reasoning_turn_level_reward'].shape[0]))
+            else:
+                print(f"[VAL BATCH {batch_idx + 1}] No finished conversations in this batch, skipping reward computation")
+            
             print(f"[VAL BATCH {batch_idx + 1}] Batch processing complete\n")
 
+        # Now compute final metrics from all finished conversations across all batches
         print(f"\n[VALIDATE] All batches processed. Computing final metrics...")
+        
+        if len(reward_tensor_lst) == 0:
+            print("[VALIDATE] WARNING: No finished conversations found across all batches!")
+            return {}
+        
+        # Log generations
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores, groundtruths=sample_groundtruths, histories=history_lst)
 
-        print(f"[VALIDATE] Concatenating reward tensors from {len(reward_tensor_lst)} batches...")
-        reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
-        acc_tensor = torch.cat(acc_tensor_lst, dim=0).cpu() #(batch_size,)
+        # Concatenate all accumulated tensors
+        print(f"[VALIDATE] Concatenating reward tensors from {len(reward_tensor_lst)} batches with finished conversations...")
+        reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (total_finished_samples,)
+        acc_tensor = torch.cat(acc_tensor_lst, dim=0).cpu()  # (total_finished_samples,)
+        bleu_tensor = torch.cat(bleu_tensor_lst, dim=0).cpu()  # (total_finished_samples,)
         data_sources = np.concatenate(data_source_lst, axis=0)
-        print(f"[VALIDATE] Total samples: {reward_tensor.shape[0]}")
+        print(f"[VALIDATE] Total finished samples evaluated: {reward_tensor.shape[0]}")
         print(f"[VALIDATE] Mean reward: {reward_tensor.mean().item():.4f}")
         print(f"[VALIDATE] Mean accuracy: {acc_tensor.mean().item():.4f}")
         print(f"[VALIDATE] Mean BLEU: {bleu_tensor.mean().item():.4f}")
 
-        # evaluate test_score based on data source
-        print(f"[VALIDATE] Computing per-data-source metrics...")
+        # Compute metrics for all finished conversations
         data_source_reward = {}
         data_source_acc = {}
         data_source_bleu = {}
@@ -897,6 +934,9 @@ class RayReMATrainer(object):
             if data_source not in data_source_acc:
                 data_source_acc[data_source] = []
             data_source_acc[data_source].append(acc_tensor[i].item())
+            if data_source not in data_source_bleu:
+                data_source_bleu[data_source] = []
+            data_source_bleu[data_source].append(bleu_tensor[i].item())
 
         metric_dict = {}
         for data_source, rewards in data_source_reward.items():
@@ -1049,7 +1089,6 @@ class RayReMATrainer(object):
         total_batches = len(self.test_dataloader)
         
         for batch_idx, test_data in enumerate(self.test_dataloader):
-            if batch_idx < 18: continue
             print(f"\n{'*'*80}")
             print(f"TEST BATCH {batch_idx + 1}/{total_batches}")
             print(f"{'*'*80}")
