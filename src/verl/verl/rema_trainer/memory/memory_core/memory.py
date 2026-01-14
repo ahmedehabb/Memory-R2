@@ -200,6 +200,11 @@ class Memory:
         # Filter by sample_id and/or speaker if specified
         filtered_turns = self.get(sample_id=sample_id, speaker=speaker)
         
+        # Defensive type check for query
+        if not isinstance(query, str):
+            print(f"ERROR: search() received non-string query. Type: {type(query)}, value: {query}")
+            return []
+        
         if not filtered_turns or not query.strip():
             return []
         

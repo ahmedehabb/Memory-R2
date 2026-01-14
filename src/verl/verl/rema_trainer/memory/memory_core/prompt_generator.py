@@ -136,7 +136,9 @@ def format_memory_for_prompt_for_facts(
             else:
                 continue  # Skip if fact is not a dict
             
-            if not fact_text:
+            # Ensure fact_text is a string (defensive check)
+            if not fact_text or not isinstance(fact_text, str):
+                print(f"Warning: Invalid fact_text type: {type(fact_text)}, value: {fact_text}")
                 continue
             
             # Search for memories relevant to this specific turn
