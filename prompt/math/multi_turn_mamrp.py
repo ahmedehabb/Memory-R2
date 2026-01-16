@@ -93,8 +93,7 @@ Example:
 - Operations:
 {
    "operations": [
-      {"operation": "INSERT", "speaker": "John", "content": "Had a meeting with John at 3pm", "dia_id": "D3:6"}, 
-      {"operation": "INSERT", "speaker": "John", "content": "Discussed the new project", "dia_id": "D3:6"}
+      {"operation": "INSERT", "speaker": "John", "content": "Had a meeting at 3pm to discuss a new project", "dia_id": "D3:6"}, 
    ]
 }
 
