@@ -12,6 +12,9 @@ CHUNK_SIZE = 8  # Number of dialogue turns per chunk (only used if CHUNK_BY_SESS
 INPUT_JSON = "locomo10.json"
 OUTPUT_DIR = Path("processed")
 
+# Category 5 (adversarial) questions config
+SKIP_CATEGORY_5 = True  # If True, skip all category 5 (adversarial) questions
+
 # Sampling config for QA pairs
 USE_ONLY_CURRENT_QAS = True   # If True, only use current QAs (variable count). If False, use balanced sampling.
 TARGET_QA_PER_CHUNK = 3       # Fixed number of QAs per chunk for balanced training (only used if USE_ONLY_CURRENT_QAS=False)
@@ -19,8 +22,8 @@ MIN_FUTURE_QA = 1             # Always include at least 1 future QA (only used i
 # RANDOM_SEED = 41              # For reproducibility
 
 # Train/Test/Val split
-TRAIN_CONVS = 4
-TEST_CONVS = 5
+TRAIN_CONVS = 8
+TEST_CONVS = 1
 VAL_CONVS = 1
 
 # Post-processing for test data, validation data
@@ -312,6 +315,10 @@ def categorize_qas_by_recency(qa_list, chunk_max_tuple, chunk_min_tuple, only_cu
         
         # Current: evidence first appears in this chunk
         if chunk_min_tuple <= last_evidence <= chunk_max_tuple:
+            # Skip adversarial (category 5) if flag is set
+            if is_adversarial and SKIP_CATEGORY_5:
+                continue
+            
             qa_copy = qa.copy()
             qa_copy["qa_type"] = "current"
             if is_adversarial:
@@ -325,9 +332,9 @@ def categorize_qas_by_recency(qa_list, chunk_max_tuple, chunk_min_tuple, only_cu
         
         # Future: evidence hasn't appeared yet
         elif last_evidence > chunk_max_tuple:
-            # SKIP adversarial (category 5) for future as well
+            # SKIP adversarial (category 5) for future if flag is set
             # We don't want to mix true future questions with adversarial ones
-            if is_adversarial:
+            if is_adversarial and SKIP_CATEGORY_5:
                 continue
             
             qa_copy = qa.copy()
@@ -337,9 +344,9 @@ def categorize_qas_by_recency(qa_list, chunk_max_tuple, chunk_min_tuple, only_cu
         
         # Past: evidence from earlier chunks
         else:
-            # SKIP adversarial (category 5) for recent/distant
+            # SKIP adversarial (category 5) for recent/distant if flag is set
             # They were adversarial in the past, but now evidence exists so they're not "unknown" anymore
-            if is_adversarial:
+            if is_adversarial and SKIP_CATEGORY_5:
                 continue
             
             # Calculate dialogue distance in number of dialogue turns
@@ -367,6 +374,41 @@ def categorize_qas_by_recency(qa_list, chunk_max_tuple, chunk_min_tuple, only_cu
         'distant': qas_distant,
         'future': qas_future
     }
+
+
+def extract_evidence_per_session(qa_list, max_session_id):
+    """
+    Extract all evidence needed per session based on where evidence originally appears.
+    
+    Evidence is saved ONLY in the session where it appears (e.g., evidence from session 1
+    is saved in session 1's list), even if it's needed for questions in future sessions.
+    
+    This allows evaluation of whether all needed evidence from a session was extracted,
+    including evidence that will be needed for future questions.
+    
+    Args:
+        qa_list: List of all QA pairs
+        max_session_id: Maximum session ID in the conversation
+    
+    Returns:
+        Dict mapping session_id -> set of evidence dia_ids that appear in that session
+    """
+    # Initialize evidence sets for each session
+    session_evidences = {sid: set() for sid in range(1, max_session_id + 1)}
+    
+    for qa in qa_list:
+        evidence_list = qa.get("evidence", []) or []
+        if not evidence_list:
+            continue
+        
+        # Add each evidence to the session where it originally appeared
+        for ev_dia_id in evidence_list:
+            ev_session, _ = parse_dia_id(ev_dia_id)
+            if ev_session is not None and 1 <= ev_session <= max_session_id:
+                session_evidences[ev_session].add(ev_dia_id)
+    
+    # Convert sets to sorted lists for JSON serialization
+    return {sid: sorted(list(evs)) for sid, evs in session_evidences.items()}
 
 
 def format_chunk_as_prompt(chunk_turns):
@@ -417,6 +459,10 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                 speaker_set.add(spk)
 
         assert len(speaker_set) == 2, "Chunk must contain at most 2 unique speakers."
+        
+        # Extract evidence per session for this conversation
+        max_session = max((t.get('session_id', 1) for t in turns), default=1)
+        session_evidences = extract_evidence_per_session(qa_list, max_session)
 
         conv_chunks = []
         chunk_counter = 1  # Sequential chunk numbering across sessions
@@ -476,7 +522,8 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                 "turns": chunk_turns,
                 "qa_pairs": all_qas,
                 "qa_stats": qa_type_counts,
-                "speakers": list(speaker_set)  # Include unique speakers in the chunk
+                "speakers": list(speaker_set),  # Include unique speakers in the chunk
+                "session_evidences": session_evidences.get(session_id, [])  # Evidence needed for this session
             }
 
             if append_to_next and conv_chunks[-1]['session_id'] == chunk_data['session_id']:
@@ -490,6 +537,7 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                 prev_chunk['dialogue_num_turns'] += chunk_data['dialogue_num_turns']
                 prev_chunk['num_questions'] += chunk_data['num_questions']
                 prev_chunk['prompt'] = format_chunk_as_prompt(prev_chunk['turns'])
+                # Keep session_evidences from the first chunk (they should be the same session)
                 append_to_next = False
             else:
                 # Normal case: just append chunk
@@ -518,6 +566,7 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                 prev_chunk['dialogue_num_turns'] += chunk_data['dialogue_num_turns']
                 prev_chunk['num_questions'] += chunk_data['num_questions']
                 prev_chunk['prompt'] = format_chunk_as_prompt(prev_chunk['turns'])
+                # Keep session_evidences from the first chunk (they should be the same session)
                 conv_chunks.pop(-1)  # Remove the merged chunk
                 chunk_counter -= 1
 
@@ -676,6 +725,7 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                 'turns_json': json.dumps(chunk['turns']),
                 'qa_pairs_json': json.dumps(chunk['qa_pairs']),
                 'qa_stats_json': json.dumps(chunk['qa_stats']),
+                'session_evidences_json': json.dumps(chunk.get('session_evidences', [])),  # Evidence needed for this session
                 'dialogue_num_turns': chunk['dialogue_num_turns'],  # Actual number of turns (may be < CHUNK_SIZE)
                 'num_qas': len(chunk['qa_pairs']),
                 'current_qas': chunk['qa_stats']['current'],
