@@ -134,7 +134,7 @@ class MemoryManager:
             commands: JSON string (array) or list of command dicts
             
         Returns:
-            Dict with batch execution results
+            Dict with batch execution results including per-operation-type statistics
             
         Example:
             [
@@ -154,6 +154,14 @@ class MemoryManager:
             success_count = 0
             error_count = 0
             
+            # Track counts by operation type
+            insert_successful = 0
+            delete_successful = 0
+            update_successful = 0
+            insert_total = 0
+            delete_total = 0
+            update_total = 0
+            
             for i, command in enumerate(commands):
                 result = self.execute_command(memory, command)
                 results.append({
@@ -162,8 +170,28 @@ class MemoryManager:
                     "result": result
                 })
                 
+                # Get operation type (normalize to lowercase)
+                op_type = command.get("operation", "").lower()
+                
+                # Count total operations by type
+                if op_type == "insert":
+                    insert_total += 1
+                elif op_type == "delete":
+                    delete_total += 1
+                elif op_type == "update":
+                    update_total += 1
+                
+                # Count successes
                 if result["status"] == "success":
                     success_count += 1
+                    
+                    # Count successful operations by type
+                    if op_type == "insert":
+                        insert_successful += 1
+                    elif op_type == "delete":
+                        delete_successful += 1
+                    elif op_type == "update":
+                        update_successful += 1
                 else:
                     error_count += 1
             
@@ -172,6 +200,12 @@ class MemoryManager:
                 "total_commands": len(commands),
                 "successful": success_count,
                 "failed": error_count,
+                "insert_successful": insert_successful,
+                "delete_successful": delete_successful,
+                "update_successful": update_successful,
+                "insert_total": insert_total,
+                "delete_total": delete_total,
+                "update_total": update_total,
                 "results": results
             }
             
