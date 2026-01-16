@@ -49,6 +49,9 @@ class Memory:
         self.embedding_matrix: np.ndarray = np.empty((0, self._embedding_dim))
         # Memory ID mappings to track which row corresponds to which memory
         self.embedding_ids: List[str] = []  # memory_ids
+        
+        # Track all dia_ids that have been inserted/updated for easy evaluation
+        self.dia_ids_set: set = set()
 
     def _generate_memory_id(self) -> str:
         """Generate a unique ID for a memory item."""
@@ -145,6 +148,9 @@ class Memory:
         }
         
         self.memories.append(turn_data)
+        
+        # Track dia_id in the set for easy evaluation
+        self.dia_ids_set.add(dia_id)
         
         # Generate and store embedding for the content
         embedding = self._get_embedding(content, method=self.embedding_method)
@@ -315,6 +321,9 @@ class Memory:
                 if dia_id not in turn["dia_ids"]:
                     turn["dia_ids"].append(dia_id)
                 
+                # Track dia_id in the set for easy evaluation
+                self.dia_ids_set.add(dia_id)
+                
                 # Regenerate embedding for the new content
                 if memory_id in self.embedding_ids:
                     idx = self.embedding_ids.index(memory_id)
@@ -336,6 +345,12 @@ class Memory:
         """
         for i, turn in enumerate(self.memories):
             if turn["memory_id"] == memory_id:
+                # Remove dia_ids from the set before deleting the memory
+                for dia_id in turn.get('dia_ids', []):
+                    # Only remove if no other memory uses this dia_id
+                    if not any(dia_id in mem.get('dia_ids', []) for j, mem in enumerate(self.memories) if j != i):
+                        self.dia_ids_set.discard(dia_id)
+                
                 self.memories.pop(i)
                 
                 # Remove embedding
@@ -452,6 +467,7 @@ class Memory:
             self.memories = []
             self.embedding_matrix = np.empty((0, self._embedding_dim))
             self.embedding_ids = []
+            self.dia_ids_set = set()
         
         # Load memories based on format
         if format == "pickle":
@@ -467,6 +483,7 @@ class Memory:
             loaded_memories = data['memories']
             loaded_embedding_matrix = data.get('embedding_matrix')
             loaded_embedding_ids = data.get('embedding_ids')
+            loaded_dia_ids_set = data.get('dia_ids_set', set())  # For backward compatibility
         else:
             # JSON format: only memories, no embeddings
             memories_file = f"{save_path}.json"
@@ -491,6 +508,16 @@ class Memory:
                 # No embeddings saved, need to rebuild from cache
                 if self.memories:
                     self._rebuild_embeddings()
+            
+            # Restore dia_ids_set (for pickle format)
+            if format == "pickle":
+                self.dia_ids_set = loaded_dia_ids_set
+            else:
+                # Rebuild dia_ids_set from loaded memories
+                self.dia_ids_set = set()
+                for memory in self.memories:
+                    for dia_id in memory.get('dia_ids', []):
+                        self.dia_ids_set.add(dia_id)
         else:
             existing_ids = set(m["memory_id"] for m in self.memories)
             loaded_count = 0
@@ -508,6 +535,12 @@ class Memory:
                         embedding = self._get_embedding(memory["content"], method=self.embedding_method)
                         self.embedding_matrix = np.vstack([self.embedding_matrix, embedding.reshape(1, -1)])
                         self.embedding_ids.append(mid)
+                        # Also add dia_ids to the set
+                        for dia_id in memory.get('dia_ids', []):
+                            self.dia_ids_set.add(dia_id)
+                        # Also add dia_ids to the set
+                        for dia_id in memory.get('dia_ids', []):
+                            self.dia_ids_set.add(dia_id)
         
         print(f"✓ Loaded {loaded_count} memories from '{save_name}' in {directory}")
         return loaded_count
