@@ -403,14 +403,15 @@ class Memory:
         save_path = base_path / save_name
         
         if format == "pickle":
-            # Save everything in pickle: memories + embeddings for fast loading
+            # Save everything in pickle: memories (including dia_ids) + embeddings for fast loading
             # This makes snapshots self-contained and avoids cache lookups during load
             import pickle
             with open(f"{save_path}.pkl", "wb") as f:
                 pickle.dump({
-                    'memories': self.memories,
+                    'memories': self.memories,  # Each memory contains dia_ids array
                     'embedding_matrix': self.embedding_matrix,
-                    'embedding_ids': self.embedding_ids
+                    'embedding_ids': self.embedding_ids,
+                    'dia_ids_set': self.dia_ids_set  # Set of all dia_ids for easy evaluation
                 }, f, protocol=pickle.HIGHEST_PROTOCOL)
         
         # Always save JSON for human readability (regardless of format)
@@ -510,14 +511,16 @@ class Memory:
                     self._rebuild_embeddings()
             
             # Restore dia_ids_set (for pickle format)
-            if format == "pickle":
+            if format == "pickle" and loaded_dia_ids_set:
+                # Use loaded dia_ids_set if it exists and is not empty
                 self.dia_ids_set = loaded_dia_ids_set
             else:
-                # Rebuild dia_ids_set from loaded memories
+                # Rebuild dia_ids_set from loaded memories (for old caches or JSON format)
                 self.dia_ids_set = set()
                 for memory in self.memories:
                     for dia_id in memory.get('dia_ids', []):
                         self.dia_ids_set.add(dia_id)
+                print(f"✓ Rebuilt dia_ids_set from memories: {len(self.dia_ids_set)} unique dia_ids")
         else:
             existing_ids = set(m["memory_id"] for m in self.memories)
             loaded_count = 0
