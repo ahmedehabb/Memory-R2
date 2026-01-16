@@ -36,9 +36,9 @@ from verl.rema_trainer.memory.judge_llm import judge_with_llm
 # Category ID to human-readable name mapping
 # Used for per-category metrics (F1 and BLEU scores)
 CATEGORY_NAMES = {
-    1: 'multi_hop',
-    2: 'single_hop',
-    3: 'temporal',
+    1: 'single_hop',
+    2: 'temporal',
+    3: 'multi_hop',
     4: 'open_domain',
     5: 'adversarial',
     0: 'unknown'  # fallback for unexpected category IDs
@@ -104,8 +104,8 @@ def compute_bleu(prediction, truth):
 
 def compute_score_fn(compute_score, params):
     # data_source, response, ground_truth, extra_info = params
-    qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, extra_info = params
-    return compute_score(qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, extra_info)
+    qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, session_id, session_evidences, extra_info, mem_op_stats = params
+    return compute_score(qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, session_id, session_evidences, extra_info, mem_op_stats)
 
 def process_single_qa(qa_pair, memory, speakers, session_time):
     """Process a single QA pair - to be called in parallel"""
@@ -124,9 +124,6 @@ def process_single_qa(qa_pair, memory, speakers, session_time):
     # Compute scores
     question_score = compute_f1(predicted_answer, gold_answer)
     bleu_score = compute_bleu(predicted_answer, gold_answer)
-
-    # Check evidence retrieval
-    evidences_retrieved = sum(1 for evidence_dia_id in evidence if evidence_dia_id in all_dia_ids)
     
     return {
         'question': question,
@@ -138,11 +135,32 @@ def process_single_qa(qa_pair, memory, speakers, session_time):
         'category': category,
         'evidence': evidence,
         'all_dia_ids': all_dia_ids,
-        'evidences_retrieved': evidences_retrieved,
         'prompt': prompt
     }
 
-def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, extra_info: dict=None) -> tuple[float, dict]:
+def compute_memory_penalty(mem_op_stats, weights=None):
+    """
+    Compute a penalty for memory actions during a rollout.
+
+    Args:
+        mem_op_stats: dict with keys 'insert_successful', 'delete_successful', 'update_successful'
+        weights: dict with weights for each action type, e.g.:
+            {"INSERT": 0.3, "UPDATE": 0.1, "DELETE": 0.05}
+
+    Returns:
+        penalty: float, higher penalty = worse memory usage
+    """
+    if weights is None:
+        weights = {"INSERT": 0.2, "UPDATE": 0.1, "DELETE": 0.05}
+
+    penalty = (
+        mem_op_stats.get('insert_successful', 0) * weights["INSERT"] +
+        mem_op_stats.get('update_successful', 0) * weights["UPDATE"] +
+        mem_op_stats.get('delete_successful', 0) * weights["DELETE"]
+    )
+    return penalty
+
+def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, session_id: int, session_evidences: list, extra_info: dict=None, mem_op_stats: dict=None) -> tuple[float, dict]:
     key = f"{conv_id}_chunk{chunk_id}"
     memory = MemoryManager().get_snapshot(sample_id=conv_id, chunk_id=chunk_id, epoch=epoch, split=split, index_in_batch=index)
     
@@ -155,9 +173,19 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     category_f1_scores = {}  # {category: [f1_scores]}
     category_bleu_scores = {}  # {category: [bleu_scores]}
 
-    # Variables to track evidence retrieval
-    total_evidences = 0
-    total_evidences_retrieved = 0
+    # Calculate session-level evidence coverage
+    # Compare memory's dia_ids_set against session_evidences needed for this session
+    if session_evidences and hasattr(memory, 'dia_ids_set'):
+        session_evidences_set = set(session_evidences)
+        covered_evidences = memory.dia_ids_set.intersection(session_evidences_set)
+        evidence_retrieval_coverage = len(covered_evidences) / len(session_evidences_set) if len(session_evidences_set) > 0 else 0.0
+        print(f"[LocomoScore] Session {session_id} evidence coverage: {len(covered_evidences)}/{len(session_evidences_set)} ({evidence_retrieval_coverage:.3f})")
+        if len(covered_evidences) < len(session_evidences_set):
+            missing = session_evidences_set - covered_evidences
+            print(f"[LocomoScore] Missing evidence dia_ids: {sorted(list(missing))[:10]}...")  # Show first 10
+    else:
+        evidence_retrieval_coverage = 0.0
+        print(f"[LocomoScore] No session_evidences or dia_ids_set available, evidence coverage = 0.0")
     
     print(f"[LocomoScore] Processing {num_questions} questions for conv {conv_id}, chunk {chunk_id}")
     
@@ -195,18 +223,8 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         # Accumulate scores for averaging
         qa_scores += question_score
         bleu_scores += bleu_score
-
-        # Evidence tracking
-        evidences_retrieved = result['evidences_retrieved']
-        total_evidences += len(result['evidence'])
-        total_evidences_retrieved += evidences_retrieved
         
-        if evidences_retrieved < len(result['evidence']):
-            missing = [eid for eid in result['evidence'] if eid not in result['all_dia_ids']]
-            print(f"[LocomoScore] Warning: Missing {len(missing)} evidence dia_ids: {missing}")
-        
-        print(f"[LocomoScore] Retrieved {evidences_retrieved}/{len(result['evidence'])} evidence dia_ids.")
-        print(f"[LocomoScore] Q{qa_idx+1}/{num_questions}: {result['question'][:50]}...")
+        print(f"[LocomoScore] Q{qa_idx+1}/{num_questions} [{CATEGORY_NAMES[category]}]: {result['question']}")
         print(f"[LocomoScore] Gold: {result['gold_answer']}, Predicted: {result['predicted_answer']}, F1: {question_score}, BLEU: {bleu_score}")
     
     # Calculate average scores
@@ -214,14 +232,7 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     avg_bleu_score = bleu_scores / num_questions if num_questions > 0 else 0.0
     print(f"[LocomoScore] Average F1 score: {avg_f1_score:.3f} ({qa_scores}/{num_questions})")
     print(f"[LocomoScore] Average BLEU score: {avg_bleu_score:.3f} ({bleu_scores}/{num_questions})")
-
-    # Calculate evidence retrieval efficiency (percentage of evidence dia_ids retrieved)
-    evidence_retrieval_efficiency = total_evidences_retrieved / total_evidences if total_evidences > 0 else 0.0
-    print(f"[LocomoScore] Evidence retrieval efficiency: {evidence_retrieval_efficiency:.3f}")
-
-    # Adjust final score based on evidence retrieval efficiency
-    final_score = avg_f1_score + evidence_retrieval_efficiency
-    print(f"[LocomoScore] Final adjusted score: {final_score:.3f}")
+    print(f"[LocomoScore] Session evidence coverage: {evidence_retrieval_coverage:.3f}")
 
     # Return raw category scores (not averages) for global aggregation
     category_raw_scores = {
@@ -243,8 +254,8 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     # from verl.rema_trainer.memory.judge_llm import merge_to_main_cache
     # merge_to_main_cache()
     
-    # Return F1 score, BLEU score, evidence score, final_score (QA + evidence reward), category_raw_scores, and memory_info
-    return avg_f1_score, avg_bleu_score, evidence_retrieval_efficiency, final_score, category_raw_scores, memory_info
+    # Return F1 score, BLEU score, evidence score, category_raw_scores, and memory_info
+    return avg_f1_score, avg_bleu_score, evidence_retrieval_coverage, category_raw_scores, memory_info
 
 class ReMARewardManager:
     """The reward manager.
@@ -340,7 +351,15 @@ class ReMARewardManager:
              data.meta_info['split'],
              data[i].batch['rollout_idx'],  # Use rollout_idx computed AFTER repeating
              data[i].non_tensor_batch['session_time'],
+             data[i].non_tensor_batch['session_id'],  # Session ID for evidence tracking
+             json.loads(data[i].non_tensor_batch.get('session_evidences_json', '[]')),  # Session evidences needed
              data[i].non_tensor_batch.get('extra_info', None),
+             # Memory operation statistics
+             {
+                 'insert_successful': data[i].non_tensor_batch.get('mem_insert_successful', 0),
+                 'delete_successful': data[i].non_tensor_batch.get('mem_delete_successful', 0),
+                 'update_successful': data[i].non_tensor_batch.get('mem_update_successful', 0),
+             },
              )
             for i in range(len(data))
         ]
@@ -350,7 +369,6 @@ class ReMARewardManager:
             print(f"  - qa_pairs_json: {params[0][0]}")
             print(f"  - extra_info: {params[0][2]}")
 
-        scores = []
         qa_scores = []  # Track QA accuracy (F1) separately
         bleu_scores = []  # Track BLEU scores separately
         evidence_scores = [] # Track evidence scores separately
@@ -364,19 +382,17 @@ class ReMARewardManager:
                 while True:
                     try:
                         result = next(iterator)
-                        # New format: (f1_score, bleu_score, evidence_score, total_score, category_stats, memory_info)
-                        qa_score, bleu_score, evidence_score, total_score, category_stats, memory_info = result
+                        # New format: (f1_score, bleu_score, evidence_score, category_stats, memory_info)
+                        qa_score, bleu_score, evidence_score, category_stats, memory_info = result
                         qa_scores.append(qa_score)
                         bleu_scores.append(bleu_score)
                         evidence_scores.append(evidence_score)
-                        scores.append(total_score)
                         category_stats_list.append(category_stats)
                         memory_infos.append(memory_info)
                     except TimeoutError:
                         print('[RewardManager] Time Out')
                         qa_scores.append(0.0)
                         bleu_scores.append(0.0)
-                        scores.append(0.0)
                         evidence_scores.append(0.0)
                         category_stats_list.append({'f1_scores': {}, 'bleu_scores': {}})
                         memory_infos.append(None)
@@ -384,7 +400,6 @@ class ReMARewardManager:
                         print('[RewardManager] Math verify internal timeout')
                         qa_scores.append(0.0)
                         bleu_scores.append(0.0)
-                        scores.append(0.0)
                         evidence_scores.append(0.0)
                         category_stats_list.append({'f1_scores': {}, 'bleu_scores': {}})
                         memory_infos.append(None)
@@ -394,19 +409,22 @@ class ReMARewardManager:
                         print(f"[RewardManager] Error: {e}")
                         raise e
                     pbar.update(1)
-        print(f"[RewardManager] Score computation complete. Got {len(scores)} total scores, {len(qa_scores)} F1 scores, and {len(bleu_scores)} BLEU scores")
+        print(f"[RewardManager] Score computation complete. Got {len(qa_scores)} F1 scores, {len(bleu_scores)} BLEU scores, and {len(evidence_scores)} evidence scores")
         
-        # Build memory_score_dict from collected results
+        # Compute combined scores once (single place for reward logic)
+        combined_scores = [0.5 * qa_scores[i] + 0.5 * evidence_scores[i] for i in range(len(qa_scores))]
+        print(f"[RewardManager] Combined scores computed: mean={sum(combined_scores)/len(combined_scores):.4f}")
+        
+        # Build memory_score_dict from collected results using combined scores
         memory_score_dict = {}
-        for i, (score, memory_info) in enumerate(zip(scores, memory_infos)):
+        for i, memory_info in enumerate(memory_infos):
             if memory_info is not None and memory_info["memory"] is not None:
                 key = memory_info["key"]
                 if key not in memory_score_dict:
                     memory_score_dict[key] = []
-                memory_score_dict[key].append((score, memory_info))
+                memory_score_dict[key].append((combined_scores[i], memory_info))
         print(f"[RewardManager] Built memory_score_dict with {len(memory_score_dict)} unique conversation-chunk pairs")
         
-        assert len(scores) == len(data)
         assert len(evidence_scores) == len(data)
         assert len(qa_scores) == len(data)
         assert len(bleu_scores) == len(data)
@@ -415,10 +433,10 @@ class ReMARewardManager:
         bleu = torch.tensor(bleu_scores, dtype=torch.float32) # bsz - BLEU scores
         print(f"\n[RewardManager] Accuracy tensor (F1) shape: {accuracy.shape}, dtype: {accuracy.dtype}")
         print(f"[RewardManager] Accuracy stats - mean: {accuracy.mean().item():.4f}, min: {accuracy.min().item():.4f}, max: {accuracy.max().item():.4f}")
-        print(f"[RewardManager] Accuracy values: {accuracy[:min(5, len(accuracy))].tolist()}...")
+        print(f"[RewardManager] Accuracy values: {accuracy.tolist()}")
         print(f"\n[RewardManager] BLEU tensor shape: {bleu.shape}, dtype: {bleu.dtype}")
         print(f"[RewardManager] BLEU stats - mean: {bleu.mean().item():.4f}, min: {bleu.min().item():.4f}, max: {bleu.max().item():.4f}")
-        print(f"[RewardManager] BLEU values: {bleu[:min(5, len(bleu))].tolist()}...")
+        print(f"[RewardManager] BLEU values: {bleu.tolist()}")
         reward_tensor_map['acc'] = accuracy
         reward_tensor_map['bleu'] = bleu
         
@@ -487,20 +505,15 @@ class ReMARewardManager:
         for i_bsz in range(len(data)):
             data_item = data[i_bsz]  # DataProtoItem
 
-            # Instead of using total score, try to separate the scores for each role
-            # score = scores[i_bsz]
-            qa_score = qa_scores[i_bsz]
-            evidence_score = evidence_scores[i_bsz]
+            # Use precomputed combined score (consistent with memory selection)
+            score = combined_scores[i_bsz]
             
             num_turns = data_item.non_tensor_batch['num_turns']
             
             for i_role, role in enumerate(agent_roles):
-                if i_role == 0:
-                    # fact retrieval role gets evidence score
-                    score = evidence_score
-                elif i_role == 1:
-                    # memory manager get qa score 
-                    score = qa_score
+                
+                # Both roles get the same combined score (aligned incentives)
+                # score is already computed as: 0.5 * qa_score + 0.5 * evidence_score
 
                 turn_finished = data_item.batch[f'{role}_turn_finished'].item()
                 if i_bsz == 0:
