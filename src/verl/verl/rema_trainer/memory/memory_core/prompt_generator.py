@@ -83,7 +83,7 @@ def format_turns_for_prompt(turns: List[Dict[str, Any]]) -> List[Dict[str, str]]
 def format_memory_for_prompt_for_facts(
     memory: Memory, 
     facts: Dict = None,
-    top_k: int = 10,
+    top_k_per_fact: int = 5,
     similarity_threshold: float = 0.3,
     use_similarity: bool = True
 ) -> List[Dict[str, Any]]:
@@ -97,7 +97,7 @@ def format_memory_for_prompt_for_facts(
     Args:
         memory: Memory instance
         facts: Dict of facts to use for similarity search (optional)
-        top_k: Maximum total number of relevant memories to retrieve across all turns (default: 10)
+        top_k_per_fact: Maximum number of relevant memories to retrieve per fact (default: 5)
         similarity_threshold: Minimum similarity score to include a memory (default: 0.3)
         use_similarity: If True, use similarity search; if False, return all memories (default: True)
         
@@ -109,7 +109,9 @@ def format_memory_for_prompt_for_facts(
             {
                 "memory_id": "a1b2c3d4",
                 "speaker": "John",
-                "content": "Enjoys outdoor activities"
+                "content": "Enjoys outdoor activities",
+                "session_time": "5:00 pm",
+                "dia_ids": ["D1:3", "D2:5"]
             }
         ]
     """
@@ -122,10 +124,6 @@ def format_memory_for_prompt_for_facts(
         return formatted_memory
     
     if use_similarity:
-        # Calculate top_k per turn to reach approximately top_k total memories
-        # (accounting for potential duplicates across turns)
-        num_facts = len(facts_list)
-        top_k_per_turn = max(1, top_k // num_facts) if num_facts > 0 else top_k
         
         # Search turn-by-turn for relevant memories
         for fact in facts_list:
@@ -146,7 +144,7 @@ def format_memory_for_prompt_for_facts(
             search_results = memory.search(
                 query=fact_text,
                 speaker=fact_speaker,  # Get memories about this speaker
-                top_k=top_k_per_turn,
+                top_k=top_k_per_fact,
                 search_method="text-embedding"
             )
             
@@ -160,7 +158,8 @@ def format_memory_for_prompt_for_facts(
                             "memory_id": memory_id,
                             "session_time": memory_dict.get("session_time"),
                             "speaker": memory_dict.get("speaker"),
-                            "content": memory_dict.get("content")
+                            "content": memory_dict.get("content"),
+                            "dia_ids": memory_dict.get("dia_ids", [])
                         })
     
     return formatted_memory

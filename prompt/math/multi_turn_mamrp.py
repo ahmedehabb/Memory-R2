@@ -88,7 +88,7 @@ There are specific guidelines to select which operation to perform:
 - Always include the `dia_id` with each inserted fact to ensure the memory is accurately linked to the correct dialogue.
 
 Example:
-- Old Memory: [[{"memory_id": "a32b32c1", "session_time": "6:59 pm on 26 August, 2023", "speaker": "John", "content": "Works as a software engineer", "dia_ids": ["D1:4"]}]]
+- Existing Memory: [[{"memory_id": "a32b32c1", "session_time": "6:59 pm on 26 August, 2023", "speaker": "John", "content": "Works as a software engineer", "dia_ids": ["D1:4"]}]]
 - New Facts: {"facts" : [{"speaker": "John", "dia_id": "D3:6", "fact": "Had a meeting with John at 3pm"}, {"speaker": "John", "dia_id": "D3:6", "fact": "Discussed the new project"}]}
 - Operations:
 {
@@ -107,7 +107,7 @@ Example:
 - Please note to return the IDs in the output from the input IDs only and do not generate any new ID.
 
 Example:
-- Old Memory: [{"memory_id": "a0299e69", "session_time": "2:04 pm on 3 September, 2021", "speaker": "Emily", "content": "Likes to play cricket", "dia_ids": ["D5:2"]}]
+- Existing Memory: [{"memory_id": "a0299e69", "session_time": "2:04 pm on 3 September, 2021", "speaker": "Emily", "content": "Likes to play cricket", "dia_ids": ["D5:2"]}]
 - New Facts: {"facts" : [{"speaker": "Emily", "fact": "loves to play cricket with my friends.", "dia_id": "D5:4"}]}
 - Operations:
   {"operations": [{"operation": "UPDATE", "memory_id": "a0299e69", "content": "Loves to play cricket with friends", "dia_id": "D5:4"}]}
@@ -116,7 +116,7 @@ Example:
 - Please note to return the IDs in the output from the input IDs only and do not generate any new ID.
 
 Example:
-- Old Memory: [{"memory_id": "6v0k193d", "session_time": "8:04 am on 3 February, 2009", "speaker": "Samy", "content": "I went to Paris last summer", "dia_ids": ["D6:5"]}]
+- Existing Memory: [{"memory_id": "6v0k193d", "session_time": "8:04 am on 3 February, 2009", "speaker": "Samy", "content": "I went to Paris last summer", "dia_ids": ["D6:5"]}]
 - New Facts: {"facts" : [{"speaker": "Samy", "fact": "I never went to Paris", "dia_id": "D7:1"}]}
 - Operations:
   {"operations": [{"operation": "DELETE", "memory_id": "6v0k193d"}]}
@@ -124,7 +124,7 @@ Example:
 4. **NO OPERATION**: If the facts contain information that is already present in the memory, then you do not need to make any changes.
 
 Example:
-- Old Memory: [{"memory_id": "9b3c82e0", "session_time": "11:10 am on 18 March, 2020", "speaker": "Sofia", "content": "Loves cheese pizza", "dia_ids": ["D8:3"]}]
+- Existing Memory: [{"memory_id": "9b3c82e0", "session_time": "11:10 am on 18 March, 2020", "speaker": "Sofia", "content": "Loves cheese pizza", "dia_ids": ["D8:3"]}]
 - New Facts: {"facts" : [{"speaker": "Sofia", "fact": "Loves cheese pizza", "dia_id": "D8:10"}]}
 - Operations:
   {"operations": []}
