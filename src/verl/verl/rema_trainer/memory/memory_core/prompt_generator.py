@@ -83,7 +83,7 @@ def format_turns_for_prompt(turns: List[Dict[str, Any]]) -> List[Dict[str, str]]
 def format_memory_for_prompt_for_facts(
     memory: Memory, 
     facts: Dict = None,
-    top_k_per_fact: int = 5,
+    top_k_memories_for_operations: int = 20,
     similarity_threshold: float = 0.3,
     use_similarity: bool = True
 ) -> List[Dict[str, Any]]:
@@ -97,7 +97,7 @@ def format_memory_for_prompt_for_facts(
     Args:
         memory: Memory instance
         facts: Dict of facts to use for similarity search (optional)
-        top_k_per_fact: Maximum number of relevant memories to retrieve per fact (default: 5)
+        top_k_memories_for_operations: Maximum total number of relevant memories to retrieve across all turns (default: 20)
         similarity_threshold: Minimum similarity score to include a memory (default: 0.3)
         use_similarity: If True, use similarity search; if False, return all memories (default: True)
         
@@ -117,6 +117,7 @@ def format_memory_for_prompt_for_facts(
     """
     formatted_memory = []
     seen_memory_ids = set()  # Track unique memories to avoid duplicates
+    memory_scores = dict()  # Track similarity scores for debugging
     facts_list = facts.get("facts", []) if facts else []
     
     # If no facts provided or facts list is empty, return empty memory
@@ -124,6 +125,9 @@ def format_memory_for_prompt_for_facts(
         return formatted_memory
     
     if use_similarity:
+        # Calculate top_k per fact to reach approximately top_k total memories
+        num_facts = len(facts_list)
+        top_k_per_fact = max(1, top_k_memories_for_operations // num_facts) if num_facts > 0 else top_k_memories_for_operations
         
         # Search turn-by-turn for relevant memories
         for fact in facts_list:
@@ -154,6 +158,7 @@ def format_memory_for_prompt_for_facts(
                     memory_id = memory_dict.get("memory_id")
                     if memory_id not in seen_memory_ids:
                         seen_memory_ids.add(memory_id)
+                        memory_scores[memory_id] = similarity_score
                         formatted_memory.append({
                             "memory_id": memory_id,
                             "session_time": memory_dict.get("session_time"),
@@ -161,7 +166,13 @@ def format_memory_for_prompt_for_facts(
                             "content": memory_dict.get("content"),
                             "dia_ids": memory_dict.get("dia_ids", [])
                         })
+                    elif memory_id in memory_scores:
+                        # Update to higher similarity score if found again
+                        if similarity_score > memory_scores[memory_id]:
+                            memory_scores[memory_id] = similarity_score
     
+    # Sort formatted memory by descending similarity score for consistency
+    formatted_memory.sort(key=lambda mem: memory_scores.get(mem["memory_id"], 0), reverse=True)
     return formatted_memory
 
 def format_memory_for_prompt(
@@ -260,7 +271,7 @@ def generate_memory_prompt_using_facts(
     memory: Memory,  # Memory instance
     facts: Dict, 
     prompt_template_path: str = None,
-    top_k_memories: int = 40,
+    top_k_memories_for_operations: int = 20,
     similarity_threshold: float = 0.1,
     use_similarity: bool = True
 ) -> str:
@@ -297,7 +308,7 @@ def generate_memory_prompt_using_facts(
     formatted_memory = format_memory_for_prompt_for_facts(
         memory, 
         facts=facts,
-        top_k=top_k_memories,
+        top_k_memories_for_operations=top_k_memories_for_operations,
         similarity_threshold=similarity_threshold,
         use_similarity=use_similarity
     )
