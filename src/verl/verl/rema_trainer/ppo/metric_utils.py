@@ -83,6 +83,12 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
         # acc:
         'critic/acc': 
             torch.mean(batch.batch['acc']).detach().item(),
+        # bleu:
+        'critic/bleu': 
+            torch.mean(batch.batch['bleu']).detach().item(),
+        # evidence:
+        'critic/evidence':
+            torch.mean(batch.batch['evidence']).detach().item(),
         # score
         'critic/score/mean':
             torch.mean(sequence_score).detach().item(),

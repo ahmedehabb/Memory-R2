@@ -2,6 +2,7 @@
 import os
 import json
 import hashlib
+import threading
 # from openai import OpenAI
 import google.generativeai as genai
 from filelock import FileLock
@@ -14,6 +15,9 @@ CACHE_DIR = os.getenv("OPENAI_CACHE_DIR", ".")  # Keep same cache dir for compat
 MAIN_CACHE_FILE = os.path.join(CACHE_DIR, "judge_cache.json")
 PROCESS_CACHE_FILE = os.path.join(CACHE_DIR, f"judge_cache_{os.getpid()}.json")
 LOCK_FILE = MAIN_CACHE_FILE + ".lock"
+
+# Thread-safety lock for JUDGE_CACHE (protects against concurrent thread access within same process)
+_CACHE_LOCK = threading.Lock()
 
 # Load per-process cache
 if os.path.exists(PROCESS_CACHE_FILE):
@@ -45,9 +49,14 @@ def merge_to_main_cache():
     """Merge per-process cache into the main cache safely and sync back."""
     global JUDGE_CACHE
     
-    # Don't merge if we have no new entries
-    if not JUDGE_CACHE:
-        return
+    # Thread-safe: acquire lock before reading JUDGE_CACHE
+    with _CACHE_LOCK:
+        # Don't merge if we have no new entries
+        if not JUDGE_CACHE:
+            return
+        
+        # Make a snapshot to avoid holding lock during file I/O
+        cache_snapshot = dict(JUDGE_CACHE)
     
     max_retries = 3
     for attempt in range(max_retries):
@@ -71,9 +80,9 @@ def merge_to_main_cache():
                 else:
                     main_cache = {}
                 
-                # Merge new entries from this process
+                # Merge new entries from this process (using snapshot, not live dict)
                 original_size = len(main_cache)
-                main_cache.update(JUDGE_CACHE)
+                main_cache.update(cache_snapshot)
                 new_size = len(main_cache)
                 
                 # Atomic write with validation
@@ -99,9 +108,10 @@ def merge_to_main_cache():
                     
                     print(f"[merge success] Merged {new_size - original_size} new entries (total: {new_size})")
                     
-                    # Update our local cache with merged result
-                    JUDGE_CACHE.update(main_cache)
-                    _save_process_cache()
+                    # Update our local cache with merged result (thread-safe)
+                    with _CACHE_LOCK:
+                        JUDGE_CACHE.update(main_cache)
+                        _save_process_cache()
                     return  # Success!
                     
                 except (json.JSONDecodeError, ValueError) as e:
@@ -146,11 +156,12 @@ def judge_with_llm(prompt: str) -> str:
 
     key = _hash_prompt(prompt)
 
-    # Return cached result if exists in process cache
-    if key in JUDGE_CACHE:
-        return JUDGE_CACHE[key]
+    # Thread-safe: check cache with lock
+    with _CACHE_LOCK:
+        if key in JUDGE_CACHE:
+            return JUDGE_CACHE[key]
 
-    # Call Gemini API
+    # Call Gemini API (outside lock to avoid blocking other threads)
     try:
         generation_config = genai.types.GenerationConfig(
             temperature=0.0,
@@ -165,15 +176,16 @@ def judge_with_llm(prompt: str) -> str:
         print(f"[judge error] {e}")
         result = ""
 
-    # Save to per-process cache
-    JUDGE_CACHE[key] = result
-    _save_process_cache()  # non-blocking save
+    # Thread-safe: save to cache with lock
+    with _CACHE_LOCK:
+        JUDGE_CACHE[key] = result
+        _save_process_cache()  # non-blocking save
 
-    # Increment counter and merge if threshold reached
-    _NEW_ENTRIES_COUNT += 1
-    # if _NEW_ENTRIES_COUNT >= MERGE_EVERY_N:
-    #     merge_to_main_cache()
-    #     _NEW_ENTRIES_COUNT = 0
+        # Increment counter and merge if threshold reached
+        _NEW_ENTRIES_COUNT += 1
+        # if _NEW_ENTRIES_COUNT >= MERGE_EVERY_N:
+        #     merge_to_main_cache()
+        #     _NEW_ENTRIES_COUNT = 0
 
     return result
 

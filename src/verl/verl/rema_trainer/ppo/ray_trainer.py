@@ -800,7 +800,7 @@ class RayReMATrainer(object):
             else:
                 test_gen_batch = test_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'], 
                         deepcopy=True
                     )
@@ -842,6 +842,17 @@ class RayReMATrainer(object):
 
             history_lst.append(test_output_gen_batch.non_tensor_batch['history'].tolist())
             
+            # Collect generation metrics (num_turns, completion_tokens) from ALL batches
+            num_turns = torch.tensor(test_output_gen_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
+            num_turns_lst.append(num_turns)
+            print(f"[VAL BATCH {batch_idx + 1}] num_turns (all samples): min={num_turns.min()}, max={num_turns.max()}, mean={num_turns.float().mean()}")
+            
+            turn_level_completion_tokens = test_output_gen_batch.batch['meta_thinking_num_gen_tokens'].cpu() + \
+                test_output_gen_batch.batch['reasoning_num_gen_tokens'].cpu()
+            completion_tokens = turn_level_completion_tokens.sum(dim=-1)
+            completion_tokens_lst.append(completion_tokens)
+            print(f"[VAL BATCH {batch_idx + 1}] completion_tokens (all samples): min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
+            
             # Check if any conversations finished in this batch and evaluate them
             if num_finished > 0:
                 print(f"[VAL BATCH {batch_idx + 1}] Evaluating {num_finished} finished conversations...")
@@ -880,19 +891,6 @@ class RayReMATrainer(object):
                 scores = reward_tensor['reasoning_turn_level_reward'].sum(-1).cpu().tolist()
                 sample_scores.extend(scores)
                 print(f"[VAL BATCH {batch_idx + 1}] Sample scores[0]: {scores[0]}")
-                
-                # Get finished samples from output batch
-                finished_output_batch = test_output_gen_batch[finished_indices]
-                
-                num_turns = torch.tensor(finished_output_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
-                num_turns_lst.append(num_turns)
-                print(f"[VAL BATCH {batch_idx + 1}] num_turns: min={num_turns.min()}, max={num_turns.max()}, mean={num_turns.float().mean()}")
-                
-                turn_level_completion_tokens = finished_output_batch.batch['meta_thinking_num_gen_tokens'].cpu() + \
-                    finished_output_batch.batch['reasoning_num_gen_tokens'].cpu()
-                completion_tokens = turn_level_completion_tokens.sum(dim=-1)
-                completion_tokens_lst.append(completion_tokens)
-                print(f"[VAL BATCH {batch_idx + 1}] completion_tokens: min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
                 
                 # Get data sources from finished samples
                 data_source_lst.append(finished_test_batch.non_tensor_batch.get('subset', ['locomo'] * reward_tensor['reasoning_turn_level_reward'].shape[0]))
@@ -1143,7 +1141,7 @@ class RayReMATrainer(object):
             else:
                 test_gen_batch = test_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'], 
                         deepcopy=True
                     )
@@ -1181,6 +1179,17 @@ class RayReMATrainer(object):
             print(f"[TEST BATCH {batch_idx + 1}] Sample output[0]: {output_texts[0][:100] if isinstance(output_texts[0], str) else output_texts[0]}...")
 
             history_lst.append(test_output_gen_batch.non_tensor_batch['history'].tolist())
+            
+            # Collect generation metrics (num_turns, completion_tokens) from ALL batches
+            num_turns = torch.tensor(test_output_gen_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
+            num_turns_lst.append(num_turns)
+            print(f"[TEST BATCH {batch_idx + 1}] num_turns (all samples): min={num_turns.min()}, max={num_turns.max()}, mean={num_turns.float().mean()}")
+            
+            turn_level_completion_tokens = test_output_gen_batch.batch['meta_thinking_num_gen_tokens'].cpu() + \
+                test_output_gen_batch.batch['reasoning_num_gen_tokens'].cpu()
+            completion_tokens = turn_level_completion_tokens.sum(dim=-1)
+            completion_tokens_lst.append(completion_tokens)
+            print(f"[TEST BATCH {batch_idx + 1}] completion_tokens (all samples): min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
             
             # Check if any conversations finished in this batch and evaluate them
             if num_finished > 0:
@@ -1220,19 +1229,6 @@ class RayReMATrainer(object):
                 scores = reward_tensor['reasoning_turn_level_reward'].sum(-1).cpu().tolist()
                 sample_scores.extend(scores)
                 print(f"[TEST BATCH {batch_idx + 1}] Sample scores[0]: {scores[0]}")
-                
-                # Get finished samples from output batch
-                finished_output_batch = test_output_gen_batch[finished_indices]
-                
-                num_turns = torch.tensor(finished_output_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
-                num_turns_lst.append(num_turns)
-                print(f"[TEST BATCH {batch_idx + 1}] num_turns: min={num_turns.min()}, max={num_turns.max()}, mean={num_turns.float().mean()}")
-                
-                turn_level_completion_tokens = finished_output_batch.batch['meta_thinking_num_gen_tokens'].cpu() + \
-                    finished_output_batch.batch['reasoning_num_gen_tokens'].cpu()
-                completion_tokens = turn_level_completion_tokens.sum(dim=-1)
-                completion_tokens_lst.append(completion_tokens)
-                print(f"[TEST BATCH {batch_idx + 1}] completion_tokens: min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
                 
                 # Get data sources from finished samples
                 data_source_lst.append(finished_test_batch.non_tensor_batch.get('subset', ['locomo'] * reward_tensor['reasoning_turn_level_reward'].shape[0]))
@@ -1614,7 +1610,7 @@ class RayReMATrainer(object):
             from prompt import FINISH_FLAG
             rollout_meta_info = {
                 'agent_roles': ['meta_thinking', 'reasoning'],
-                'finish_flag': FINISH_FLAG,
+                'finish_flag': None, # changed this to None from FINISH_FLAG
                 'system_prompts': {
                     'meta_thinking': MEMORY_REASONER_PROMPT,
                     'reasoning': MEMORY_EXECUTOR_PROMPT
@@ -1706,7 +1702,7 @@ class RayReMATrainer(object):
                     # because verl originally calls this 'chat'
                     gen_batch = new_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'],
                         deepcopy=True
                     )
@@ -1833,8 +1829,10 @@ class RayReMATrainer(object):
                         #         print(f"[STEP {self.global_steps}] {key} : {reward_tensor_map[key]}")
                         new_batch.batch['acc'] = reward_tensor_map.pop('acc')
                         new_batch.batch['bleu'] = reward_tensor_map.pop('bleu')
+                        new_batch.batch['evidence'] = reward_tensor_map.pop('evidence')
                         print(f"[STEP {self.global_steps}] acc shape: {new_batch.batch['acc'].shape}, acc: {new_batch.batch['acc']}")
                         print(f"[STEP {self.global_steps}] bleu shape: {new_batch.batch['bleu'].shape}, bleu: {new_batch.batch['bleu']}")
+                        print(f"[STEP {self.global_steps}] evidence shape: {new_batch.batch['evidence'].shape}, evidence: {new_batch.batch['evidence']}")
                         # batch.batch['token_level_scores'] = reward_tensor
                         for key_reward, reward_tensor in reward_tensor_map.items():
                             new_batch.batch[key_reward] = reward_tensor

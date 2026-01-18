@@ -95,6 +95,8 @@ class MemoryManager:
             operation = command.get("operation")
             if not operation:
                 return self._error_result("Missing 'operation' field")
+            if not isinstance(operation, str):
+                return self._error_result(f"Invalid 'operation' field: expected string, got {type(operation).__name__}")
             
             # Normalize operation to lowercase for consistency
             operation = operation.lower()
@@ -606,8 +608,12 @@ class MemoryManager:
                 continue
             
             # Normalize operation to lowercase for consistency
-            # Handle None values explicitly
+            # Handle None values and non-string types
             operation_value = op.get("operation") or ""
+            # If operation_value is not a string (e.g., dict, list), convert to string or skip
+            if not isinstance(operation_value, str):
+                print(f"[MemoryManager] Warning: operation field is {type(operation_value)}, expected str. Skipping operation: {op}")
+                continue
             op["operation"] = operation_value.lower()
             if op["operation"] == "insert":
                 # Only set metadata when it's not already provided

@@ -372,16 +372,7 @@ def compute_policy_loss(
             pg_loss = torch.mean(seq_losses)  # seq-mean
         elif agg_mode == 'turn':
             with torch.no_grad():
-                max_turns = step_id.max().item() + 1
-                # Handle edge case: if all step_ids are -100 (padding), return zero loss
-                if max_turns <= 0:
-                    print("Warning: all step_ids are -100 in turn agg_mode. Returning zero loss.")
-                    return torch.tensor(0.0, device=step_id.device, dtype=old_log_prob.dtype), \
-                           torch.tensor(0.0, device=step_id.device), \
-                           torch.tensor(0.0, device=step_id.device), \
-                           torch.tensor(0.0, device=step_id.device), \
-                           torch.tensor(0.0, device=step_id.device)
-                
+                max_turns = step_id.max().item() + 1                
                 turn_masks = torch.arange(max_turns, device=step_id.device).view(1, 1, -1) == step_id.unsqueeze(-1)  # (bsz, seq_len, max_turns)
 
                 turn_counts = turn_masks.sum(dim=1)  # (bsz, max_turns)
@@ -399,15 +390,6 @@ def compute_policy_loss(
         
     elif clip_mode == 'turn':
         max_turns = step_id.max().item() + 1
-        # Handle edge case: if all step_ids are -100 (padding), return zero loss
-        if max_turns <= 0:
-            print("Warning: all step_ids are -100 in turn agg_mode. Returning zero loss.")
-            return torch.tensor(0.0, device=step_id.device, dtype=old_log_prob.dtype), \
-                   torch.tensor(0.0, device=step_id.device), \
-                   torch.tensor(0.0, device=step_id.device), \
-                   torch.tensor(0.0, device=step_id.device), \
-                   torch.tensor(0.0, device=step_id.device)
-        
         turn_masks = torch.arange(max_turns, device=step_id.device).view(1, 1, -1) == step_id.unsqueeze(-1)  # (bsz, seq_len, max_turns)
         turn_masks = turn_masks.detach()
         turn_level_eos_mask = (turn_masks.sum(1) != 0).detach()

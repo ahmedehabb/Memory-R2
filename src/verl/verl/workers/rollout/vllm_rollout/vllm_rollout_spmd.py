@@ -445,7 +445,7 @@ class vLLMRollout(BaseRollout):
             prompt = generate_memory_prompt_using_facts(
                 conv_memories[i],
                 facts_data,
-                top_k_memories=self.config.top_k_memories_for_operations, 
+                top_k_memories_for_operations=self.config.top_k_memories_for_operations, 
                 similarity_threshold=self.config.similarity_threshold, 
                 use_similarity=True
             )
@@ -497,7 +497,7 @@ class vLLMRollout(BaseRollout):
         # Multi-turn dialogue generation
         # this will change the history, finish_flags, finish_reason
         print(f"\nStarting multi-turn conversation...\n")
-        latest_outputs, conversation_history, conv_memories, shared_manager = self._run_multi_turn_conversation(
+        latest_outputs, conversation_history, conv_memories, shared_manager, mem_op_stats = self._run_multi_turn_conversation(
             prompts,
             tokenizer=tokenizer,
             max_num_turns=max_num_turns,
@@ -589,6 +589,7 @@ class vLLMRollout(BaseRollout):
             agent_roles=agent_roles,
             prompts=prompts,
             conversation_history=conversation_history,
+            mem_op_stats=mem_op_stats,
         )
 
         if self.config.add_checking:
@@ -725,12 +726,12 @@ class vLLMRollout(BaseRollout):
             # Find max length for padding
             max_length = max([len(ids) for ids in input_ids_lst[role]])
             # self.config.max_prompt_length + self.config.max_response_length should be = 32768 (whole context length)
-            if max_length > self.config.max_prompt_length + self.config.max_response_length:
-                print(f"WARNING:: role: {role}, max_length={max_length} > {self.config.max_prompt_length + self.config.max_response_length}")
+            if max_length > self.config.prompt_length + self.config.response_length:
+                print(f"WARNING:: role: {role}, max_length={max_length} > {self.config.prompt_length + self.config.response_length}")
                 # raise RuntimeError(f"max_length={max_length} > {self.config.max_prompt_length + self.config.max_response_length}")
 
             # Use max length for padding and gathering
-            max_length = self.config.max_prompt_length + self.config.max_response_length
+            max_length = self.config.prompt_length + self.config.response_length
             
             # Pad and convert to tensors
             padded_input_ids = torch.full((batch_size, max_length), 
@@ -753,6 +754,13 @@ class vLLMRollout(BaseRollout):
                 padded_labels[i, :seq_len] = torch.tensor(labels[:seq_len], dtype=torch.long)
                 padded_step_ids[i, :seq_len] = torch.tensor(step_ids[:seq_len], dtype=torch.long)
                 attention_mask[i, :seq_len] = 1
+
+            # Try decoding here using tokenizer for debugging the first sample for each role
+            # decoded_sample = tokenizer.decode(padded_input_ids[0][attention_mask[0] == 1].tolist())
+            # print(f"TESTING DECODING -- Role: {role} - Sample decoded input_ids[0]: {decoded_sample}")
+            # print(f"TESTING DECODING -- Role: {role} - Sample labels[0]: {padded_labels[0][attention_mask[0] == 1].tolist()}")
+            # print(f"TESTING DECODING -- Role: {role} - Sample step_ids[0]: {padded_step_ids[0][attention_mask[0] == 1].tolist()}")
+
             
             # Compute position ids from attention mask
             position_ids = compute_position_id_with_mask(attention_mask)
@@ -819,6 +827,16 @@ class vLLMRollout(BaseRollout):
         
         # Initialize conversation memories with None since at first turn we need to load from cache
         conv_memories = None
+        
+        # Initialize operation statistics storage for full batch size
+        mem_op_stats = {
+            'insert_successful': [0] * batch_size,
+            'delete_successful': [0] * batch_size,
+            'update_successful': [0] * batch_size,
+            'insert_total': [0] * batch_size,
+            'delete_total': [0] * batch_size,
+            'update_total': [0] * batch_size,
+        }
         
         assert len(finish_flags) == len(fact_prompts), f"{finish_flags.shape} != {len(fact_prompts)}"
 
@@ -983,7 +1001,13 @@ class vLLMRollout(BaseRollout):
                 elif role == agent_roles[1]:
                     # Execute memory operations after the first agent's turn
                     print(f"  Executing memory operations for {len(current_outputs)} samples...")
-                    self._execute_memory_operations(prompts, conv_memories, shared_manager, current_outputs, unfinished_indices)
+                    rewards, ops_per_sample, batch_op_stats = self._execute_memory_operations(
+                        prompts, conv_memories, shared_manager, current_outputs, unfinished_indices
+                    )
+                    # Accumulate operation statistics for unfinished samples
+                    for i, idx in enumerate(unfinished_indices):
+                        for key in mem_op_stats.keys():
+                            mem_op_stats[key][idx] += batch_op_stats[key][i]
                 
                 # XXX(ziyu): remove finish flag in output for reasoning agent here
                 #  consider move to a post-processing function
@@ -1026,7 +1050,7 @@ class vLLMRollout(BaseRollout):
         # use the last output of each agent as latest output response
         latest_outputs = [h[-1]['content'] for h in history]
 
-        return latest_outputs, conversation_history, conv_memories, shared_manager
+        return latest_outputs, conversation_history, conv_memories, shared_manager, mem_op_stats
     
     def _execute_memory_operations(
         self,
@@ -1035,7 +1059,7 @@ class vLLMRollout(BaseRollout):
         shared_manager: MemoryManager,
         response_texts,
         unfinished_indices: List[int] = None,
-    ) -> tuple[list[float], list[list[dict]]]:
+    ) -> tuple[list[float], list[list[dict]], dict]:
         """Execute memory operations from batch responses without caching.
         
         Args:
@@ -1052,10 +1076,20 @@ class vLLMRollout(BaseRollout):
                   - If JSON valid but 0 ops: reward = 1.0 * 1.0 = 1.0 (intentional no-ops)
                   - If JSON valid with N ops, M successful: reward = 1.0 * (M/N)
             memory_operations_per_sample: List of lists of dicts - recorded operations per sample.
+            operation_stats: Dict with per-sample operation statistics for each type.
         """
         rewards = []
         # Per-sample recorded operations (parsed from LLM)
         memory_operations_per_sample: list[list[dict]] = [[] for _ in range(len(memories))]
+        # Per-sample operation statistics
+        operation_stats = {
+            'insert_successful': [0] * len(memories),
+            'delete_successful': [0] * len(memories),
+            'update_successful': [0] * len(memories),
+            'insert_total': [0] * len(memories),
+            'delete_total': [0] * len(memories),
+            'update_total': [0] * len(memories),
+        }
         sample_ids = prompt_data.non_tensor_batch["sample_id"]
         chunk_ids = prompt_data.non_tensor_batch["chunk_id"]
         turns_json = prompt_data.non_tensor_batch["turns_json"]
@@ -1104,6 +1138,14 @@ class vLLMRollout(BaseRollout):
             total_ops = result.get("total_commands", 0)
             successful_ops = result.get("successful", 0)
             
+            # Extract per-type statistics from result
+            operation_stats['insert_successful'][idx] = result.get('insert_successful', 0)
+            operation_stats['delete_successful'][idx] = result.get('delete_successful', 0)
+            operation_stats['update_successful'][idx] = result.get('update_successful', 0)
+            operation_stats['insert_total'][idx] = result.get('insert_total', 0)
+            operation_stats['delete_total'][idx] = result.get('delete_total', 0)
+            operation_stats['update_total'][idx] = result.get('update_total', 0)
+            
             # Calculate operation success rate
             if total_ops == 0:
                 # No operations - intentional, so 100% success
@@ -1121,7 +1163,7 @@ class vLLMRollout(BaseRollout):
             if result["status"] not in ["success", "partial"]:
                 print(f"Warning: Memory operations had issues: {result}")
         
-        return rewards, memory_operations_per_sample
+        return rewards, memory_operations_per_sample, operation_stats
 
 
     def _prepare_role_prompts(
@@ -1390,6 +1432,7 @@ class vLLMRollout(BaseRollout):
         agent_roles: List[str],
         prompts: DataProto,
         conversation_history: Dict[str, List[List[Dict[str, str]]]],
+        mem_op_stats: Optional[Dict[str, List[int]]] = None,
     ):
         """Prepare final output"""
         print(f"\n_prepare_final_output called")
@@ -1403,6 +1446,18 @@ class vLLMRollout(BaseRollout):
             len(h) // len(agent_roles) for h in history
         ]
         non_tensor_batch["response"] = latest_outputs
+        
+        # Add memory operation statistics if available
+        if mem_op_stats is not None:
+            # Convert lists to numpy arrays with dtype=object for DataProto compatibility
+            non_tensor_batch["mem_insert_successful"] = np.array(mem_op_stats['insert_successful'], dtype=object)
+            non_tensor_batch["mem_delete_successful"] = np.array(mem_op_stats['delete_successful'], dtype=object)
+            non_tensor_batch["mem_update_successful"] = np.array(mem_op_stats['update_successful'], dtype=object)
+            non_tensor_batch["mem_insert_total"] = np.array(mem_op_stats['insert_total'], dtype=object)
+            non_tensor_batch["mem_delete_total"] = np.array(mem_op_stats['delete_total'], dtype=object)
+            non_tensor_batch["mem_update_total"] = np.array(mem_op_stats['update_total'], dtype=object)
+            print(f"  Added memory operation statistics to non_tensor_batch (batch_size={len(mem_op_stats['insert_successful'])})")
+        
         print(f"  Non-tensor batch updated with finish_reason, num_turns, response")
 
         padded_history = _pad_history(history, 2 * self.config.max_num_turns)

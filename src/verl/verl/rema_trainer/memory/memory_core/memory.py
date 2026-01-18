@@ -14,12 +14,12 @@ from rank_bm25 import BM25Okapi
 from verl.rema_trainer.memory.memory_core.embedding_cache import get_cache
 
 class Memory:
-    """Stores conversation turns with metadata in RAM."""
+    """Stores LLM-generated memory items (summaries/facts extracted from conversations) in RAM."""
 
     EMBEDDING_METHOD = "openai"
 
     def __init__(self, embedding_method: str = None, enable_cache: bool = True, cache_dir: str = None) -> None:
-        # Single memory store: conversation turns with metadata
+        # Single memory store: LLM-generated memory items with metadata
         # Each turn: {
         #     "memory_id": str,  # unique identifier for this memory entry
         #     "sample_id": str,  # conversation ID (e.g., "conv-41")
@@ -114,7 +114,7 @@ class Memory:
     def insert(self, sample_id: str, session_id: int, session_time: str, 
                speaker: str, content: str, dia_id: str) -> Dict[str, any]:
         """
-        Insert a conversation turn with metadata.
+        Insert a memory item (LLM-generated summary) with metadata.
         
         Args:
             sample_id: Conversation ID (e.g., "conv-41")
@@ -162,7 +162,7 @@ class Memory:
     
     def get(self, sample_id: str = None, speaker: str = None) -> List[Dict[str, any]]:
         """
-        Retrieve conversation turns, optionally filtered by sample_id and/or speaker.
+        Retrieve memory items, optionally filtered by sample_id and/or speaker.
         
         Args:
             sample_id: Optional conversation ID to filter by
@@ -189,7 +189,7 @@ class Memory:
                top_k: int = None, min_score: float = 0.0, 
                search_method: str = "text-embedding") -> List[Tuple[Dict[str, any], float]]:
         """
-        Search conversation turns using semantic similarity or BM25.
+        Search memory items using semantic similarity or BM25.
         Can filter by sample_id and/or speaker.
         
         Args:
@@ -223,7 +223,7 @@ class Memory:
     
     def _search_embedding(self, turns: List[Dict[str, any]], query: str,
                           top_k: int = None, min_score: float = 0.0) -> List[Tuple[Dict[str, any], float]]:
-        """Search conversation turns using embedding similarity."""
+        """Search memory items using embedding similarity."""
         if not turns:
             return []
         
@@ -261,7 +261,7 @@ class Memory:
     
     def _search_bm25(self, turns: List[Dict[str, any]], query: str,
                      top_k: int = None, min_score: float = 0.0) -> List[Tuple[Dict[str, any], float]]:
-        """Search conversation turns using BM25."""
+        """Search memory items using BM25."""
         if not turns:
             return []
         
@@ -300,7 +300,7 @@ class Memory:
     
     def update(self, memory_id: str, content: str, dia_id: str) -> Dict[str, any]:
         """
-        Update the content of a conversation turn by its memory ID.
+        Update the content of a memory item by its memory ID.
         
         Args:
             memory_id: The memory_id to update
@@ -335,7 +335,7 @@ class Memory:
     
     def delete(self, memory_id: str) -> bool:
         """
-        Delete a conversation turn by its memory ID.
+        Delete a memory item by its memory ID.
         
         Args:
             memory_id: The memory_id to delete
