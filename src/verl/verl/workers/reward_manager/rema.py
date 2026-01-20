@@ -36,12 +36,11 @@ from verl.rema_trainer.memory.judge_llm import judge_with_llm
 # Category ID to human-readable name mapping
 # Used for per-category metrics (F1 and BLEU scores)
 CATEGORY_NAMES = {
-    1: 'single_hop',
+    1: 'multi_hop',
     2: 'temporal',
-    3: 'multi_hop',
-    4: 'open_domain',
+    3: 'open_domain',
+    4: 'single_hop',
     5: 'adversarial',
-    0: 'unknown'  # fallback for unexpected category IDs
 }
 
 # these functions are heavily influenced by the HF squad_metrics.py script
