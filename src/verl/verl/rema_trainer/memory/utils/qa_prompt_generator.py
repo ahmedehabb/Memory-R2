@@ -52,7 +52,7 @@ def format_memories_for_speaker(
             top_k=top_k,
             search_method="text-embedding"
         )
-        dia_ids_set = set()
+        dia_ids_list = []  # Changed from set to list to preserve order
         # Filter by similarity threshold, deduplicate by content, and format
         seen_contents = set()
         for memory_dict, similarity_score in search_results:
@@ -61,7 +61,10 @@ def format_memories_for_speaker(
                 session_time = memory_dict.get("session_time")
                 dia_ids = memory_dict.get("dia_ids", []) # dia_ids is a list of dia_id strings
                 if dia_ids:  # Only update if dia_ids is not None or empty
-                    dia_ids_set.update(dia_ids)
+                    # Preserve order: append dia_ids in the order they appear in similarity ranking
+                    for dia_id in dia_ids:
+                        if dia_id not in dia_ids_list:  # Avoid duplicates but keep order
+                            dia_ids_list.append(dia_id)
                 # Deduplicate by content
                 if content not in seen_contents:
                     seen_contents.add(content)
@@ -74,11 +77,13 @@ def format_memories_for_speaker(
         # Fallback: return all memories for this speaker (original behavior)
         all_memories = memory.get()
         speaker_memories = [mem for mem in all_memories if mem.get("speaker") == speaker_name]
-        dia_ids_set = set()
+        dia_ids_list = []  # Changed from set to list
         for mem in speaker_memories:
             dia_ids = mem.get("dia_ids", []) # dia_ids is a list of dia_id strings
             if dia_ids:  # Only update if dia_ids is not None or empty
-                dia_ids_set.update(dia_ids)
+                for dia_id in dia_ids:
+                    if dia_id not in dia_ids_list:
+                        dia_ids_list.append(dia_id)
 
         # Format the memories
         for mem in speaker_memories:
@@ -88,7 +93,7 @@ def format_memories_for_speaker(
                 "content": mem.get("content")
             })
     
-    return formatted_memories, list(dia_ids_set)
+    return formatted_memories, dia_ids_list
 
 
 def generate_qa_prompt(
@@ -101,7 +106,7 @@ def generate_qa_prompt(
     similarity_threshold: float = 0.3,
     use_similarity: bool = True,
     prompt_template_path: Optional[str] = None
-) -> Tuple[str, List[str]]:
+) -> Tuple[str, List[str], List[str]]:
     """
     Generate the complete prompt for question answering based on memories.
     
@@ -119,7 +124,7 @@ def generate_qa_prompt(
         prompt_template_path: Path to qa.txt template (optional, auto-detects if None)
         
     Returns:
-        Complete prompt string ready to send to LLM
+        Tuple of (prompt, speaker_1_dia_ids, speaker_2_dia_ids) where dia_ids are ordered by similarity rank
     """
     # Auto-detect template path if not provided
     if prompt_template_path is None:
@@ -162,6 +167,5 @@ def generate_qa_prompt(
     # Removed current session_time from qa prompt
     # prompt = prompt.replace("{{session_time}}", session_time)
 
-    all_dia_ids = list(set(speaker_1_dia_ids + speaker_2_dia_ids))
-
-    return prompt, all_dia_ids
+    # Return separate ordered lists for each speaker to preserve individual rankings
+    return prompt, speaker_1_dia_ids, speaker_2_dia_ids

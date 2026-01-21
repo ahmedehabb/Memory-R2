@@ -113,10 +113,10 @@ def process_single_qa(qa_pair, memory, speakers, session_time):
     evidence = qa_pair.get('evidence', None)
     category = qa_pair.get('category', 0)
 
-    # Generate prompt and get LLM response
-    prompt, all_dia_ids = generate_qa_prompt(memory, speaker_1=speakers[0], speaker_2=speakers[1], 
+    # Generate prompt for memory retrieval (to get dia_ids)
+    prompt, speaker_1_dia_ids, speaker_2_dia_ids = generate_qa_prompt(memory, speaker_1=speakers[0], speaker_2=speakers[1], 
                                              question=question, session_time=session_time, 
-                                             top_k_per_speaker=20, similarity_threshold=0.1, use_similarity=True)
+                                             top_k_per_speaker=10, similarity_threshold=0.0, use_similarity=True)
     response = judge_with_llm(prompt)
     predicted_answer = extract_answer_from_text(response)
 
@@ -133,7 +133,8 @@ def process_single_qa(qa_pair, memory, speakers, session_time):
         'bleu_score': bleu_score,
         'category': category,
         'evidence': evidence,
-        'all_dia_ids': all_dia_ids,
+        'speaker_1_dia_ids': speaker_1_dia_ids,
+        'speaker_2_dia_ids': speaker_2_dia_ids,
         'prompt': prompt
     }
 
@@ -162,6 +163,16 @@ def compute_memory_penalty(mem_op_stats, weights=None):
 def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, session_id: int, session_evidences: list, extra_info: dict=None, mem_op_stats: dict=None) -> tuple[float, dict]:
     key = f"{conv_id}_chunk{chunk_id}"
     memory = MemoryManager().get_snapshot(sample_id=conv_id, chunk_id=chunk_id, epoch=epoch, split=split, index_in_batch=index)
+    
+    # # Compute memory penalty from operation statistics
+    # memory_penalty = 0.0
+    # if mem_op_stats is not None:
+    #     memory_penalty = compute_memory_penalty(mem_op_stats)
+    #     print(f"[LocomoScore] Memory operations for conv {conv_id}, chunk {chunk_id}:")
+    #     print(f"  - Insert: {mem_op_stats.get('insert_successful', 0)}")
+    #     print(f"  - Delete: {mem_op_stats.get('delete_successful', 0)}")
+    #     print(f"  - Update: {mem_op_stats.get('update_successful', 0)}")
+    #     print(f"  - Penalty: {memory_penalty:.4f}")
     
     # Compute score for all QA pairs and return average
     qa_scores = 0.0
@@ -205,6 +216,10 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         question_score = result['question_score']
         bleu_score = result['bleu_score']
         category = result['category']
+        # dia_ids retrieved from memory retrieval part (separate for each speaker), and evidence needed to solve Q
+        speaker_1_dia_ids = result['speaker_1_dia_ids']
+        speaker_2_dia_ids = result['speaker_2_dia_ids']
+        dia_ids_needed_for_q = result['evidence']
         
         # Track per-category scores for aggregation later
         if category not in category_f1_scores:
@@ -213,18 +228,83 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         category_f1_scores[category].append(question_score)
         category_bleu_scores[category].append(bleu_score)
 
-        # if question_score != 1.0:
-        #     print(f"[LocomoScore] Mismatch detected. Gold: {result['gold_answer']}, full response: {result['response']}")
-        #     retrieved_memory = result['prompt'].find("Memories for user")
-        #     if retrieved_memory != -1:
-        #         print(f"Retrieved Memory we got:\n{result['prompt'][retrieved_memory:]}\n")
-
         # Accumulate scores for averaging
         qa_scores += question_score
         bleu_scores += bleu_score
         
         print(f"[LocomoScore] Q{qa_idx+1}/{num_questions} [{CATEGORY_NAMES[category]}]: {result['question']}")
         print(f"[LocomoScore] Gold: {result['gold_answer']}, Predicted: {result['predicted_answer']}, F1: {question_score}, BLEU: {bleu_score}")
+        print(f"[LocomoScore] Speaker 1 dia_ids (ranked): {speaker_1_dia_ids}")
+        print(f"[LocomoScore] Speaker 2 dia_ids (ranked): {speaker_2_dia_ids}")
+
+        if question_score < 0.5:  # Use < instead of != to handle floating point precision
+            print(f"[LocomoScore] === Mismatch Analysis (F1={question_score:.3f}) ===")
+            
+            # Handle None/empty cases
+            dia_ids_needed_for_q = dia_ids_needed_for_q or []
+            speaker_1_dia_ids = speaker_1_dia_ids or []
+            speaker_2_dia_ids = speaker_2_dia_ids or []
+            
+            # Combine both speakers for overall analysis
+            dia_ids_retrieved_combined = speaker_1_dia_ids + speaker_2_dia_ids
+            
+            # Convert to sets for analysis
+            needed_set = set(dia_ids_needed_for_q)
+            retrieved_set = set(dia_ids_retrieved_combined)
+            memory_set = memory.dia_ids_set if hasattr(memory, 'dia_ids_set') else set()
+            
+            print(f"[LocomoScore] Evidence needed: {sorted(list(needed_set))} (total: {len(needed_set)})")
+            print(f"[LocomoScore] Speaker 1 retrieved: {speaker_1_dia_ids} (total: {len(speaker_1_dia_ids)})")
+            print(f"[LocomoScore] Speaker 2 retrieved: {speaker_2_dia_ids} (total: {len(speaker_2_dia_ids)})")
+            print(f"[LocomoScore] Evidence in memory: (total: {len(memory_set)})")
+            
+            # Compute diagnostic metrics
+            correctly_retrieved = needed_set & retrieved_set  # Needed AND retrieved
+            missing_from_retrieval = needed_set - retrieved_set  # Needed but NOT retrieved
+            extra_retrieved = retrieved_set - needed_set  # Retrieved but NOT needed
+            in_memory_set = needed_set & memory_set
+            not_in_memory_set = needed_set - memory_set
+            retrieval_failure_set = in_memory_set - retrieved_set
+            
+            # Report coverage metrics
+            if len(needed_set) > 0:
+                coverage = len(correctly_retrieved) / len(needed_set)
+                precision = len(correctly_retrieved) / len(retrieved_set) if len(retrieved_set) > 0 else 0.0
+                print(f"[LocomoScore] Evidence coverage (recall): {coverage:.1%} ({len(correctly_retrieved)}/{len(needed_set)} needed retrieved)")
+                print(f"[LocomoScore] Evidence precision: {precision:.1%} ({len(correctly_retrieved)}/{len(retrieved_set)} retrieved were relevant)")
+                if len(extra_retrieved) > 0:
+                    print(f"[LocomoScore] Extra (irrelevant) retrievals: {len(extra_retrieved)} items not needed")
+            
+            # Report issues
+            if len(not_in_memory_set) > 0:
+                print(f"[LocomoScore] MEMORY PROBLEM: {len(not_in_memory_set)}/{len(needed_set)} needed dia_ids not saved in memory")
+                print(f"[LocomoScore] Missing from memory: {sorted(list(not_in_memory_set))}")
+            
+            if len(retrieval_failure_set) > 0:
+                print(f"[LocomoScore] RETRIEVAL PROBLEM: {len(retrieval_failure_set)}/{len(in_memory_set)} dia_ids in memory but not retrieved")
+                print(f"[LocomoScore] In memory but not retrieved: {sorted(list(retrieval_failure_set))}")
+            
+            # Show ranking analysis: where do correct dia_ids appear in each speaker's retrieval order?
+            if len(needed_set) > 0:
+                print(f"[LocomoScore] === Ranking Analysis (F1={question_score:.3f}) ===")
+                for needed_id in sorted(list(needed_set)):
+                    # Check speaker 1
+                    if needed_id in speaker_1_dia_ids:
+                        rank = speaker_1_dia_ids.index(needed_id) + 1  # 1-indexed rank
+                        print(f"[LocomoScore]   dia_id '{needed_id}' found in Speaker 1 at rank {rank}/{len(speaker_1_dia_ids)}")
+                    # Check speaker 2
+                    elif needed_id in speaker_2_dia_ids:
+                        rank = speaker_2_dia_ids.index(needed_id) + 1  # 1-indexed rank
+                        print(f"[LocomoScore]   dia_id '{needed_id}' found in Speaker 2 at rank {rank}/{len(speaker_2_dia_ids)}")
+                    else:
+                        print(f"[LocomoScore]   dia_id '{needed_id}' NOT RETRIEVED from either speaker")
+            
+            # Show retrieved memory context if available
+            if 'prompt' in result and result['prompt']:
+                retrieved_memory_idx = result['prompt'].find("Memories for user")
+                if retrieved_memory_idx != -1:
+                    memory_section = result['prompt'][retrieved_memory_idx:]  # Limit to 500 chars
+                    print(f"[LocomoScore] Retrieved memory preview:\n{memory_section}...\n")
     
     # Calculate average scores
     avg_f1_score = qa_scores / num_questions if num_questions > 0 else 0.0
@@ -362,11 +442,6 @@ class ReMARewardManager:
              )
             for i in range(len(data))
         ]
-        print(f"[RewardManager] Prepared {len(params)} parameter sets")
-        if len(params) > 0:
-            print(f"[RewardManager] Sample params[0]:")
-            print(f"  - qa_pairs_json: {params[0][0]}")
-            print(f"  - extra_info: {params[0][2]}")
 
         qa_scores = []  # Track QA accuracy (F1) separately
         bleu_scores = []  # Track BLEU scores separately
@@ -411,8 +486,24 @@ class ReMARewardManager:
         print(f"[RewardManager] Score computation complete. Got {len(qa_scores)} F1 scores, {len(bleu_scores)} BLEU scores, and {len(evidence_scores)} evidence scores")
         
         # Compute combined scores once (single place for reward logic)
-        combined_scores = [0.5 * qa_scores[i] + 0.5 * evidence_scores[i] for i in range(len(qa_scores))]
+        # Give 0 score to incomplete trajectories (turn_finished != 1)
+        combined_scores = []
+        num_incomplete = 0
+        for i in range(len(qa_scores)):
+            turn_finished = data[i].batch[f'{agent_roles[0]}_turn_finished'].item()
+            # Only apply masking if enabled
+            if data[i].meta_info['mask_unfinished_reward']:
+                if turn_finished == 1:  # Successfully completed
+                    score = 1.0 * qa_scores[i] + 0 * evidence_scores[i]
+                else:  # Incomplete trajectory - give 0 score
+                    score = 0.0
+                    num_incomplete += 1
+            else:
+                # No masking - use score regardless of completion status
+                score = 1.0 * qa_scores[i] + 0 * evidence_scores[i]
+            combined_scores.append(score)
         print(f"[RewardManager] Combined scores computed: mean={sum(combined_scores)/len(combined_scores):.4f}")
+        print(f"[RewardManager] Incomplete trajectories (turn_finished != 1): {num_incomplete}/{len(combined_scores)}")
         
         # Build memory_score_dict from collected results using combined scores
         memory_score_dict = {}
@@ -499,12 +590,13 @@ class ReMARewardManager:
                 print(f"[RewardManager] Added {cat_name}: F1={avg_f1:.4f}, BLEU={avg_bleu:.4f}, count={stats['count']}")
         else:
             print(f"[RewardManager] No category data found in this batch")
-        
+
         print(f"\n[RewardManager] Processing {len(data)} data items to assign rewards...")
         for i_bsz in range(len(data)):
             data_item = data[i_bsz]  # DataProtoItem
 
-            # Use precomputed combined score (consistent with memory selection)
+            # Use precomputed combined score (already masked for incomplete trajectories)
+            # Score is: 0.8 * qa_score + 0.2 * evidence_score (or 0.0 if masked)
             score = combined_scores[i_bsz]
             
             num_turns = data_item.non_tensor_batch['num_turns']
@@ -512,16 +604,11 @@ class ReMARewardManager:
             for i_role, role in enumerate(agent_roles):
                 
                 # Both roles get the same combined score (aligned incentives)
-                # score is already computed as: 0.5 * qa_score + 0.5 * evidence_score
-
-                turn_finished = data_item.batch[f'{role}_turn_finished'].item()
+                # Score is already masked in combined_scores computation above
+                
                 if i_bsz == 0:
+                    turn_finished = data_item.batch[f'{role}_turn_finished'].item()
                     print(f"  - {role}_turn_finished: {turn_finished}")
-                if data_item.meta_info['mask_unfinished_reward']:
-                    # if conversation is not finised normally, i.e. with ['FINISH']
-                    #  the reward should be zero.
-                    # `turn_finished` is 0 means finished normally.
-                    score = score if turn_finished == 0 else 0.0
 
                 # TODO:: Should add my format reward here not this one !
 
@@ -552,7 +639,7 @@ class ReMARewardManager:
             #     print("[score]", score)
             #     print("[history]", history)
 
-        # Only cache memories during training (test/validation are read-only)
+        # Only cache the best memory during training (test/validation already has only one memory)
         current_split = data.meta_info['split']
         if current_split == "train":
             print(f"\n[RewardManager] Training mode: Saving memories (sampling from top {self.top_k_percentage*100:.0f}% by reward)...")
