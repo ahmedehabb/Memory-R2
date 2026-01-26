@@ -104,9 +104,8 @@ actor_rollout_ref:
     enable_sleep_mode: True
     max_num_turns: 1
     stop_when_truncated: False
-    top_k_memories_for_operations: 20
-    top_k_memories_for_qa: 40
-    similarity_threshold: 0.1
+    top_k_memories_for_operations: 10
+    similarity_threshold: 0.0
     add_checking: True 
     # for hf rollout
     do_sample: True

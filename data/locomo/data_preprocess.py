@@ -22,8 +22,8 @@ MIN_FUTURE_QA = 1             # Always include at least 1 future QA (only used i
 # RANDOM_SEED = 41              # For reproducibility
 
 # Train/Test/Val split
-TRAIN_CONVS = 8
-TEST_CONVS = 1
+TRAIN_CONVS = 4
+TEST_CONVS = 5
 VAL_CONVS = 1
 
 # Post-processing for test data, validation data

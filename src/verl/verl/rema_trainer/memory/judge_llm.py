@@ -5,12 +5,16 @@ import hashlib
 import threading
 # from openai import OpenAI
 import google.generativeai as genai
+from together import Together
 from filelock import FileLock
 from typing import List
 
 # --------------------------
 # Configuration
 # --------------------------
+# API Selection: Set USE_GEMINI=false to use Together AI, otherwise uses Gemini (default)
+USE_GEMINI = os.getenv("USE_GEMINI", "True") == "True"
+
 CACHE_DIR = os.getenv("OPENAI_CACHE_DIR", ".")  # Keep same cache dir for compatibility
 MAIN_CACHE_FILE = os.path.join(CACHE_DIR, "judge_cache.json")
 PROCESS_CACHE_FILE = os.path.join(CACHE_DIR, f"judge_cache_{os.getpid()}.json")
@@ -29,9 +33,16 @@ else:
 # OpenAI client (commented out)
 # client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-# Gemini client
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-gemini_model = genai.GenerativeModel('gemini-2.5-flash-lite')  # Small, fast model
+# Initialize clients based on flag
+if USE_GEMINI:
+    print("[judge_llm] Using Gemini API")
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    gemini_model = genai.GenerativeModel('gemini-2.5-flash-lite')
+    together_client = None
+else:
+    print("[judge_llm] Using Together AI API")
+    together_client = Together()
+    gemini_model = None
 
 # --------------------------
 # Utility functions
@@ -146,11 +157,8 @@ MERGE_EVERY_N = 20  # merge after every 20 new entries (reduce lock contention)
 
 def judge_with_llm(prompt: str) -> str:
     """
-    Call Gemini Flash model deterministically and cache the output.
+    Call LLM API (Gemini or Together AI based on USE_GEMINI flag) deterministically and cache the output.
     Merges per-process cache to main cache every N new entries.
-    
-    Note: Name kept as 'judge_with_llm' for backward compatibility,
-    but actually uses Gemini API now.
     """
     global _NEW_ENTRIES_COUNT
 
@@ -161,17 +169,26 @@ def judge_with_llm(prompt: str) -> str:
         if key in JUDGE_CACHE:
             return JUDGE_CACHE[key]
 
-    # Call Gemini API (outside lock to avoid blocking other threads)
+    # Call appropriate API (outside lock to avoid blocking other threads)
     try:
-        generation_config = genai.types.GenerationConfig(
-            temperature=0.0,
-            top_p=1.0,
-        )
-        response = gemini_model.generate_content(
-            prompt,
-            generation_config=generation_config
-        )
-        result = response.text.strip()
+        if USE_GEMINI:
+            generation_config = genai.types.GenerationConfig(
+                temperature=0.0,
+                top_p=1.0,
+            )
+            response = gemini_model.generate_content(
+                prompt,
+                generation_config=generation_config
+            )
+            result = response.text.strip()
+        else:
+            response = together_client.chat.completions.create(
+                model="ServiceNow-AI/Apriel-1.6-15b-Thinker",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                top_p=1.0,
+            )
+            result = response.choices[0].message.content.strip()
     except Exception as e:
         print(f"[judge error] {e}")
         result = ""
@@ -192,7 +209,7 @@ def judge_with_llm(prompt: str) -> str:
 
 def judge_with_llm_batch(prompts: List[str]) -> List[str]:
     """
-    Call Gemini Flash model for multiple prompts with concurrent processing.
+    Call LLM API (Gemini or Together AI based on USE_GEMINI flag) for multiple prompts with concurrent processing.
     Uses caching and concurrent API calls for efficiency.
     
     Args:
@@ -223,19 +240,27 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
     if uncached_prompts:
         print(f"[judge_with_llm_batch] Processing {len(uncached_prompts)} uncached prompts concurrently...")
         
-        generation_config = genai.types.GenerationConfig(
-            temperature=0.0,
-            top_p=1.0,
-        )
-        
         from concurrent.futures import ThreadPoolExecutor, as_completed
         
         def call_api(idx_prompt_pair):
             """Helper function for concurrent API calls"""
             orig_idx, prompt = idx_prompt_pair
             try:
-                response = gemini_model.generate_content(prompt, generation_config=generation_config)
-                response_text = response.text.strip()
+                if USE_GEMINI:
+                    generation_config = genai.types.GenerationConfig(
+                        temperature=0.0,
+                        top_p=1.0,
+                    )
+                    response = gemini_model.generate_content(prompt, generation_config=generation_config)
+                    response_text = response.text.strip()
+                else:
+                    response = together_client.chat.completions.create(
+                        model="ServiceNow-AI/Apriel-1.6-15b-Thinker",
+                        messages=[{"role": "user", "content": prompt}],
+                        temperature=0.0,
+                        top_p=1.0,
+                    )
+                    response_text = response.choices[0].message.content.strip()
                 return orig_idx, prompt, response_text, None
             except Exception as e:
                 return orig_idx, prompt, "", str(e)

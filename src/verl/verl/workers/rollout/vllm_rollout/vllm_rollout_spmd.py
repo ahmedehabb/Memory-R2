@@ -377,11 +377,7 @@ class vLLMRollout(BaseRollout):
                     turns_data = turns_data[start_idx:end_idx]
                     print(f"Generating fact prompt for iteration {current_turn+1}/{max_turns}, processing turns {start_idx}-{end_idx-1} ({len(turns_data)} turns)")
 
-            prompt = """The new conversations turns are mentioned in the triple backticks. You have to analyze the new turns and generate the new facts.
-            ```
-            {turns}
-            ```
-            """
+            prompt = "{turns}"
             formatted_turns = format_turns_for_prompt(turns_data)
             prompt = prompt.format(turns=formatted_turns)
             prompts.append(prompt)
@@ -1238,12 +1234,14 @@ class vLLMRollout(BaseRollout):
         
         for i, question in enumerate(questions):
             # If existing conversation provided, extend it; otherwise start fresh
+            first_turn = False
             if existing_conversations and existing_conversations[i] is not None:
                 # Copy existing conversation and append new question
                 chat = existing_conversations[i].copy()
                 print(f"          Sample {i}: Extending existing conversation with {len(chat)} messages")
             else:
                 # First turn - start with system prompt only
+                first_turn = True
                 chat = [{
                     "role": "system",
                     "content": system_prompts[role]
@@ -1251,13 +1249,36 @@ class vLLMRollout(BaseRollout):
                 print(f"          Sample {i}: Starting fresh conversation")
             
             # Append the new question
-            chat.append({"role": "user", "content": question})
-            chat_lst.append(chat)
-            
-            if role == agent_roles[0]:
-                print(f"meta-thinking agent:: {question}...\n")
+            if first_turn:
+                chat.append({"role": "user", "content": question})
             else:
-                print(f"reasoning agent:: {question}...\n")
+                if role == agent_roles[0]:
+                    chat.append({
+                        "role": "user",
+                        "content": (
+                            "Previous session turns (user and assistant) are provided for context only. "
+                            "You can refer to them for disambiguation or clarity, but do NOT treat them as new events. "
+                            "Analyze the new conversation turns below and generate the new facts.\n```"
+                            + question + "```"
+                        )
+                    })
+                else:
+                    chat.append({
+                        "role": "user",
+                        "content": (
+                            "Previous memory actions and context are provided for reference only. "
+                            "You may refer to them for disambiguation or continuity, but do NOT treat them as new facts or perform duplicate actions. "
+                            "Based on the extracted facts below, perform the required memory operations.\n"
+                            + question
+                        )
+                    })
+
+            if role == agent_roles[0]:
+                print(f"meta-thinking agent:: {chat[-1]}...\n")
+            else:
+                print(f"reasoning agent:: {chat[-1]}...\n")
+            
+            chat_lst.append(chat)
         
         print(f"          Built {len(chat_lst)} chat sequences")
         if len(chat_lst) > 0:

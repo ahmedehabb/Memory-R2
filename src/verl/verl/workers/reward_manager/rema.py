@@ -116,7 +116,7 @@ def process_single_qa(qa_pair, memory, speakers, session_time):
     # Generate prompt for memory retrieval (to get dia_ids)
     prompt, speaker_1_dia_ids, speaker_2_dia_ids = generate_qa_prompt(memory, speaker_1=speakers[0], speaker_2=speakers[1], 
                                              question=question, session_time=session_time, 
-                                             top_k_per_speaker=10, similarity_threshold=0.0, use_similarity=True)
+                                             top_k_per_speaker=20, similarity_threshold=0.0, use_similarity=True)
     response = judge_with_llm(prompt)
     predicted_answer = extract_answer_from_text(response)
 
@@ -383,6 +383,24 @@ class ReMARewardManager:
         data.batch['acc'] = torch.tensor(scores, dtype=torch.float32, device=prompt_ids.device)
         return scores
 
+    def rank_to_grpo_rewards(self, scores: torch.Tensor):
+        """
+        Convert rollout scores into GRPO rewards using linear scaling.
+        scores: Tensor of shape (N,) for SAME conversation.
+        Returns: Tensor of shape (N,) with values in [-1, +1].
+        """
+        N = scores.numel()
+        if N == 1:
+            return torch.zeros_like(scores)
+        
+        # Handle ties: double argsort gives ranks (0 = best, N-1 = worst)
+        ranks = torch.argsort(torch.argsort(scores, descending=True)).float()
+        
+        # Linear scaling: best=+1, worst=-1, linear interpolation in between
+        rewards = 1.0 - 2.0 * ranks / (N - 1)
+        
+        return rewards
+
     def __call__(self, data: DataProto)-> Dict[str, torch.Tensor]:
         """We will expand this function gradually based on the available datasets"""
 
@@ -521,14 +539,19 @@ class ReMARewardManager:
         assert len(category_stats_list) == len(data)
         accuracy = torch.tensor(qa_scores, dtype=torch.float32) # bsz - F1 accuracy
         bleu = torch.tensor(bleu_scores, dtype=torch.float32) # bsz - BLEU scores
-        print(f"\n[RewardManager] Accuracy tensor (F1) shape: {accuracy.shape}, dtype: {accuracy.dtype}")
-        print(f"[RewardManager] Accuracy stats - mean: {accuracy.mean().item():.4f}, min: {accuracy.min().item():.4f}, max: {accuracy.max().item():.4f}")
-        print(f"[RewardManager] Accuracy values: {accuracy.tolist()}")
-        print(f"\n[RewardManager] BLEU tensor shape: {bleu.shape}, dtype: {bleu.dtype}")
-        print(f"[RewardManager] BLEU stats - mean: {bleu.mean().item():.4f}, min: {bleu.min().item():.4f}, max: {bleu.max().item():.4f}")
-        print(f"[RewardManager] BLEU values: {bleu.tolist()}")
+        evidence = torch.tensor(evidence_scores, dtype=torch.float32) # bsz - evidence coverage scores
+        # print(f"\n[RewardManager] Accuracy tensor (F1) shape: {accuracy.shape}, dtype: {accuracy.dtype}")
+        # print(f"[RewardManager] Accuracy stats - mean: {accuracy.mean().item():.4f}, min: {accuracy.min().item():.4f}, max: {accuracy.max().item():.4f}")
+        # print(f"[RewardManager] Accuracy values: {accuracy.tolist()}")
+        # print(f"\n[RewardManager] BLEU tensor shape: {bleu.shape}, dtype: {bleu.dtype}")
+        # print(f"[RewardManager] BLEU stats - mean: {bleu.mean().item():.4f}, min: {bleu.min().item():.4f}, max: {bleu.max().item():.4f}")
+        # print(f"[RewardManager] BLEU values: {bleu.tolist()}")
+        # print(f"\n[RewardManager] Evidence tensor shape: {evidence.shape}, dtype: {evidence.dtype}")
+        # print(f"[RewardManager] Evidence stats - mean: {evidence.mean().item():.4f}, min: {evidence.min().item():.4f}, max: {evidence.max().item():.4f}")
+        # print(f"[RewardManager] Evidence values: {evidence.tolist()}")
         reward_tensor_map['acc'] = accuracy
         reward_tensor_map['bleu'] = bleu
+        reward_tensor_map['evidence'] = evidence
         
         # Compute category statistics for all modes (training, validation, test)
         # For training: metrics are reported per-batch (not accumulated)
@@ -596,7 +619,6 @@ class ReMARewardManager:
             data_item = data[i_bsz]  # DataProtoItem
 
             # Use precomputed combined score (already masked for incomplete trajectories)
-            # Score is: 0.8 * qa_score + 0.2 * evidence_score (or 0.0 if masked)
             score = combined_scores[i_bsz]
             
             num_turns = data_item.non_tensor_batch['num_turns']

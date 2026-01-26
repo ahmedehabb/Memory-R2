@@ -13,6 +13,7 @@ export TRITON_DUMP_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace/trition_
 export EMBEDDING_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace/embedding_cache
 export MEMORY_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace/memory/memory_cache_$JOB_ID/train
 export MEMORY_CACHE_DIR_VAL=/hkfs/work/workspace/scratch/tum_eyi5958-myspace/memory/memory_cache_$JOB_ID/validation
+export MEMORY_CACHE_DIR_TEST=/hkfs/work/workspace/scratch/tum_eyi5958-myspace/memory/memory_cache_$JOB_ID/test
 export OPENAI_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace/openai_cache
 export TEACHER_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace/teacher_cache
 mkdir -p $LOG_DIR $TMPDIR $RAY_TMPDIR $HYDRA_RUN_DIR $SCRATCH_DIR $HF_HOME $HF_DATASETS_CACHE $TRITON_HOME $TRITON_DUMP_DIR $EMBEDDING_CACHE_DIR $MEMORY_CACHE_DIR $MEMORY_CACHE_DIR_VAL $OPENAI_CACHE_DIR $TEACHER_CACHE_DIR
@@ -21,7 +22,9 @@ export HYDRA_FULL_ERROR=1
 export HF_TOKEN="***HF_TOKEN_REDACTED***"
 export OPENAI_API_KEY="***OPENAI_KEY_REDACTED***"
 export GEMINI_API_KEY="${GEMINI_API_KEY:?Set GEMINI_API_KEY via env or sourced .env file}"
-# new: ${GEMINI_API_KEY:?Set GEMINI_API_KEY via env or sourced .env file} ---- old: ${GEMINI_API_KEY:?Set GEMINI_API_KEY via env or sourced .env file}
+export USE_GEMINI=True
+export TOGETHER_API_KEY="${TOGETHER_API_KEY:?Set TOGETHER_API_KEY via env or sourced .env file}"
+# another : ***TOGETHER_KEY_REDACTED*** - ${TOGETHER_API_KEY:?Set TOGETHER_API_KEY via env or sourced .env file}
 export WANDB_API_KEY="***WANDB_KEY_REDACTED***"
 unset ROCR_VISIBLE_DEVICES
 cd /hkfs/work/workspace/scratch/tum_eyi5958-myspace/projects/ReMA-public
@@ -35,37 +38,19 @@ which ray     # should be the one inside flashenv
 
 echo "🔹 Launching PPO training..."
 
-MAX_NUM_TURNS=6
-CHUNK_SIZE=0  # Number of dialogue turns per chunk
+MAX_NUM_TURNS=4
 NUM_TRAIN_CONVS=4
 PROJECT_NAME=rema-test
 DATASET_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace/projects/ReMA-public/data/locomo/processed
-algorithm=grpo
+algorithm=rloo
 num_rollouts=8
 MODEL_PATH=Qwen/Qwen2.5-7B-Instruct
 SPLIT=415
-EXPERIMENT_NAME=${MODEL_PATH}_${SPLIT}_${MAX_NUM_TURNS}_separate
+EXPERIMENT_NAME=${JOB_ID}_${MODEL_PATH}_${algorithm}_${SPLIT}_${MAX_NUM_TURNS}
 
-# Define lengths per turn (16384 hoping it will fit into 32768 context length with 4 turns) 
-# But did it this way since some turns may be shorter/longer than others to avoid completion_token_exceeded
+# Length per turn: should be able to fit all 4 turns concatenated (since at turn i, we include all previous turns)
 prompt_length_per_turn=16384
-response_length_per_turn=16384
-
-# Set max lengths according to the model's context length limit
-max_prompt_length=16384
-max_response_length=16384
-
-# *2 since per turn we have reasoning + executor !! no since 2 roles are not concatenated together
-# max_prompt_length=$((prompt_length_per_turn * MAX_NUM_TURNS))
-# max_response_length=$((response_length_per_turn * MAX_NUM_TURNS))
-
-# if (( max_prompt_length + max_response_length > 32768 )); then
-#     echo "⚠️  Warning: The total length of prompt and response exceeds 32768 tokens, which may lead to out-of-memory issues."
-#     exit
-# fi
-
-# Set this to false, since we dont generate [finished] tokens in multi-turn setting, so no need to mask unfinished rewards
-# reward_model.mask_unfinished_reward=False \
+response_length_per_turn=8192
 
 PYTHONUNBUFFERED=1 python -m verl.rema_trainer.main_ppo \
     trainer.project_name=$PROJECT_NAME \
@@ -75,17 +60,20 @@ PYTHONUNBUFFERED=1 python -m verl.rema_trainer.main_ppo \
     data.train_files=$DATASET_DIR/train.parquet \
     data.val_files=$DATASET_DIR/val.parquet \
     data.val_batch_size=1 \
+    +data.test_files=$DATASET_DIR/test.parquet \
+    +data.test_batch_size=5 \
     data.train_batch_size=$NUM_TRAIN_CONVS \
-    data.max_prompt_length=$max_prompt_length \
-    data.max_response_length=$max_response_length \
+    data.max_prompt_length=$prompt_length_per_turn \
+    data.max_response_length=$response_length_per_turn \
     actor_rollout_ref.rollout.prompt_length=$prompt_length_per_turn \
     actor_rollout_ref.rollout.response_length=$response_length_per_turn \
     data.shuffle=False \
     actor_rollout_ref.model.path=$MODEL_PATH \
     actor_rollout_ref.model.use_remove_padding=True \
     actor_rollout_ref.actor.use_dynamic_bsz=True \
-    actor_rollout_ref.actor.use_kl_loss=False \
-    actor_rollout_ref.actor.kl_loss_coef=1e-3 \
+    actor_rollout_ref.actor.use_kl_loss=True \
+    actor_rollout_ref.actor.kl_loss_coef=0.001 \
+    actor_rollout_ref.actor.kl_loss_type=low_var_kl \
     actor_rollout_ref.actor.entropy_coeff=0 \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=1 \
     actor_rollout_ref.actor.ppo_mini_batch_size=8 \
@@ -95,13 +83,13 @@ PYTHONUNBUFFERED=1 python -m verl.rema_trainer.main_ppo \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=2 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
-    actor_rollout_ref.rollout.max_num_batched_tokens=$((max_prompt_length + max_response_length)) \
-    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$((max_prompt_length + max_response_length)) \
+    actor_rollout_ref.rollout.max_num_batched_tokens=$((prompt_length_per_turn + response_length_per_turn)) \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$((prompt_length_per_turn + response_length_per_turn)) \
     actor_rollout_ref.rollout.max_num_turns=$MAX_NUM_TURNS \
     actor_rollout_ref.rollout.n=$num_rollouts \
     actor_rollout_ref.rollout.stop_when_truncated=True \
-    actor_rollout_ref.actor.optim.lr=1e-6 \
-    +trainer.val_before_train=True \
+    actor_rollout_ref.actor.optim.lr=2e-6 \
+    +trainer.val_before_train=False \
     +trainer.val_only=False \
     +trainer.save_val_generations=True \
     +trainer.save_train_generations=True \
@@ -109,11 +97,11 @@ PYTHONUNBUFFERED=1 python -m verl.rema_trainer.main_ppo \
     trainer.test_freq=15 \
     trainer.save_freq=15 \
     trainer.remove_previous_ckpt_in_save=False \
-    trainer.total_epochs=10 \
+    trainer.total_epochs=20 \
     trainer.total_training_steps=500 \
     algorithm.adv_estimator=$algorithm \
     reward_model.reward_manager=rema \
-    reward_model.mask_unfinished_reward=False \
+    reward_model.mask_unfinished_reward=True \
     algorithm.filter_groups.enable=False \
     trainer.logger='["console","wandb"]' \
     hydra.run.dir=$HYDRA_RUN_DIR 2>&1 | tee $LOG_DIR/ppo.log
