@@ -231,20 +231,6 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
                                                                         index=index)
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
-    elif adv_estimator == AdvantageEstimator.RLOO:
-        rloo_sparse_rewards = torch.zeros_like(data.batch['token_level_rewards'])
-        rloo_sparse_rewards[:, -1] = data.batch['turn_level_reward'].sum(-1)
-        index = data.non_tensor_batch['uid']
-        # responses = data.batch['responses']
-        # response_length = responses.size(-1)
-        # attention_mask = data.batch['attention_mask']
-        # response_mask = attention_mask[:, -response_length:]
-        step_mask = data.batch['step_ids'] != -100
-        advantages, returns = core_algos.compute_rloo_outcome_advantage(token_level_rewards=rloo_sparse_rewards,
-                                                                        eos_mask=step_mask,
-                                                                        index=index)
-        data.batch['advantages'] = advantages
-        data.batch['returns'] = returns
     elif adv_estimator == AdvantageEstimator.REINFORCE_PLUS_PLUS:
         token_level_rewards = data.batch['token_level_rewards']
         # responses = data.batch['responses']
