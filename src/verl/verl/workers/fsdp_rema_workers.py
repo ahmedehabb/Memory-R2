@@ -706,7 +706,7 @@ class ActorRolloutRefWorker(Worker):
                 finish_flag=prompts.meta_info['finish_flag'],
                 agent_roles=prompts.meta_info['agent_roles'],
                 system_prompts=prompts.meta_info['system_prompts'],
-                epoch=prompts.meta_info['epoch'],
+                epoch=prompts.batch['epoch'],
             )
             print(f"Rank {self.rank}: rollout.multi_turn_generate_sequences completed")
             print(f"Rank {self.rank}: Output non_tensor_batch keys: {list(output.non_tensor_batch.keys())}")

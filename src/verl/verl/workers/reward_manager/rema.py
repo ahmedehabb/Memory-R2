@@ -444,7 +444,7 @@ class ReMARewardManager:
              data[i].non_tensor_batch['sample_id'],
              data[i].non_tensor_batch['chunk_id'],
              data[i].non_tensor_batch['speakers'],
-             data.meta_info['epoch'],
+             data[i].batch['epoch'],
              data.meta_info['split'],
              data[i].batch['rollout_idx'],  # Use rollout_idx computed AFTER repeating
              data[i].non_tensor_batch['session_time'],

@@ -350,6 +350,75 @@ def _timer(name: str, timing_raw: Dict[str, float]):
         yield
     timing_raw[name] = timer.last
 
+class ReplayBuffer:
+    """A tiny index-based replay buffer that stores dataset indices with provenance.
+
+    - stores tuples of (dataset_index:int, orig_epoch:int)
+    - supports uniform and simple recency-biased sampling
+    """
+    def __init__(self, capacity: int = 10000):
+        self.capacity = int(capacity)
+        self.buffer: list[tuple[int, int]] = []
+        self.pos = 0
+
+    def add_indices(self, indices, epoch: int = 0):
+        """Add indices with the originating epoch provenance.
+
+        Args:
+            indices: iterable of ints
+            epoch: int epoch to attach to each index
+        """
+        for idx in indices:
+            entry = (int(idx), int(epoch))
+            if len(self.buffer) < self.capacity:
+                self.buffer.append(entry)
+            else:
+                self.buffer[self.pos] = entry
+                self.pos = (self.pos + 1) % self.capacity
+
+    def sample(self, k: int, strategy: str = 'uniform'):
+        import random
+
+        if not self.buffer or k <= 0:
+            return []
+        k = min(k, len(self.buffer))
+        if strategy == 'uniform':
+            return random.sample(self.buffer, k)
+        elif strategy == 'recency':
+            # simple recency bias: sample from the most recent window
+            window = self.buffer[-min(len(self.buffer), max(k * 4, 1)):]
+            return random.sample(window, min(k, len(window)))
+        else:
+            return random.sample(self.buffer, k)
+
+def merge_batch_dicts(dicts: list[dict]) -> dict:
+    """Merge multiple collated batch dicts (tensors and non-tensors) along batch dim.
+
+    Assumes all dicts have the same keys and that tensors should be concatenated on dim=0.
+    """
+    if not dicts:
+        return {}
+    out = {}
+    keys = list(dicts[0].keys())
+    for k in keys:
+        vals = [d[k] for d in dicts if k in d]
+        if not vals:
+            continue
+        first = vals[0]
+        if isinstance(first, torch.Tensor):
+            out[k] = torch.cat(vals, dim=0)
+        elif isinstance(first, np.ndarray):
+            out[k] = np.concatenate(vals, axis=0)
+        elif isinstance(first, list):
+            combined = []
+            for v in vals:
+                combined.extend(v)
+            out[k] = combined
+        else:
+            # fallback: make numpy array of objects
+            out[k] = np.concatenate([np.array(v, dtype=object) for v in vals], axis=0)
+    return out
+
 
 class RayReMATrainer(object):
     """
@@ -750,9 +819,10 @@ class RayReMATrainer(object):
             
             dummy_tensor = torch.arange(0, len(test_data['question']))
             test_data['batch_idx'] = dummy_tensor
+            test_data['epoch'] = torch.full((len(test_data['question']),), self.global_steps, dtype=torch.long)
             
             # Add validation epoch/split info
-            rollout_meta_info['epoch'] = self.global_steps  # validation epoch
+            # rollout_meta_info['epoch'] = self.global_steps  # validation epoch
             rollout_meta_info['split'] = 'validation'
             
             test_batch: DataProto = DataProto.from_single_dict(test_data, meta_info=rollout_meta_info)
@@ -799,9 +869,9 @@ class RayReMATrainer(object):
                 )
             else:
                 test_gen_batch = test_batch.select(
-                        batch_keys=['rollout_idx', 'batch_idx'], 
+                        batch_keys=['rollout_idx', 'batch_idx', 'epoch'], 
                         non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json'], 
-                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'], 
+                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'], 
                         deepcopy=True
                     )
             
@@ -1096,9 +1166,10 @@ class RayReMATrainer(object):
             
             dummy_tensor = torch.arange(0, len(test_data['question']))
             test_data['batch_idx'] = dummy_tensor
+            test_data['epoch'] = torch.full((len(test_data['question']),), self.global_steps, dtype=torch.long)
             
             # Add test epoch/split info
-            rollout_meta_info['epoch'] = self.global_steps
+            # rollout_meta_info['epoch'] = self.global_steps
             rollout_meta_info['split'] = 'test'
             
             test_batch: DataProto = DataProto.from_single_dict(test_data, meta_info=rollout_meta_info)
@@ -1140,9 +1211,9 @@ class RayReMATrainer(object):
                 raise NotImplementedError('multi_modal_inputs test not implemented yet')
             else:
                 test_gen_batch = test_batch.select(
-                        batch_keys=['rollout_idx', 'batch_idx'], 
+                        batch_keys=['rollout_idx', 'batch_idx', 'epoch'], 
                         non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json'], 
-                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'], 
+                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'], 
                         deepcopy=True
                     )
             
@@ -1669,9 +1740,71 @@ class RayReMATrainer(object):
                     print(f"[STEP {self.global_steps}] reward_model[0] keys: {list(batch_dict['reward_model'][0].keys()) if isinstance(batch_dict['reward_model'][0], dict) else 'N/A'}")
                 dummy_tensor = torch.arange(0, len(batch_dict['question']))
                 batch_dict['batch_idx'] = dummy_tensor
-                
+                batch_dict['epoch'] = torch.full((len(batch_dict['question']),), epoch, dtype=torch.long)
+
+                # --- simple index-based replay buffer (lightweight) ---
+                # instantiate once
+                if not hasattr(self, 'replay_buffer'):
+                    capacity = self.config.trainer.get('replay_buffer_size', 100)
+                    self.replay_buffer = ReplayBuffer(capacity=capacity)
+
+                # add current dataset indices to buffer (dataset provides 'index' per sample)
+                if 'index' in batch_dict:
+                    try:
+                        idxs = batch_dict['index'].tolist() if isinstance(batch_dict['index'], np.ndarray) else list(batch_dict['index'])
+                        print(f"[STEP {self.global_steps}] Adding {len(idxs)} indices to replay buffer (step={self.global_steps})")
+                        print(f"[STEP {self.global_steps}] idxs: {idxs}")
+                        self.replay_buffer.add_indices(idxs, epoch=epoch)
+                    except Exception:
+                        pass
+
+                # sample from replay and merge with current batch if requested
+                replay_ratio = float(self.config.trainer.get('replay_mix_ratio', 0.5))
+                n_replay = int(len(batch_dict['question']) * replay_ratio)
+                if n_replay > 0 and getattr(self, 'replay_buffer', None) and len(self.replay_buffer.buffer) > 0:
+                    sampled = self.replay_buffer.sample(n_replay, strategy=self.config.trainer.get('replay_strategy', 'uniform'))
+                    print(f"[STEP {self.global_steps}] Sampling {len(sampled)} entries from replay buffer to merge into current batch")
+                    if len(sampled) > 0:
+                        # sampled contains tuples (index, orig_epoch)
+                        sample_indices = [s[0] for s in sampled]
+                        sample_epochs = [s[1] for s in sampled]
+                        print(f"[STEP {self.global_steps}] sample_indices: {sample_indices}, sample_epochs: {sample_epochs}")
+                        # get raw items and collate using project's collate_fn
+                        replay_items = [self.train_dataset[int(i)] for i in sample_indices]
+                        try:
+                            replay_batch = collate_fn(replay_items)
+                            # Ensure per-sample provenance tensors exist for replayed items so
+                            # merged dicts have consistent batch dims. Use stored orig_epoch.
+                            if len(replay_batch) > 0:
+                                first_key = list(replay_batch.keys())[0]
+                                first_val = replay_batch[first_key]
+                                if isinstance(first_val, torch.Tensor):
+                                    n_replay_actual = first_val.shape[0]
+                                elif isinstance(first_val, np.ndarray):
+                                    n_replay_actual = first_val.shape[0]
+                                else:
+                                    n_replay_actual = len(first_val)
+
+                                # attach stored epoch provenance
+                                replay_batch['epoch'] = torch.tensor(sample_epochs, dtype=torch.long)
+                                # mark replayed samples (non-tensor field)
+                                # replay_batch['is_replay'] = np.array([True] * n_replay_actual, dtype=object)
+                                # optionally add replay_age
+                                # try:
+                                #     replay_batch['replay_age'] = (epoch - torch.tensor(sample_epochs, dtype=torch.long)).tolist()
+                                # except Exception:
+                                #     pass
+
+                            merged = merge_batch_dicts([batch_dict, replay_batch])
+                            # recompute batch_idx for merged batch
+                            merged_size = merged[list(merged.keys())[0]].shape[0]
+                            merged['batch_idx'] = torch.arange(0, merged_size)
+                            batch_dict = merged
+                        except Exception:
+                            # fallback: ignore replay if anything goes wrong
+                            pass
+
                 # Add some meta_info to be used in rollouts
-                rollout_meta_info['epoch'] = epoch
                 rollout_meta_info['split'] = 'train'
 
                 new_batch: DataProto = DataProto.from_single_dict(batch_dict, meta_info=rollout_meta_info)
@@ -1701,9 +1834,9 @@ class RayReMATrainer(object):
                 else:
                     # because verl originally calls this 'chat'
                     gen_batch = new_batch.select(
-                        batch_keys=['rollout_idx', 'batch_idx'], 
+                        batch_keys=['rollout_idx', 'batch_idx', 'epoch'], 
                         non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json'], 
-                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'epoch', 'split'],
+                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'],
                         deepcopy=True
                     )
                 print(f"[STEP {self.global_steps}] Generation batch prepared with {len(gen_batch.batch)} samples")

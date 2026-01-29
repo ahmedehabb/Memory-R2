@@ -384,14 +384,14 @@ class vLLMRollout(BaseRollout):
 
         return prompts
     
-    def generate_memory_prompts(self, sample_ids, chunk_ids, facts_responses, epoch, split, conv_memories=None) -> Tuple[List[str], List[Memory], MemoryManager]:
+    def generate_memory_prompts(self, sample_ids, chunk_ids, facts_responses, epochs, split, conv_memories=None) -> Tuple[List[str], List[Memory], MemoryManager]:
         """Load memory snapshots before multi-turn generation and generate memory-augmented prompts for each sample.
         
         Args:
             sample_ids: List of conversation IDs (already filtered to unfinished)
             chunk_ids: List of chunk IDs (already filtered to unfinished)
             facts_responses: List of facts data responses (already filtered to unfinished)
-            epoch: Current epoch
+            epochs: List of epochs corresponding to each sample
             split: Data split ('train' or 'validation')
             conv_memories: Optional pre-loaded memories (already filtered to unfinished). If None, will load from cache.
         """
@@ -407,6 +407,7 @@ class vLLMRollout(BaseRollout):
             for i in range(len(sample_ids)):
                 conv_id = sample_ids[i]
                 chunk_id = chunk_ids[i]
+                epoch = epochs[i]
                 
                 # Load memory from previous chunk if it exists
                 if chunk_id > 1:  # chunk_id starts from 1
@@ -526,7 +527,7 @@ class vLLMRollout(BaseRollout):
                 conv_memories[i],
                 conv_id,
                 chunk_id,
-                prompts.meta_info["epoch"],
+                prompts.batch["epoch"][i],
                 prompts.meta_info["split"],
                 index_in_batch=global_idx
             )
@@ -965,6 +966,7 @@ class vLLMRollout(BaseRollout):
                     # Filter ALL inputs to unfinished samples
                     unfinished_sample_ids = [prompts.non_tensor_batch["sample_id"][idx] for idx in unfinished_indices]
                     unfinished_chunk_ids = [prompts.non_tensor_batch["chunk_id"][idx] for idx in unfinished_indices]
+                    unfinished_epochs = [prompts.batch["epoch"][idx] for idx in unfinished_indices]
                     unfinished_conv_memories = None
                     if conv_memories is not None:
                         unfinished_conv_memories = [conv_memories[idx] for idx in unfinished_indices]
@@ -974,7 +976,7 @@ class vLLMRollout(BaseRollout):
                         sample_ids=unfinished_sample_ids,
                         chunk_ids=unfinished_chunk_ids,
                         facts_responses=extracted_facts,
-                        epoch=prompts.meta_info["epoch"],
+                        epochs=unfinished_epochs,
                         split=prompts.meta_info["split"],
                         conv_memories=unfinished_conv_memories,
                     )
