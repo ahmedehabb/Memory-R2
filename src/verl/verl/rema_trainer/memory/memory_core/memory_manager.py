@@ -240,9 +240,19 @@ class MemoryManager:
         if not dia_id:
             return self._error_result("Missing 'dia_id' field")
         
-        # Validate dia_id is a string, not a list
-        if isinstance(dia_id, list):
-            return self._error_result(f"dia_id must be a string, not a list. Got: {dia_id}")
+        # Type validations (ensure stable schema: strings where expected)
+        if not isinstance(sample_id, str):
+            return self._error_result(f"'sample_id' must be a string, got {type(sample_id).__name__}: {sample_id}")
+        if not isinstance(session_id, int):
+            return self._error_result(f"'session_id' must be an integer, got {type(session_id).__name__}: {session_id}")
+        if not isinstance(session_time, str):
+            return self._error_result(f"'session_time' must be a string, got {type(session_time).__name__}: {session_time}")
+        if not isinstance(speaker, str):
+            return self._error_result(f"'speaker' must be a string, got {type(speaker).__name__}: {speaker}")
+        if not isinstance(content, str):
+            return self._error_result(f"'content' must be a string, got {type(content).__name__}: {content}")
+        if not isinstance(dia_id, str):
+            return self._error_result(f"'dia_id' must be a string, got {type(dia_id).__name__}: {dia_id}")
         
         try:
             turn_data = memory.insert(
@@ -278,9 +288,13 @@ class MemoryManager:
         if not dia_id:
             return self._error_result("Missing 'dia_id' field")
         
-        # Validate dia_id is a string, not a list
-        if isinstance(dia_id, list):
-            return self._error_result(f"dia_id must be a string, not a list. Got: {dia_id}")
+        # Validate dia_id and types
+        if not isinstance(memory_id, str):
+            return self._error_result(f"'memory_id' must be a string, got {type(memory_id).__name__}: {memory_id}")
+        if not isinstance(content, str):
+            return self._error_result(f"'content' must be a string, got {type(content).__name__}: {content}")
+        if not isinstance(dia_id, str):
+            return self._error_result(f"'dia_id' must be a string, got {type(dia_id).__name__}: {dia_id}")
         
         try:
             updated_turn = memory.update(memory_id, content, dia_id)
@@ -339,6 +353,14 @@ class MemoryManager:
         if search_method not in ["bm25", "text-embedding"]:
             return self._error_result(f"Invalid search_method: {search_method}")
         
+        # Validate optional filter types
+        if sample_id is not None and not isinstance(sample_id, str):
+            return self._error_result(f"'sample_id' must be a string when provided, got {type(sample_id).__name__}: {sample_id}")
+        if speaker is not None and not isinstance(speaker, str):
+            return self._error_result(f"'speaker' must be a string when provided, got {type(speaker).__name__}: {speaker}")
+        if top_k is not None and not isinstance(top_k, int):
+            return self._error_result(f"'top_k' must be an integer when provided, got {type(top_k).__name__}: {top_k}")
+
         try:
             results = memory.search(
                 query=query,
