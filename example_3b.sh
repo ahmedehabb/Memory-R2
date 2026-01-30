@@ -21,7 +21,7 @@ mkdir -p $LOG_DIR $TMPDIR $RAY_TMPDIR $HYDRA_RUN_DIR $SCRATCH_DIR $HF_HOME $HF_D
 export HYDRA_FULL_ERROR=1
 export HF_TOKEN="***HF_TOKEN_REDACTED***"
 export OPENAI_API_KEY="***OPENAI_KEY_REDACTED***"
-export GEMINI_API_KEY="${GEMINI_API_KEY:?Set GEMINI_API_KEY via env or sourced .env file}"
+export GEMINI_API_KEY=""
 export USE_GEMINI=True
 export TOGETHER_API_KEY="${TOGETHER_API_KEY:?Set TOGETHER_API_KEY via env or sourced .env file}"
 # another : ***TOGETHER_KEY_REDACTED*** - ${TOGETHER_API_KEY:?Set TOGETHER_API_KEY via env or sourced .env file}
