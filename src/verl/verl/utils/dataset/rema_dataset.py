@@ -80,8 +80,9 @@ class ChunkBatchSampler(Sampler):
                     if i + j < chunk_size:
                         batch_indices.append(chunk_indices[i + j])
                     elif self.pad_incomplete:
-                        # For training: pad with repeated samples from same chunk (acts like extra rollouts)
-                        repeat_idx = (i + j) % chunk_size
+                        # For training: pad with random samples from same chunk to act as extra rollouts
+                        # Random sampling avoids over-weighting the samples at the start of the chunk
+                        repeat_idx = np.random.randint(0, chunk_size)
                         batch_indices.append(chunk_indices[repeat_idx])
                     # For validation/test: don't pad, just use what we have
                 
