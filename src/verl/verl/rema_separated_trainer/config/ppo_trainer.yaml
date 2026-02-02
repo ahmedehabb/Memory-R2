@@ -2,7 +2,7 @@ data:
   tokenizer: null
   train_files: data/MATH/train.parquet
   val_files: data/MATH/test500.parquet
-  prompt_key: question
+  prompt_key: prompt
   max_prompt_length: 7168 
   max_response_length: 1024 
   train_batch_size: 1024
@@ -104,6 +104,8 @@ actor_rollout_ref:
     enable_sleep_mode: True
     max_num_turns: 1
     stop_when_truncated: False
+    top_k_memories_for_operations: 10
+    similarity_threshold: 0.0
     add_checking: True 
     # for hf rollout
     do_sample: True

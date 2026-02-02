@@ -16,6 +16,7 @@ FSDP PPO Trainer with Ray-based single controller.
 This trainer supports model-agonistic model initialization with huggingface
 """
 
+import json
 import pdb
 import copy
 import os
@@ -43,7 +44,7 @@ from verl.rema_trainer.ppo import core_algos
 from verl.rema_trainer.ppo.metric_utils import compute_data_metrics, compute_throughout_metrics, compute_timing_metrics, reduce_metrics
 from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
-from verl.utils.dataset.rema_dataset import RLHFDataset, collate_fn
+from verl.utils.dataset.rema_dataset import RLHFDataset, collate_fn, ChunkBatchSampler
 from verl.utils.tracking import ValidationGenerationsLogger
 from torch.utils.data import RandomSampler, SequentialSampler
 from torchdata.stateful_dataloader import StatefulDataLoader
@@ -353,6 +354,76 @@ def _timer(name: str, timing_raw: Dict[str, float]):
     timing_raw[name] = timer.last
 
 
+class ReplayBuffer:
+    """A tiny index-based replay buffer that stores dataset indices with provenance.
+
+    - stores tuples of (dataset_index:int, orig_epoch:int)
+    - supports uniform and simple recency-biased sampling
+    """
+    def __init__(self, capacity: int = 10000):
+        self.capacity = int(capacity)
+        self.buffer: list[tuple[int, int]] = []
+        self.pos = 0
+
+    def add_indices(self, indices, epoch: int = 0):
+        """Add indices with the originating epoch provenance.
+
+        Args:
+            indices: iterable of ints
+            epoch: int epoch to attach to each index
+        """
+        for idx in indices:
+            entry = (int(idx), int(epoch))
+            if len(self.buffer) < self.capacity:
+                self.buffer.append(entry)
+            else:
+                self.buffer[self.pos] = entry
+                self.pos = (self.pos + 1) % self.capacity
+
+    def sample(self, k: int, strategy: str = 'uniform'):
+        import random
+
+        if not self.buffer or k <= 0:
+            return []
+        k = min(k, len(self.buffer))
+        if strategy == 'uniform':
+            return random.sample(self.buffer, k)
+        elif strategy == 'recency':
+            # simple recency bias: sample from the most recent window
+            window = self.buffer[-min(len(self.buffer), max(k * 4, 1)):]
+            return random.sample(window, min(k, len(window)))
+        else:
+            return random.sample(self.buffer, k)
+
+def merge_batch_dicts(dicts: list[dict]) -> dict:
+    """Merge multiple collated batch dicts (tensors and non-tensors) along batch dim.
+
+    Assumes all dicts have the same keys and that tensors should be concatenated on dim=0.
+    """
+    if not dicts:
+        return {}
+    out = {}
+    keys = list(dicts[0].keys())
+    for k in keys:
+        vals = [d[k] for d in dicts if k in d]
+        if not vals:
+            continue
+        first = vals[0]
+        if isinstance(first, torch.Tensor):
+            out[k] = torch.cat(vals, dim=0)
+        elif isinstance(first, np.ndarray):
+            out[k] = np.concatenate(vals, axis=0)
+        elif isinstance(first, list):
+            combined = []
+            for v in vals:
+                combined.extend(v)
+            out[k] = combined
+        else:
+            # fallback: make numpy array of objects
+            out[k] = np.concatenate([np.array(v, dtype=object) for v in vals], axis=0)
+    return out
+
+
 class RayReMASeparatedTrainer(object):
     """
     Note that this trainer runs on the driver process on a single CPU/GPU node.
@@ -543,25 +614,43 @@ class RayReMASeparatedTrainer(object):
         #     'truncation', 'error'
         # ), f'dataset truncation {self.train_dataset.truncation} must be the same as config {self.config.data.get("truncation", "error")}'
         #########################################################
-        # use sampler for better ckpt resume
+        # Use ChunkBatchSampler for training to ensure batches never span multiple chunk_ids
+        # This is critical for memory management where chunk N depends on chunk N-1's saved memory
+        # Note: ChunkBatchSampler doesn't support shuffle yet (processes chunks sequentially)
         if self.config.data.shuffle:
+            raise NotImplementedError("shuffle=True is not supported with ChunkBatchSampler. Processing chunks sequentially.")
+            print("WARNING: shuffle=True is not supported with ChunkBatchSampler. Processing chunks sequentially.")
             train_dataloader_generator = torch.Generator()
             train_dataloader_generator.manual_seed(self.config.data.get('seed', 1))
             sampler = RandomSampler(data_source=self.train_dataset, generator=train_dataloader_generator)
-        else:
-            sampler = SequentialSampler(data_source=self.train_dataset)
-
-        self.train_dataloader = StatefulDataLoader(dataset=self.train_dataset,
+            self.train_dataloader = StatefulDataLoader(dataset=self.train_dataset,
                                                    batch_size=self.config.data.train_batch_size,
                                                    num_workers=8,
                                                    drop_last=True,
                                                    collate_fn=collate_fn,
                                                    sampler=sampler)
+        else:
+            print("INFO: Using ChunkBatchSampler for training dataloader to avoid cross-chunk memory issues.")
+            train_batch_sampler = ChunkBatchSampler(
+                dataset=self.train_dataset,
+                batch_size=self.config.data.train_batch_size,
+                drop_last=False,  # Not needed since pad_incomplete=True always creates full batches
+                pad_incomplete=True  # Pad training batches with repeats (acts like extra rollouts)
+            )
+        
+            self.train_dataloader = StatefulDataLoader(
+                dataset=self.train_dataset,
+                # Use batch_sampler instead of batch_size + sampler
+                batch_sampler=train_batch_sampler,
+                num_workers=8,
+                collate_fn=collate_fn
+            )
 
         self.val_dataset = RLHFDataset(parquet_files=self.config.data.val_files,
                                     #    tokenizer=self.tokenizer,
                                     #    processor=self.processor,
                                        prompt_key=self.config.data.prompt_key,
+                                       shuffle=False,  # Validation should always be sequential
                                        #    image_key=self.config.data.get('image_key', 'images'),
                                        #    max_prompt_length=self.config.data.max_prompt_length,
                                        #    filter_prompts=True,
@@ -575,15 +664,20 @@ class RayReMASeparatedTrainer(object):
         #     'truncation', 'error'
         # ), f'dataset truncation {self.val_dataset.truncation} must be the same as config {self.config.data.get("truncation", "error")}'
         #########################################################
+                
+        # ALL validation done with ChunkBatchSampler to avoid cross-chunk memory issues
+        val_batch_sampler = ChunkBatchSampler(
+            dataset=self.val_dataset,
+            batch_size=self.config.data.val_batch_size,
+            drop_last=False,  # Keep all samples
+            pad_incomplete=False  # Don't pad validation batches - use actual sizes
+        )
+    
         self.val_dataloader = StatefulDataLoader(
             dataset=self.val_dataset,
-            # Validation datasets are sent to inference engines as a whole batch,
-            # which will schedule the memory themselves.
-            # batch_size=len(self.val_dataset),
-            batch_size=self.config.data.val_batch_size,
+            # Use batch_sampler instead of batch_size to control chunk-aware batching
+            batch_sampler=val_batch_sampler,
             num_workers=8,
-            shuffle=False,
-            drop_last=False,
             collate_fn=collate_fn)
 
         assert len(self.train_dataloader) >= 1
@@ -633,7 +727,9 @@ class RayReMASeparatedTrainer(object):
 
     def _validate(self):
         reward_tensor_lst = []
+        reward_tensor_dict_lst = []  # Store full reward dicts for category aggregation
         acc_tensor_lst = []
+        bleu_tensor_lst = []  # Add BLEU tracking
         data_source_lst = []
         num_turns_lst = []
         history_lst = []
@@ -647,65 +743,85 @@ class RayReMASeparatedTrainer(object):
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
         if max_num_turns > 1:
-            from prompt.math.multi_turn_mamrp import MTA_SYSTEM_PRMOPT, RA_SYSTEM_PRMOPT
+            from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             from prompt import FINISH_FLAG
             rollout_meta_info = {
                 'agent_roles': ['meta_thinking', 'reasoning'],
-                'finish_flag': FINISH_FLAG,
+                'finish_flag': None, # changed this to None from FINISH_FLAG
                 'system_prompts': {
-                    'meta_thinking': MTA_SYSTEM_PRMOPT,
-                    'reasoning': RA_SYSTEM_PRMOPT
+                    'meta_thinking': MEMORY_REASONER_PROMPT,
+                    'reasoning': MEMORY_EXECUTOR_PROMPT
                 },
                 'max_num_turns': max_num_turns
             }
+            print(f"[VALIDATE] Multi-turn mode enabled with FINISH_FLAG")
+            print(f"[VALIDATE] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            print(f"[VALIDATE] agent_roles: {rollout_meta_info['agent_roles']}")
+            print(f"[VALIDATE] finish_flag: {rollout_meta_info['finish_flag'][:50] if rollout_meta_info['finish_flag'] else None}...")
         else:
-            from prompt.math.single_turn_mamrp import MTA_SYSTEM_PRMOPT, RA_SYSTEM_PRMOPT
+            from prompt.math.single_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             rollout_meta_info = {
                 'agent_roles': ['meta_thinking', 'reasoning'],
                 'finish_flag': None,
                 'system_prompts': {
-                    'meta_thinking': MTA_SYSTEM_PRMOPT,
-                    'reasoning': RA_SYSTEM_PRMOPT
+                    'meta_thinking': MEMORY_REASONER_PROMPT,
+                    'reasoning': MEMORY_EXECUTOR_PROMPT
                 },
                 'max_num_turns': max_num_turns
             }
 
-        for test_data in self.val_dataloader:
+        print(f"\n[VALIDATE] Starting validation loop: {len(self.val_dataloader)} batches")
+        total_batches = len(self.val_dataloader)
+
+        for batch_idx, test_data in enumerate(self.val_dataloader):
+            print(f"\n{'*'*80}")
+            print(f"VALIDATE BATCH {batch_idx + 1}/{total_batches}")
+            print(f"{'*'*80}")
+            
             # test_batch = DataProto.from_single_dict(test_data)
             dummy_tensor = torch.arange(0, len(test_data['question']))
             test_data['batch_idx'] = dummy_tensor
-            test_batch: DataProto = DataProto.from_single_dict(test_data, meta_info=rollout_meta_info)          
+            test_data['epoch'] = torch.full((len(test_data['question']),), self.global_steps, dtype=torch.long)
+            
+            rollout_meta_info['split'] = 'validation'
+            test_batch: DataProto = DataProto.from_single_dict(test_data, meta_info=rollout_meta_info)
+            
+            # Check which samples have finished (non-zero num_questions) BEFORE repeating
+            num_questions_list = test_batch.non_tensor_batch['num_qas']
+            finished_mask = [num_questions > 0 for num_questions in num_questions_list]
+            num_finished = sum(finished_mask)
+            print(f"[VALIDATE BATCH {batch_idx + 1}] Found {num_finished}/{len(finished_mask)} finished conversations")
+
+            # Store original inputs and ground truths BEFORE repeating
+            input_texts = test_batch.non_tensor_batch['question']
+            sample_inputs.extend(input_texts)
+
+            # Store original ground truth - use qa_pairs_json like rema_trainer
+            ground_truths = [json.loads(x)[0]["answer"] if json.loads(x) else "N/A" for x in test_batch.non_tensor_batch['qa_pairs_json']]
+            sample_groundtruths.extend(ground_truths)
 
             # repeat test batch
             test_batch = test_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n,
                                            interleave=True)
+            print(f"[VALIDATE BATCH {batch_idx + 1}] Repeated batch {self.config.actor_rollout_ref.rollout.val_kwargs.n} times. New size: {len(test_batch.batch)}")
+
+            # save rollout idx AFTER repeating
+            rollout_idx = torch.arange(0, len(test_batch.batch))
+            test_batch.batch['rollout_idx'] = rollout_idx
 
             # we only do validation on rule-based rm
             if self.config.reward_model.enable and test_batch[0].non_tensor_batch['reward_model']['style'] == 'model':
+                print(f"[VALIDATE BATCH {batch_idx + 1}] Skipping model-based reward model")
                 return {}
 
-            # Store original inputs
-            # input_ids = test_batch.batch['input_ids']
-            # input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
-            input_texts = test_batch.non_tensor_batch['question']
-            sample_inputs.extend(input_texts)
-
-            # Store original ground truth if available
-            ground_truths = [x['ground_truth'] for x in test_data['reward_model'].tolist()]
-
-            sample_groundtruths.extend(ground_truths)
-
+            print(f"\n[VALIDATE BATCH {batch_idx + 1}] Preparing generation batch...")
             if 'multi_modal_inputs' in test_batch.non_tensor_batch.keys():
                 raise NotImplementedError('validation is not implemented yet')
-                test_gen_batch = test_batch.pop(
-                    batch_keys=['input_ids', 'attention_mask', 'position_ids'],
-                    non_tensor_batch_keys=['raw_prompt_ids', 'multi_modal_data', 'multi_modal_inputs'],
-                )
             else:
                 test_gen_batch = test_batch.select(
-                        batch_keys=['batch_idx'], 
-                        non_tensor_batch_keys=['question'], 
-                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts'], 
+                        batch_keys=['batch_idx', 'epoch', 'rollout_idx'], 
+                        non_tensor_batch_keys=['question', 'sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json'], 
+                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'], 
                         deepcopy=True
                     )
             
@@ -716,55 +832,88 @@ class RayReMASeparatedTrainer(object):
                 'do_sample': self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
                 'validate': True,
             })
-            print(f'test_gen_batch meta info: {test_gen_batch.meta_info}')
+            print(f'[VALIDATE BATCH {batch_idx + 1}] test_gen_batch meta info: {test_gen_batch.meta_info}')
 
             # pad to be divisible by dp_size
-
+            print(f"\n[VALIDATE BATCH {batch_idx + 1}] Padding to be divisible by world_size...")
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg['meta_thinking'].world_size)
+            print(f"[VALIDATE BATCH {batch_idx + 1}] >>> Calling multi_turn_generate_sequences...")
             test_output_gen_batch_padded = self.multi_turn_generate_sequences(test_gen_batch_padded)
+            print(f"[VALIDATE BATCH {batch_idx + 1}] <<< Generation complete")
 
             # unpad
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
-            print('validation generation end')
+            print(f'[VALIDATE BATCH {batch_idx + 1}] Validation generation end. Output batch size: {len(test_output_gen_batch.batch)}')
 
             # Store generated outputs
-            # output_ids = test_output_gen_batch.batch['responses']
-            # output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
             output_texts = test_output_gen_batch.non_tensor_batch['response']
             sample_outputs.extend(output_texts)
 
-            test_batch = test_batch.union(test_output_gen_batch)
-            test_batch.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
-            test_batch.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
-            # evaluate using reward_function
-            reward_tensor = self.val_reward_fn(test_batch)
-            reward_tensor_lst.append(reward_tensor['reasoning_turn_level_reward'])
-            acc_tensor_lst.append(reward_tensor['acc'])
-
-            # Store scores
-            scores = reward_tensor['reasoning_turn_level_reward'].sum(-1).cpu().tolist()
-            sample_scores.extend(scores)
+            # Collect generation metrics from ALL samples
             num_turns = torch.tensor(test_output_gen_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
             num_turns_lst.append(num_turns)
+            
             turn_level_completion_tokens = test_output_gen_batch.batch['meta_thinking_num_gen_tokens'].cpu() + \
                 test_output_gen_batch.batch['reasoning_num_gen_tokens'].cpu()
             completion_tokens = turn_level_completion_tokens.sum(dim=-1)
             completion_tokens_lst.append(completion_tokens)
-
-            # not use `data_source`, use `subset` instead
-            data_source_lst.append(test_batch.non_tensor_batch.get('subset', ['unknown'] * reward_tensor['reasoning_turn_level_reward'].shape[0]))
             
             history_lst.append(test_output_gen_batch.non_tensor_batch['history'].tolist())
+
+            # Check if any conversations finished and evaluate ONLY those
+            if num_finished > 0:
+                print(f"[VALIDATE BATCH {batch_idx + 1}] Evaluating {num_finished} finished conversations...")
+                test_batch_with_gen = test_batch.union(test_output_gen_batch)
+                test_batch_with_gen.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
+                test_batch_with_gen.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
+                
+                # Filter to only finished conversations (after repeating)
+                repeat_times = self.config.actor_rollout_ref.rollout.val_kwargs.n
+                finished_indices = []
+                for i, is_finished in enumerate(finished_mask):
+                    if is_finished:
+                        finished_indices.extend([i * repeat_times + j for j in range(repeat_times)])
+                
+                print(f"[VALIDATE BATCH {batch_idx + 1}] Filtering to {len(finished_indices)} samples (finished after repeating)")
+                finished_test_batch = test_batch_with_gen[finished_indices]
+                
+                # Compute rewards for finished conversations
+                print(f"[VALIDATE BATCH {batch_idx + 1}] Computing rewards for finished conversations...")
+                reward_tensor = self.val_reward_fn(finished_test_batch)
+                print(f"[VALIDATE BATCH {batch_idx + 1}] Reward tensor keys: {list(reward_tensor.keys())}")
+                
+                reward_tensor_lst.append(reward_tensor['reasoning_turn_level_reward'])
+                reward_tensor_dict_lst.append(reward_tensor)  # Store full dict
+                acc_tensor_lst.append(reward_tensor['acc'])
+                bleu_tensor_lst.append(reward_tensor['bleu'])  # Track BLEU
+                
+                # Store scores
+                scores = reward_tensor['reasoning_turn_level_reward'].sum(-1).cpu().tolist()
+                sample_scores.extend(scores)
+                
+                # Get data sources from finished samples
+                data_source_lst.append(finished_test_batch.non_tensor_batch.get('subset', ['locomo'] * reward_tensor['reasoning_turn_level_reward'].shape[0]))
+            else:
+                print(f"[VALIDATE BATCH {batch_idx + 1}] No finished conversations, skipping reward computation")
+
+        # Compute final metrics
+        print(f"\n[VALIDATE] All batches processed. Computing final metrics...")
+        
+        if len(reward_tensor_lst) == 0:
+            print("[VALIDATE] WARNING: No finished conversations found!")
+            return {}
 
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores, groundtruths=sample_groundtruths, histories=history_lst)
 
         reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (batch_size,)
         acc_tensor = torch.cat(acc_tensor_lst, dim=0).cpu() #(batch_size,)
+        bleu_tensor = torch.cat(bleu_tensor_lst, dim=0).cpu()  # (batch_size,)
         data_sources = np.concatenate(data_source_lst, axis=0)
 
         # evaluate test_score based on data source
         data_source_reward = {}
         data_source_acc = {}
+        data_source_bleu = {}
         for i in range(reward_tensor.shape[0]):
             data_source = data_sources[i]
             if data_source not in data_source_reward:
@@ -773,6 +922,9 @@ class RayReMASeparatedTrainer(object):
             if data_source not in data_source_acc:
                 data_source_acc[data_source] = []
             data_source_acc[data_source].append(acc_tensor[i].item())
+            if data_source not in data_source_bleu:
+                data_source_bleu[data_source] = []
+            data_source_bleu[data_source].append(bleu_tensor[i].item())
 
 
         metric_dict = {}
@@ -780,6 +932,35 @@ class RayReMASeparatedTrainer(object):
             metric_dict[f'val/test_score/{data_source}'] = np.mean(rewards)
         for data_source, accs in data_source_acc.items():
             metric_dict[f'val/acc/{data_source}'] = np.mean(accs)
+        for data_source, bleus in data_source_bleu.items():
+            metric_dict[f'val/bleu/{data_source}'] = np.mean(bleus)
+        
+        # Aggregate per-category metrics across all validation batches
+        print(f"\n[VALIDATE] Aggregating per-category metrics across {len(reward_tensor_dict_lst)} batches...")
+        if len(reward_tensor_dict_lst) > 0:
+            category_names = ['multi_hop', 'single_hop', 'temporal', 'open_domain', 'adversarial', 'unknown']
+            category_aggregates = {}
+            
+            for batch_idx, reward_dict in enumerate(reward_tensor_dict_lst):
+                for cat_name in category_names:
+                    f1_sum_key = f'{cat_name}_f1_sum'
+                    if f1_sum_key in reward_dict:
+                        if cat_name not in category_aggregates:
+                            category_aggregates[cat_name] = {'f1_sum': 0.0, 'bleu_sum': 0.0, 'count': 0}
+                        
+                        category_aggregates[cat_name]['f1_sum'] += reward_dict[f1_sum_key].item()
+                        category_aggregates[cat_name]['bleu_sum'] += reward_dict[f'{cat_name}_bleu_sum'].item()
+                        category_aggregates[cat_name]['count'] += int(reward_dict[f'{cat_name}_count'].item())
+            
+            if len(category_aggregates) > 0:
+                print(f"[VALIDATE] Found {len(category_aggregates)} categories with data")
+                for cat_name in sorted(category_aggregates.keys()):
+                    agg = category_aggregates[cat_name]
+                    if agg['count'] > 0:
+                        metric_dict[f'val/{cat_name}_f1'] = agg['f1_sum'] / agg['count']
+                        metric_dict[f'val/{cat_name}_bleu'] = agg['bleu_sum'] / agg['count']
+                        metric_dict[f'val/{cat_name}_count'] = agg['count']
+                        print(f"[VALIDATE] {cat_name}: F1={metric_dict[f'val/{cat_name}_f1']:.4f}, BLEU={metric_dict[f'val/{cat_name}_bleu']:.4f}, count={agg['count']}")
         
         # Add num_turns and completion_tokens metrics
         if num_turns_lst:
@@ -793,6 +974,7 @@ class RayReMASeparatedTrainer(object):
             metric_dict['val/completion_tokens/mean'] = completion_tokens_tensor.float().mean().item()
             metric_dict['val/completion_tokens/max'] = completion_tokens_tensor.max().item()
             metric_dict['val/completion_tokens/min'] = completion_tokens_tensor.min().item()
+
 
         # Save generation results to a JSON file
         if self.config.trainer.get('save_val_generations', False):
@@ -1123,29 +1305,32 @@ class RayReMASeparatedTrainer(object):
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
         if max_num_turns > 1:
-            from prompt.math.multi_turn_mamrp import MTA_SYSTEM_PRMOPT, RA_SYSTEM_PRMOPT
-            from prompt import FINISH_FLAG
-            rollout_meta_info = {
-                'agent_roles': self.config.algorithm.switch_agent.agent_roles,
-                'finish_flag': FINISH_FLAG,
-                'system_prompts': {
-                    'meta_thinking': MTA_SYSTEM_PRMOPT,
-                    'reasoning': RA_SYSTEM_PRMOPT
-                },
-                'max_num_turns': max_num_turns
-            }
-        else:
-            from prompt.math.single_turn_mamrp import MTA_SYSTEM_PRMOPT, RA_SYSTEM_PRMOPT
+            from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             from prompt import FINISH_FLAG
             rollout_meta_info = {
                 'agent_roles': self.config.algorithm.switch_agent.agent_roles,
                 'finish_flag': None,
                 'system_prompts': {
-                    'meta_thinking': MTA_SYSTEM_PRMOPT,
-                    'reasoning': RA_SYSTEM_PRMOPT
+                    'meta_thinking': MEMORY_REASONER_PROMPT,
+                    'reasoning': MEMORY_EXECUTOR_PROMPT
                 },
                 'max_num_turns': max_num_turns
             }
+        else:
+            from prompt.math.single_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
+            from prompt import FINISH_FLAG
+            rollout_meta_info = {
+                'agent_roles': self.config.algorithm.switch_agent.agent_roles,
+                'finish_flag': None,
+                'system_prompts': {
+                    'meta_thinking': MEMORY_REASONER_PROMPT,
+                    'reasoning': MEMORY_EXECUTOR_PROMPT
+                },
+                'max_num_turns': max_num_turns
+            }
+        
+        # Set split to train for training loop
+        rollout_meta_info['split'] = 'train'
         
         batch = None
         num_prompt_in_batch = 0
@@ -1163,10 +1348,78 @@ class RayReMASeparatedTrainer(object):
                 # create a dummy tensor for the construction function
                 dummy_tensor = torch.arange(0, len(batch_dict['question']))
                 batch_dict['batch_idx'] = dummy_tensor
+                batch_dict['epoch'] = torch.full((len(batch_dict['question']),), epoch, dtype=torch.long) # Added epoch
+
+                # --- simple index-based replay buffer (lightweight) ---
+                # instantiate once
+                if not hasattr(self, 'replay_buffer'):
+                    capacity = self.config.trainer.get('replay_buffer_size', 100)
+                    self.replay_buffer = ReplayBuffer(capacity=capacity)
+
+                # add current dataset indices to buffer (dataset provides 'index' per sample)
+                if 'index' in batch_dict:
+                    try:
+                        idxs = batch_dict['index'].tolist() if isinstance(batch_dict['index'], np.ndarray) else list(batch_dict['index'])
+                        # print(f"[STEP {self.global_steps}] Adding {len(idxs)} indices to replay buffer (step={self.global_steps})")
+                        # print(f"[STEP {self.global_steps}] idxs: {idxs}")
+                        self.replay_buffer.add_indices(idxs, epoch=epoch)
+                    except Exception:
+                        pass
+
+                # sample from replay and merge with current batch if requested
+                replay_ratio = float(self.config.trainer.get('replay_mix_ratio', 0.5))
+                n_replay = int(len(batch_dict['question']) * replay_ratio)
+                if n_replay > 0 and getattr(self, 'replay_buffer', None) and len(self.replay_buffer.buffer) > 0:
+                    sampled = self.replay_buffer.sample(n_replay, strategy=self.config.trainer.get('replay_strategy', 'uniform'))
+                    # print(f"[STEP {self.global_steps}] Sampling {len(sampled)} entries from replay buffer to merge into current batch")
+                    if len(sampled) > 0:
+                        # sampled contains tuples (index, orig_epoch)
+                        sample_indices = [s[0] for s in sampled]
+                        sample_epochs = [s[1] for s in sampled]
+                        # print(f"[STEP {self.global_steps}] sample_indices: {sample_indices}, sample_epochs: {sample_epochs}")
+                        # get raw items and collate using project's collate_fn
+                        replay_items = [self.train_dataset[int(i)] for i in sample_indices]
+                        try:
+                            replay_batch = collate_fn(replay_items)
+                            # Ensure per-sample provenance tensors exist for replayed items so
+                            # merged dicts have consistent batch dims. Use stored orig_epoch.
+                            if len(replay_batch) > 0:
+                                first_key = list(replay_batch.keys())[0]
+                                first_val = replay_batch[first_key]
+                                if isinstance(first_val, torch.Tensor):
+                                    n_replay_actual = first_val.shape[0]
+                                elif isinstance(first_val, np.ndarray):
+                                    n_replay_actual = first_val.shape[0]
+                                else:
+                                    n_replay_actual = len(first_val)
+
+                                # attach stored epoch provenance
+                                replay_batch['epoch'] = torch.tensor(sample_epochs, dtype=torch.long)
+                                
+                                # recreate batch_idx for replay items to be consistent (0..N)
+                                replay_batch['batch_idx'] = torch.arange(0, n_replay_actual)
+
+                            merged = merge_batch_dicts([batch_dict, replay_batch])
+                            # recompute batch_idx for merged batch
+                            merged_size = merged[list(merged.keys())[0]].shape[0]
+                            merged['batch_idx'] = torch.arange(0, merged_size)
+                            
+                            batch_dict = merged
+                            # print(f"[STEP {self.global_steps}] Merged batch size: {merged_size}")
+                        except Exception as e:
+                            print(f"Error during replay merge: {e}")
+                            import traceback
+                            traceback.print_exc()
+
                 new_batch: DataProto = DataProto.from_single_dict(batch_dict, meta_info=rollout_meta_info)
                 new_batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(new_batch.batch))],
                                                              dtype=object)
                 new_batch = new_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+                
+                # Create unique rollout index for memory snapshot keys
+                rollout_idx = torch.arange(0, len(new_batch.batch))
+                new_batch.batch['rollout_idx'] = rollout_idx
+
                 num_gen_batches += 1
 
                 # pop those keys for generation
@@ -1179,9 +1432,9 @@ class RayReMASeparatedTrainer(object):
                 else:
                     # because verl originally calls this 'chat'
                     gen_batch = new_batch.select(
-                        batch_keys=['batch_idx'], 
-                        non_tensor_batch_keys=['question'], 
-                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts'], 
+                        batch_keys=['batch_idx', 'epoch', 'rollout_idx'], 
+                        non_tensor_batch_keys=['question', 'sample_id', 'chunk_id', 'turns_json'], 
+                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'], 
                         deepcopy=True
                     )
 
@@ -1254,9 +1507,32 @@ class RayReMASeparatedTrainer(object):
                         # }
                         reward_tensor_map = self.reward_fn(new_batch)
                         # batch.batch['token_level_scores'] = reward_tensor
+
+                        # Extract per-category metrics for training (report per-batch, not accumulated)
+                        category_names = ['multi_hop', 'single_hop', 'temporal', 'open_domain', 'adversarial', 'unknown']
+                        for cat_name in category_names:
+                            f1_sum_key = f'{cat_name}_f1_sum'
+                            if f1_sum_key in reward_tensor_map:
+                                # Compute average from sum and count for this batch
+                                f1_sum = reward_tensor_map.pop(f1_sum_key).item()
+                                bleu_sum = reward_tensor_map.pop(f'{cat_name}_bleu_sum').item()
+                                count = int(reward_tensor_map.pop(f'{cat_name}_count').item())
+                                
+                                if count > 0:
+                                    # Report batch-level average (not accumulated)
+                                    metrics[f'train/{cat_name}_f1'] = f1_sum / count
+                                    metrics[f'train/{cat_name}_bleu'] = bleu_sum / count
+                                    metrics[f'train/{cat_name}_count'] = count
+                                    print(f"[STEP {self.global_steps}] Batch category {cat_name}: F1={metrics[f'train/{cat_name}_f1']:.4f}, BLEU={metrics[f'train/{cat_name}_bleu']:.4f}, count={count}")
+
                         new_batch.batch['acc'] = reward_tensor_map.pop('acc')
                         for key_reward, reward_tensor in reward_tensor_map.items():
                             new_batch.batch[key_reward] = reward_tensor
+                            
+                            # Only compute turn masks and returns for turn-level reward tensors
+                            if not key_reward.endswith('_turn_level_reward'):
+                                continue
+
                             # get_turn_mask, shape (bsz, max_num_turns), 1 for valid turn, 0 for invalid turn
                             turn_mask = verl_F.get_turn_mask(reward_tensor, new_batch.non_tensor_batch['num_turns'])
                             key_return = key_reward.replace('reward', 'return')
@@ -1454,9 +1730,10 @@ class RayReMASeparatedTrainer(object):
         for i, data_item in enumerate(batch):
             uid = data_item.non_tensor_batch['uid']
             if uid not in results_dict:
+                qa_pairs = json.loads(data_item.non_tensor_batch['qa_pairs_json'])
                 results_dict[uid] = {
                     "question": data_item.non_tensor_batch['question'],
-                    "groundtruth": data_item.non_tensor_batch['reward_model']['ground_truth'],
+                    "groundtruth": qa_pairs[0]['answer'] if qa_pairs else "N/A",
                     "response": [],
                     "history": [],
                     "score": [],
