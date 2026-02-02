@@ -1956,18 +1956,17 @@ class RayReMATrainer(object):
                                     metrics[f'train/{cat_name}_count'] = count
                                     print(f"[STEP {self.global_steps}] Batch category {cat_name}: F1={metrics[f'train/{cat_name}_f1']:.4f}, BLEU={metrics[f'train/{cat_name}_bleu']:.4f}, count={count}")
                         
-                        # for key in reward_tensor_map.keys():
-                        #     if isinstance(reward_tensor_map[key], torch.Tensor):
-                        #         print(f"[STEP {self.global_steps}] {key} shape: {reward_tensor_map[key].shape}, dtype: {reward_tensor_map[key].dtype}")
-                        #         print(f"[STEP {self.global_steps}] {key} : {reward_tensor_map[key]}")
-                        new_batch.batch['acc'] = reward_tensor_map.pop('acc')
-                        new_batch.batch['bleu'] = reward_tensor_map.pop('bleu')
-                        new_batch.batch['evidence'] = reward_tensor_map.pop('evidence')
-                        print(f"[STEP {self.global_steps}] acc shape: {new_batch.batch['acc'].shape}, acc: {new_batch.batch['acc']}")
-                        print(f"[STEP {self.global_steps}] bleu shape: {new_batch.batch['bleu'].shape}, bleu: {new_batch.batch['bleu']}")
-                        print(f"[STEP {self.global_steps}] evidence shape: {new_batch.batch['evidence'].shape}, evidence: {new_batch.batch['evidence']}")
-                        # batch.batch['token_level_scores'] = reward_tensor
+                        # Automatically pop all metrics from reward_tensor_map (except turn_level_reward which is handled below)
+                        # This way, new metrics added to reward_tensor_map in rema.py automatically flow through
+                        keys_to_pop = [key for key in reward_tensor_map.keys() if not key.endswith('_turn_level_reward')]
+                        print(f"[STEP {self.global_steps}] Popped metrics '{', '.join(keys_to_pop)}' from reward_tensor_map")
+                        for key in keys_to_pop:
+                            new_batch.batch[key] = reward_tensor_map.pop(key)
+                        
+                        # Process turn_level_reward tensors separately
                         for key_reward, reward_tensor in reward_tensor_map.items():
+                            if not key_reward.endswith('_turn_level_reward'):
+                                continue
                             new_batch.batch[key_reward] = reward_tensor
                             # get_turn_mask, shape (bsz, max_num_turns), 1 for valid turn, 0 for invalid turn
                             turn_mask = verl_F.get_turn_mask(reward_tensor, new_batch.non_tensor_batch['num_turns'])

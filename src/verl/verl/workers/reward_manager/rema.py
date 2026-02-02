@@ -164,20 +164,51 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     key = f"{conv_id}_chunk{chunk_id}"
     memory = MemoryManager().get_snapshot(sample_id=conv_id, chunk_id=chunk_id, epoch=epoch, split=split, index_in_batch=index)
     
-    # # Compute memory penalty from operation statistics
-    # memory_penalty = 0.0
-    # if mem_op_stats is not None:
-    #     memory_penalty = compute_memory_penalty(mem_op_stats)
-    #     print(f"[LocomoScore] Memory operations for conv {conv_id}, chunk {chunk_id}:")
-    #     print(f"  - Insert: {mem_op_stats.get('insert_successful', 0)}")
-    #     print(f"  - Delete: {mem_op_stats.get('delete_successful', 0)}")
-    #     print(f"  - Update: {mem_op_stats.get('update_successful', 0)}")
-    #     print(f"  - Penalty: {memory_penalty:.4f}")
+    # Track memory-related metrics
+    tracking_metrics = {
+        'memory_size': 0,
+        'memory_insert_count': 0,
+        'memory_delete_count': 0,
+        'memory_update_count': 0,
+        'memory_operation_count': 0,
+        'evidence_precision': 0.0,
+        'evidence_recall': 0.0,
+        'avg_retrieval_rank': 0.0,
+        'retrieval_failure_rate': 0.0,
+    }
+    
+    # Memory size: number of memory items stored
+    if memory is not None and hasattr(memory, 'memories'):
+        tracking_metrics['memory_size'] = len(memory.memories)
+        print(f"[LocomoScore] Memory size for conv {conv_id}, chunk {chunk_id}: {tracking_metrics['memory_size']} memory items")
+    
+    # Memory operation counts (individual and total)
+    if mem_op_stats is not None:
+        tracking_metrics['memory_insert_count'] = mem_op_stats.get('insert_successful', 0)
+        tracking_metrics['memory_delete_count'] = mem_op_stats.get('delete_successful', 0)
+        tracking_metrics['memory_update_count'] = mem_op_stats.get('update_successful', 0)
+        tracking_metrics['memory_operation_count'] = (
+            tracking_metrics['memory_insert_count'] + 
+            tracking_metrics['memory_delete_count'] + 
+            tracking_metrics['memory_update_count']
+        )
+        # print(f"[LocomoScore] Memory operations for conv {conv_id}, chunk {chunk_id}:")
+        # print(f"  - Insert: {tracking_metrics['memory_insert_count']}")
+        # print(f"  - Delete: {tracking_metrics['memory_delete_count']}")
+        # print(f"  - Update: {tracking_metrics['memory_update_count']}")
+        # print(f"  - Total operations: {tracking_metrics['memory_operation_count']}")
     
     # Compute score for all QA pairs and return average
     qa_scores = 0.0
     bleu_scores = 0.0
     num_questions = len(qa_pairs)
+    
+    # For computing retrieval quality metrics
+    total_evidence_precision = 0.0
+    total_evidence_recall = 0.0
+    total_avg_rank = 0.0
+    total_retrieval_failures = 0
+    num_questions_with_evidence = 0
 
     # Per-category tracking
     category_f1_scores = {}  # {category: [f1_scores]}
@@ -237,6 +268,42 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         print(f"[LocomoScore] Speaker 1 dia_ids (ranked): {speaker_1_dia_ids}")
         print(f"[LocomoScore] Speaker 2 dia_ids (ranked): {speaker_2_dia_ids}")
 
+        # Track retrieval quality metrics for each question
+        if dia_ids_needed_for_q and len(dia_ids_needed_for_q) > 0:
+            dia_ids_needed_for_q = dia_ids_needed_for_q or []
+            speaker_1_dia_ids = speaker_1_dia_ids or []
+            speaker_2_dia_ids = speaker_2_dia_ids or []
+            dia_ids_retrieved_combined = speaker_1_dia_ids + speaker_2_dia_ids
+            
+            needed_set = set(dia_ids_needed_for_q)
+            retrieved_set = set(dia_ids_retrieved_combined)
+            correctly_retrieved = needed_set & retrieved_set
+            
+            # Evidence precision: % of retrieved that are relevant
+            if len(retrieved_set) > 0:
+                precision = len(correctly_retrieved) / len(retrieved_set)
+                total_evidence_precision += precision
+            
+            # Evidence recall: % of needed that are retrieved
+            if len(needed_set) > 0:
+                recall = len(correctly_retrieved) / len(needed_set)
+                total_evidence_recall += recall
+            
+            # Average rank of needed evidence in retrieval results
+            ranks = []
+            for needed_id in needed_set:
+                if needed_id in dia_ids_retrieved_combined:
+                    rank = dia_ids_retrieved_combined.index(needed_id) + 1
+                    ranks.append(rank)
+                else:
+                    # Not retrieved - count as retrieval failure
+                    total_retrieval_failures += 1
+            
+            if len(ranks) > 0:
+                total_avg_rank += sum(ranks) / len(ranks)
+            
+            num_questions_with_evidence += 1
+        
         if question_score < 0.5:  # Use < instead of != to handle floating point precision
             print(f"[LocomoScore] === Mismatch Analysis (F1={question_score:.3f}) ===")
             
@@ -284,26 +351,24 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
                 print(f"[LocomoScore] RETRIEVAL PROBLEM: {len(retrieval_failure_set)}/{len(in_memory_set)} dia_ids in memory but not retrieved")
                 print(f"[LocomoScore] In memory but not retrieved: {sorted(list(retrieval_failure_set))}")
             
-            # Show ranking analysis: where do correct dia_ids appear in each speaker's retrieval order?
+            # Show ranking analysis
             if len(needed_set) > 0:
                 print(f"[LocomoScore] === Ranking Analysis (F1={question_score:.3f}) ===")
                 for needed_id in sorted(list(needed_set)):
-                    # Check speaker 1
                     if needed_id in speaker_1_dia_ids:
-                        rank = speaker_1_dia_ids.index(needed_id) + 1  # 1-indexed rank
+                        rank = speaker_1_dia_ids.index(needed_id) + 1
                         print(f"[LocomoScore]   dia_id '{needed_id}' found in Speaker 1 at rank {rank}/{len(speaker_1_dia_ids)}")
-                    # Check speaker 2
                     elif needed_id in speaker_2_dia_ids:
-                        rank = speaker_2_dia_ids.index(needed_id) + 1  # 1-indexed rank
+                        rank = speaker_2_dia_ids.index(needed_id) + 1
                         print(f"[LocomoScore]   dia_id '{needed_id}' found in Speaker 2 at rank {rank}/{len(speaker_2_dia_ids)}")
                     else:
                         print(f"[LocomoScore]   dia_id '{needed_id}' NOT RETRIEVED from either speaker")
             
-            # Show retrieved memory context if available
+            # Show retrieved memory context
             if 'prompt' in result and result['prompt']:
                 retrieved_memory_idx = result['prompt'].find("Memories for user")
                 if retrieved_memory_idx != -1:
-                    memory_section = result['prompt'][retrieved_memory_idx:]  # Limit to 500 chars
+                    memory_section = result['prompt'][retrieved_memory_idx:]
                     print(f"[LocomoScore] Retrieved memory preview:\n{memory_section}...\n")
     
     # Calculate average scores
@@ -312,6 +377,23 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     print(f"[LocomoScore] Average F1 score: {avg_f1_score:.3f} ({qa_scores}/{num_questions})")
     print(f"[LocomoScore] Average BLEU score: {avg_bleu_score:.3f} ({bleu_scores}/{num_questions})")
     print(f"[LocomoScore] Session evidence coverage: {evidence_retrieval_coverage:.3f}")
+    
+    # Compute average retrieval quality metrics
+    if num_questions_with_evidence > 0:
+        tracking_metrics['evidence_precision'] = total_evidence_precision / num_questions_with_evidence
+        tracking_metrics['evidence_recall'] = total_evidence_recall / num_questions_with_evidence
+        tracking_metrics['avg_retrieval_rank'] = total_avg_rank / num_questions_with_evidence
+        
+        # Retrieval failure rate: % of needed evidence that couldn't be retrieved
+        total_needed_evidence = sum(len(qa_pair.get('evidence', [])) for qa_pair in qa_pairs if qa_pair.get('evidence'))
+        if total_needed_evidence > 0:
+            tracking_metrics['retrieval_failure_rate'] = total_retrieval_failures / total_needed_evidence
+        
+        print(f"[LocomoScore] Retrieval quality metrics:")
+        print(f"  - Evidence precision: {tracking_metrics['evidence_precision']:.3f}")
+        print(f"  - Evidence recall: {tracking_metrics['evidence_recall']:.3f}")
+        print(f"  - Avg retrieval rank: {tracking_metrics['avg_retrieval_rank']:.1f}")
+        print(f"  - Retrieval failure rate: {tracking_metrics['retrieval_failure_rate']:.3f}")
 
     # Return raw category scores (not averages) for global aggregation
     category_raw_scores = {
@@ -333,8 +415,8 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     # from verl.rema_trainer.memory.judge_llm import merge_to_main_cache
     # merge_to_main_cache()
     
-    # Return F1 score, BLEU score, evidence score, category_raw_scores, and memory_info
-    return avg_f1_score, avg_bleu_score, evidence_retrieval_coverage, category_raw_scores, memory_info
+    # Return F1 score, BLEU score, evidence score, category_raw_scores, memory_info, and tracking_metrics
+    return avg_f1_score, avg_bleu_score, evidence_retrieval_coverage, category_raw_scores, memory_info, tracking_metrics
 
 class ReMARewardManager:
     """The reward manager.
@@ -437,9 +519,6 @@ class ReMARewardManager:
         print(f"\n[RewardManager] Preparing parameters for score computation...")
         params = [
             (
-            # data[i].non_tensor_batch['data_source'],
-            #  data[i].non_tensor_batch['response'],
-            #  data[i].non_tensor_batch['reward_model']['ground_truth'],
              json.loads(data[i].non_tensor_batch['qa_pairs_json']),
              data[i].non_tensor_batch['sample_id'],
              data[i].non_tensor_batch['chunk_id'],
@@ -466,6 +545,7 @@ class ReMARewardManager:
         evidence_scores = [] # Track evidence scores separately
         category_stats_list = []  # Track per-category stats
         memory_infos = []  # Collect memory info from each result
+        tracking_metrics_list = []  # Track additional metrics (memory size, retrieval quality, etc.)
         print(f"\n[RewardManager] Starting score computation with ProcessPool...")
         with ProcessPool(max_workers=16) as pool:  # Parallel processing with 16 workers
             future = pool.map(partial(compute_score_fn, self.compute_score), params, timeout=7200)
@@ -474,13 +554,14 @@ class ReMARewardManager:
                 while True:
                     try:
                         result = next(iterator)
-                        # New format: (f1_score, bleu_score, evidence_score, category_stats, memory_info)
-                        qa_score, bleu_score, evidence_score, category_stats, memory_info = result
+                        # New format: (f1_score, bleu_score, evidence_score, category_stats, memory_info, tracking_metrics)
+                        qa_score, bleu_score, evidence_score, category_stats, memory_info, tracking_metrics = result
                         qa_scores.append(qa_score)
                         bleu_scores.append(bleu_score)
                         evidence_scores.append(evidence_score)
                         category_stats_list.append(category_stats)
                         memory_infos.append(memory_info)
+                        tracking_metrics_list.append(tracking_metrics)
                     except TimeoutError:
                         print('[RewardManager] Time Out')
                         qa_scores.append(0.0)
@@ -488,6 +569,7 @@ class ReMARewardManager:
                         evidence_scores.append(0.0)
                         category_stats_list.append({'f1_scores': {}, 'bleu_scores': {}})
                         memory_infos.append(None)
+                        tracking_metrics_list.append({})
                     except TimeoutException:
                         print('[RewardManager] Math verify internal timeout')
                         qa_scores.append(0.0)
@@ -495,6 +577,7 @@ class ReMARewardManager:
                         evidence_scores.append(0.0)
                         category_stats_list.append({'f1_scores': {}, 'bleu_scores': {}})
                         memory_infos.append(None)
+                        tracking_metrics_list.append({})
                     except StopIteration:
                         break
                     except Exception as e:
@@ -540,18 +623,34 @@ class ReMARewardManager:
         accuracy = torch.tensor(qa_scores, dtype=torch.float32) # bsz - F1 accuracy
         bleu = torch.tensor(bleu_scores, dtype=torch.float32) # bsz - BLEU scores
         evidence = torch.tensor(evidence_scores, dtype=torch.float32) # bsz - evidence coverage scores
-        # print(f"\n[RewardManager] Accuracy tensor (F1) shape: {accuracy.shape}, dtype: {accuracy.dtype}")
-        # print(f"[RewardManager] Accuracy stats - mean: {accuracy.mean().item():.4f}, min: {accuracy.min().item():.4f}, max: {accuracy.max().item():.4f}")
-        # print(f"[RewardManager] Accuracy values: {accuracy.tolist()}")
-        # print(f"\n[RewardManager] BLEU tensor shape: {bleu.shape}, dtype: {bleu.dtype}")
-        # print(f"[RewardManager] BLEU stats - mean: {bleu.mean().item():.4f}, min: {bleu.min().item():.4f}, max: {bleu.max().item():.4f}")
-        # print(f"[RewardManager] BLEU values: {bleu.tolist()}")
-        # print(f"\n[RewardManager] Evidence tensor shape: {evidence.shape}, dtype: {evidence.dtype}")
-        # print(f"[RewardManager] Evidence stats - mean: {evidence.mean().item():.4f}, min: {evidence.min().item():.4f}, max: {evidence.max().item():.4f}")
-        # print(f"[RewardManager] Evidence values: {evidence.tolist()}")
         reward_tensor_map['acc'] = accuracy
         reward_tensor_map['bleu'] = bleu
         reward_tensor_map['evidence'] = evidence
+        
+        # Aggregate tracking metrics across the batch
+        if len(tracking_metrics_list) > 0:
+            # Average metrics across all samples in the batch
+            avg_memory_size = sum(m.get('memory_size', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_memory_inserts = sum(m.get('memory_insert_count', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_memory_deletes = sum(m.get('memory_delete_count', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_memory_updates = sum(m.get('memory_update_count', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_memory_ops = sum(m.get('memory_operation_count', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_precision = sum(m.get('evidence_precision', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_recall = sum(m.get('evidence_recall', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_rank = sum(m.get('avg_retrieval_rank', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_failure_rate = sum(m.get('retrieval_failure_rate', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            
+            # Add to reward_tensor_map as scalar tensors for logging
+            reward_tensor_map['memory_size'] = torch.tensor(avg_memory_size, dtype=torch.float32)
+            reward_tensor_map['memory_insert_count'] = torch.tensor(avg_memory_inserts, dtype=torch.float32)
+            reward_tensor_map['memory_delete_count'] = torch.tensor(avg_memory_deletes, dtype=torch.float32)
+            reward_tensor_map['memory_update_count'] = torch.tensor(avg_memory_updates, dtype=torch.float32)
+            reward_tensor_map['memory_ops'] = torch.tensor(avg_memory_ops, dtype=torch.float32)
+            reward_tensor_map['evidence_precision'] = torch.tensor(avg_precision, dtype=torch.float32)
+            reward_tensor_map['evidence_recall'] = torch.tensor(avg_recall, dtype=torch.float32)
+            reward_tensor_map['avg_retrieval_rank'] = torch.tensor(avg_rank, dtype=torch.float32)
+            reward_tensor_map['retrieval_failure_rate'] = torch.tensor(avg_failure_rate, dtype=torch.float32)
+
         
         # Compute category statistics for all modes (training, validation, test)
         # For training: metrics are reported per-batch (not accumulated)

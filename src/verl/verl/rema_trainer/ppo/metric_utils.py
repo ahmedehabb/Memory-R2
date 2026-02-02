@@ -89,6 +89,25 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
         # evidence:
         'critic/evidence':
             torch.mean(batch.batch['evidence']).detach().item(),
+        # Memory metrics
+        'memory/size':
+            batch.batch['memory_size'].detach().item() if 'memory_size' in batch.batch else 0.0,
+        'memory/insert_count':
+            batch.batch['memory_insert_count'].detach().item() if 'memory_insert_count' in batch.batch else 0.0,
+        'memory/delete_count':
+            batch.batch['memory_delete_count'].detach().item() if 'memory_delete_count' in batch.batch else 0.0,
+        'memory/update_count':
+            batch.batch['memory_update_count'].detach().item() if 'memory_update_count' in batch.batch else 0.0,
+        'memory/operations':
+            batch.batch['memory_ops'].detach().item() if 'memory_ops' in batch.batch else 0.0,
+        'memory/evidence_precision':
+            batch.batch['evidence_precision'].detach().item() if 'evidence_precision' in batch.batch else 0.0,
+        'memory/evidence_recall':
+            batch.batch['evidence_recall'].detach().item() if 'evidence_recall' in batch.batch else 0.0,
+        'memory/avg_retrieval_rank':
+            batch.batch['avg_retrieval_rank'].detach().item() if 'avg_retrieval_rank' in batch.batch else 0.0,
+        'memory/retrieval_failure_rate':
+            batch.batch['retrieval_failure_rate'].detach().item() if 'retrieval_failure_rate' in batch.batch else 0.0,
         # score
         'critic/score/mean':
             torch.mean(sequence_score).detach().item(),

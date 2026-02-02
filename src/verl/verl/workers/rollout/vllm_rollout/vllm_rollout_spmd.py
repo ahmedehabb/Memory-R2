@@ -650,7 +650,7 @@ class vLLMRollout(BaseRollout):
                         truncation=False, 
                         max_length=None, 
                         tokenize=False, 
-                    ) + last_round_responses[i][role]
+                    ) # + last_round_responses[i][role]
                     
                     assert step_ids.max() == num_turn - 1 or stop_reasons[num_turn - 1] != 0, \
                         f"{step_ids.max()} != {num_turn - 1} or {stop_reasons[num_turn - 1]} != 0"
