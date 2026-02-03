@@ -1957,11 +1957,28 @@ class RayReMATrainer(object):
                                     print(f"[STEP {self.global_steps}] Batch category {cat_name}: F1={metrics[f'train/{cat_name}_f1']:.4f}, BLEU={metrics[f'train/{cat_name}_bleu']:.4f}, count={count}")
                         
                         # Automatically pop all metrics from reward_tensor_map (except turn_level_reward which is handled below)
-                        # This way, new metrics added to reward_tensor_map in rema.py automatically flow through
+                        # Separate scalar metrics (batch-level statistics) from per-sample tensors
                         keys_to_pop = [key for key in reward_tensor_map.keys() if not key.endswith('_turn_level_reward')]
-                        print(f"[STEP {self.global_steps}] Popped metrics '{', '.join(keys_to_pop)}' from reward_tensor_map")
+                        print(f"[STEP {self.global_steps}] Processing metrics: {', '.join(keys_to_pop)}")
+                        
+                        # Define scalar metric keys (batch-level statistics that shouldn't be in batch)
+                        scalar_metric_keys = [
+                            'memory_size', 'memory_insert_count', 'memory_delete_count', 
+                            'memory_update_count', 'memory_ops', 'evidence_precision', 
+                            'evidence_recall', 'avg_retrieval_rank', 'retrieval_failure_rate'
+                        ]
+                        
                         for key in keys_to_pop:
-                            new_batch.batch[key] = reward_tensor_map.pop(key)
+                            tensor_value = reward_tensor_map.pop(key)
+                            # Check if it's a scalar tensor (batch-level statistic)
+                            if key in scalar_metric_keys or tensor_value.dim() == 0:
+                                # Log as metric, don't add to batch (use memory/ prefix for memory metrics)
+                                metric_key = f'memory/{key}' if key in scalar_metric_keys else f'train/{key}'
+                                metrics[metric_key] = tensor_value.item() if tensor_value.dim() == 0 else tensor_value
+                                print(f"[STEP {self.global_steps}] Logged scalar metric '{metric_key}': {metrics[metric_key]}")
+                            else:
+                                # Add per-sample tensors to batch
+                                new_batch.batch[key] = tensor_value
                         
                         # Process turn_level_reward tensors separately
                         for key_reward, reward_tensor in reward_tensor_map.items():
