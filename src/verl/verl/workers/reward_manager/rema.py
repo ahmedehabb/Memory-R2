@@ -161,7 +161,7 @@ def compute_memory_penalty(mem_op_stats, weights=None):
     return penalty
 
 def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, session_id: int, session_evidences: list, extra_info: dict=None, mem_op_stats: dict=None) -> tuple[float, dict]:
-    key = f"{conv_id}_chunk{chunk_id}"
+    key = f"{conv_id}_chunk{chunk_id}_epoch{epoch}"
     memory = MemoryManager().get_snapshot(sample_id=conv_id, chunk_id=chunk_id, epoch=epoch, split=split, index_in_batch=index)
     
     # Track memory-related metrics
