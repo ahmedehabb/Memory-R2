@@ -71,6 +71,7 @@ class AdvantageEstimator(str, Enum):
     """
     GAE = 'gae'
     GRPO = 'grpo'
+    GDPO = 'gdpo'
     REINFORCE_PLUS_PLUS = 'reinforce_plus_plus'
     REMAX = 'remax'
     RLOO = 'rloo'
@@ -164,7 +165,7 @@ class ResourcePoolManager:
 
 
 import torch
-from verl.utils.torch_functional import masked_mean
+from verl.utils.torch_functional import masked_mean, masked_whiten
 
 
 def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, kl_penalty='kl'):
@@ -231,6 +232,50 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
                                                                         index=index)
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
+    elif adv_estimator == AdvantageEstimator.GDPO:
+        # Per-category GDPO: compute advantages separately for each category
+        category_names = ['multi_hop', 'single_hop', 'temporal', 'open_domain', 'adversarial']
+        
+        index = data.non_tensor_batch['uid']
+        step_mask = data.batch['step_ids'] != -100
+        
+        # Collect normalized advantages for each category
+        category_advantages = []
+        
+        for cat_name in category_names:
+            cat_reward_key = f'{cat_name}_turn_level_reward'
+            
+            # Check if this category exists in the batch
+            if cat_reward_key not in data.batch:
+                print(f"[GDPO] Warning: {cat_reward_key} not found in batch, skipping")
+                continue
+            
+            # Create sparse rewards (only at final token)
+            token_level_scores = torch.zeros_like(data.batch['token_level_rewards'])
+            token_level_scores[:, -1] = data.batch[cat_reward_key].sum(-1)
+            
+            # Compute GRPO-style normalized advantages for this category
+            cat_normalized_score, _ = core_algos.compute_grpo_outcome_advantage(
+                token_level_rewards=token_level_scores,
+                eos_mask=step_mask,
+                index=index
+            )
+            
+            category_advantages.append(cat_normalized_score)
+            print(f"[GDPO] Computed advantages for {cat_name}: mean={cat_normalized_score.mean().item():.4f}")
+        
+        # Sum advantages across all categories
+        if len(category_advantages) > 0:
+            combined_advantage = torch.stack(category_advantages, dim=0).sum(dim=0)
+            # Whiten the combined advantages
+            advantages = masked_whiten(combined_advantage, step_mask) * step_mask
+        else:
+            # Fallback if no categories found
+            print("[GDPO] Warning: No category rewards found, using zero advantages")
+            advantages = torch.zeros_like(data.batch['token_level_rewards'])
+        
+        data.batch['advantages'] = advantages
+        data.batch['returns'] = advantages
     elif adv_estimator == AdvantageEstimator.REINFORCE_PLUS_PLUS:
         token_level_rewards = data.batch['token_level_rewards']
         # responses = data.batch['responses']
@@ -476,7 +521,7 @@ class RayReMATrainer(object):
             self.use_critic = True
         elif self.config.algorithm.adv_estimator in [
                 AdvantageEstimator.GRPO, AdvantageEstimator.REINFORCE_PLUS_PLUS, AdvantageEstimator.REMAX,
-                AdvantageEstimator.RLOO
+                AdvantageEstimator.RLOO, AdvantageEstimator.GDPO
         ]:
             self.use_critic = False
         else:
