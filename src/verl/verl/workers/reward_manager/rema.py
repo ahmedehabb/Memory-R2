@@ -174,7 +174,9 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         'evidence_precision': 0.0,
         'evidence_recall': 0.0,
         'avg_retrieval_rank': 0.0,
+        'memory_failure_rate': 0.0,
         'retrieval_failure_rate': 0.0,
+        'total_failure_rate': 0.0,
     }
     
     # Memory size: number of memory items stored
@@ -208,6 +210,8 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     total_evidence_recall = 0.0
     total_avg_rank = 0.0
     total_retrieval_failures = 0
+    total_memory_failures = 0  # Evidence not in memory
+    total_retrieval_only_failures = 0  # Evidence in memory but not retrieved
     num_questions_with_evidence = 0
 
     # Per-category tracking
@@ -289,15 +293,21 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
                 recall = len(correctly_retrieved) / len(needed_set)
                 total_evidence_recall += recall
             
+            # Track root causes of failures
+            memory_set = memory.dia_ids_set if hasattr(memory, 'dia_ids_set') else set()
+            not_in_memory = needed_set - memory_set  # Memory problem
+            in_memory_but_not_retrieved = (needed_set & memory_set) - retrieved_set  # Retrieval problem
+            
+            total_memory_failures += len(not_in_memory)
+            total_retrieval_only_failures += len(in_memory_but_not_retrieved)
+            total_retrieval_failures += len(needed_set - retrieved_set)  # Total (both problems)
+            
             # Average rank of needed evidence in retrieval results
             ranks = []
             for needed_id in needed_set:
                 if needed_id in dia_ids_retrieved_combined:
                     rank = dia_ids_retrieved_combined.index(needed_id) + 1
                     ranks.append(rank)
-                else:
-                    # Not retrieved - count as retrieval failure
-                    total_retrieval_failures += 1
             
             if len(ranks) > 0:
                 total_avg_rank += sum(ranks) / len(ranks)
@@ -384,16 +394,24 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         tracking_metrics['evidence_recall'] = total_evidence_recall / num_questions_with_evidence
         tracking_metrics['avg_retrieval_rank'] = total_avg_rank / num_questions_with_evidence
         
-        # Retrieval failure rate: % of needed evidence that couldn't be retrieved
+        # Compute failure rates by root cause
         total_needed_evidence = sum(len(qa_pair.get('evidence', [])) for qa_pair in qa_pairs if qa_pair.get('evidence'))
         if total_needed_evidence > 0:
-            tracking_metrics['retrieval_failure_rate'] = total_retrieval_failures / total_needed_evidence
+            # Memory problem: evidence not saved in memory
+            tracking_metrics['memory_failure_rate'] = total_memory_failures / total_needed_evidence
+            # Retrieval problem: evidence in memory but not retrieved
+            tracking_metrics['retrieval_failure_rate'] = total_retrieval_only_failures / total_needed_evidence
+            # Total failure: combines both problems (memory + retrieval)
+            tracking_metrics['total_failure_rate'] = total_retrieval_failures / total_needed_evidence
         
         print(f"[LocomoScore] Retrieval quality metrics:")
         print(f"  - Evidence precision: {tracking_metrics['evidence_precision']:.3f}")
         print(f"  - Evidence recall: {tracking_metrics['evidence_recall']:.3f}")
         print(f"  - Avg retrieval rank: {tracking_metrics['avg_retrieval_rank']:.1f}")
-        print(f"  - Retrieval failure rate: {tracking_metrics['retrieval_failure_rate']:.3f}")
+        print(f"[LocomoScore] Failure analysis (root causes):")
+        print(f"  - Memory failure rate: {tracking_metrics.get('memory_failure_rate', 0.0):.3f} ({total_memory_failures}/{total_needed_evidence} evidence not in memory)")
+        print(f"  - Retrieval failure rate: {tracking_metrics.get('retrieval_failure_rate', 0.0):.3f} ({total_retrieval_only_failures}/{total_needed_evidence} in memory but not retrieved)")
+        print(f"  - Total failure rate: {tracking_metrics.get('total_failure_rate', 0.0):.3f} ({total_retrieval_failures}/{total_needed_evidence} total failures)")
 
     # Return raw category scores (not averages) for global aggregation
     category_raw_scores = {
@@ -638,7 +656,9 @@ class ReMARewardManager:
             avg_precision = sum(m.get('evidence_precision', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
             avg_recall = sum(m.get('evidence_recall', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
             avg_rank = sum(m.get('avg_retrieval_rank', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
-            avg_failure_rate = sum(m.get('retrieval_failure_rate', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_memory_failure = sum(m.get('memory_failure_rate', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_retrieval_failure = sum(m.get('retrieval_failure_rate', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_total_failure = sum(m.get('total_failure_rate', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
             
             # Add to reward_tensor_map as scalar tensors for logging
             reward_tensor_map['memory_size'] = torch.tensor(avg_memory_size, dtype=torch.float32)
@@ -649,7 +669,9 @@ class ReMARewardManager:
             reward_tensor_map['evidence_precision'] = torch.tensor(avg_precision, dtype=torch.float32)
             reward_tensor_map['evidence_recall'] = torch.tensor(avg_recall, dtype=torch.float32)
             reward_tensor_map['avg_retrieval_rank'] = torch.tensor(avg_rank, dtype=torch.float32)
-            reward_tensor_map['retrieval_failure_rate'] = torch.tensor(avg_failure_rate, dtype=torch.float32)
+            reward_tensor_map['memory_failure_rate'] = torch.tensor(avg_memory_failure, dtype=torch.float32)
+            reward_tensor_map['retrieval_failure_rate'] = torch.tensor(avg_retrieval_failure, dtype=torch.float32)
+            reward_tensor_map['total_failure_rate'] = torch.tensor(avg_total_failure, dtype=torch.float32)
 
         
         # Compute category statistics for all modes (training, validation, test)
