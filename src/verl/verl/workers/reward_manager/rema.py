@@ -314,7 +314,7 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
             
             num_questions_with_evidence += 1
         
-        if question_score < 0.5:  # Use < instead of != to handle floating point precision
+        if question_score < 1.0:
             print(f"[LocomoScore] === Mismatch Analysis (F1={question_score:.3f}) ===")
             
             # Handle None/empty cases
