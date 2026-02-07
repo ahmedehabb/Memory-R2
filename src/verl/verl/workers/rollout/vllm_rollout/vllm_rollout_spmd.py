@@ -377,7 +377,7 @@ class vLLMRollout(BaseRollout):
                     turns_data = turns_data[start_idx:end_idx]
                     print(f"Generating fact prompt for iteration {current_turn+1}/{max_turns}, processing turns {start_idx}-{end_idx-1} ({len(turns_data)} turns)")
 
-            prompt = "{turns}"
+            prompt = "Analyze the new conversation turns below and generate the new facts.\n```{turns}```"
             formatted_turns = format_turns_for_prompt(turns_data)
             prompt = prompt.format(turns=formatted_turns)
             prompts.append(prompt)
@@ -833,6 +833,7 @@ class vLLMRollout(BaseRollout):
             'insert_total': [0] * batch_size,
             'delete_total': [0] * batch_size,
             'update_total': [0] * batch_size,
+            'dia_ids_affected_per_turn': [[] for _ in range(batch_size)],  # Track dia_ids affected per turn
         }
         
         assert len(finish_flags) == len(fact_prompts), f"{finish_flags.shape} != {len(fact_prompts)}"
@@ -1000,12 +1001,17 @@ class vLLMRollout(BaseRollout):
                     # Execute memory operations after the first agent's turn
                     print(f"  Executing memory operations for {len(current_outputs)} samples...")
                     rewards, ops_per_sample, batch_op_stats = self._execute_memory_operations(
-                        prompts, conv_memories, shared_manager, current_outputs, unfinished_indices
+                        prompts, conv_memories, shared_manager, current_outputs, unfinished_indices, i_turn
                     )
                     # Accumulate operation statistics for unfinished samples
                     for i, idx in enumerate(unfinished_indices):
                         for key in mem_op_stats.keys():
-                            mem_op_stats[key][idx] += batch_op_stats[key][i]
+                            if key != 'dia_ids_affected_per_turn':  # Skip this one, handled separately
+                                mem_op_stats[key][idx] += batch_op_stats[key][i]
+                    
+                    # For dia_ids_affected_per_turn, extend the list instead of adding
+                    for i, idx in enumerate(unfinished_indices):
+                        mem_op_stats['dia_ids_affected_per_turn'][idx].extend(batch_op_stats['dia_ids_affected_per_turn'][i])
                 
                 # XXX(ziyu): remove finish flag in output for reasoning agent here
                 #  consider move to a post-processing function
@@ -1057,6 +1063,7 @@ class vLLMRollout(BaseRollout):
         shared_manager: MemoryManager,
         response_texts,
         unfinished_indices: List[int] = None,
+        current_turn_id: int = 0,
     ) -> tuple[list[float], list[list[dict]], dict]:
         """Execute memory operations from batch responses without caching.
         
@@ -1087,6 +1094,7 @@ class vLLMRollout(BaseRollout):
             'insert_total': [0] * len(memories),
             'delete_total': [0] * len(memories),
             'update_total': [0] * len(memories),
+            'dia_ids_affected_per_turn': [[] for _ in range(len(memories))],  # Track dia_ids affected in each turn
         }
         sample_ids = prompt_data.non_tensor_batch["sample_id"]
         chunk_ids = prompt_data.non_tensor_batch["chunk_id"]
@@ -1143,6 +1151,26 @@ class vLLMRollout(BaseRollout):
             operation_stats['insert_total'][idx] = result.get('insert_total', 0)
             operation_stats['delete_total'][idx] = result.get('delete_total', 0)
             operation_stats['update_total'][idx] = result.get('update_total', 0)
+            
+            # Track dia_ids affected by successful operations in each turn
+            dia_ids_per_turn = {}
+            
+            for op_idx, op_result in enumerate(result.get('results', [])):
+                dia_id = op_result.get('command_dia_id')
+                if dia_id:
+                    if current_turn_id not in dia_ids_per_turn:
+                        dia_ids_per_turn[current_turn_id] = set()
+                    dia_ids_per_turn[current_turn_id].add(dia_id)
+                #     print(f"[_execute_memory_operations]   Recorded: turn_id={turn_id}, dia_id={dia_id}")
+                # else:
+                #     print(f"[_execute_memory_operations]   Warning: dia_id={dia_id} is missing from command")
+            
+            # Convert to list format: [(turn_id, [dia_ids])]
+            operation_stats['dia_ids_affected_per_turn'][idx] = [
+                {'turn_id': turn_id, 'dia_ids': list(dia_ids)}
+                for turn_id, dia_ids in sorted(dia_ids_per_turn.items())
+            ]
+            print(f"[_execute_memory_operations] Conv {sample_ids[idx]}: Stored dia_ids_affected_per_turn = {operation_stats['dia_ids_affected_per_turn'][idx]}")
             
             # Calculate operation success rate
             if total_ops == 0:
@@ -1259,9 +1287,8 @@ class vLLMRollout(BaseRollout):
                         "role": "user",
                         "content": (
                             "Previous session turns (user and assistant) are provided for context only. "
-                            "You can refer to them for disambiguation or clarity, but do NOT treat them as new events. "
-                            "Analyze the new conversation turns below and generate the new facts.\n```"
-                            + question + "```"
+                            "You can refer to them for disambiguation or clarity, but do NOT treat them as new events.\n"
+                            + question
                         )
                     })
                 else:
@@ -1479,8 +1506,13 @@ class vLLMRollout(BaseRollout):
             non_tensor_batch["mem_insert_total"] = np.array(mem_op_stats['insert_total'], dtype=object)
             non_tensor_batch["mem_delete_total"] = np.array(mem_op_stats['delete_total'], dtype=object)
             non_tensor_batch["mem_update_total"] = np.array(mem_op_stats['update_total'], dtype=object)
-            print(f"  Added memory operation statistics to non_tensor_batch (batch_size={len(mem_op_stats['insert_successful'])})")
-        
+            # Add dia_ids affected per turn for turn-level causal reward assignment
+            # Store as list of lists directly (each sample has a list of turn operations)
+            # Create as 1D object array to avoid concatenation issues across batches
+            dia_ids_array = np.empty(len(mem_op_stats['dia_ids_affected_per_turn']), dtype=object)
+            for i, dia_ids_list in enumerate(mem_op_stats['dia_ids_affected_per_turn']):
+                dia_ids_array[i] = dia_ids_list
+            non_tensor_batch["dia_ids_affected_per_turn"] = dia_ids_array            
         print(f"  Non-tensor batch updated with finish_reason, num_turns, response")
 
         padded_history = _pad_history(history, 2 * self.config.max_num_turns)
