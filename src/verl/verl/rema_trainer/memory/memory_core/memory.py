@@ -147,16 +147,22 @@ class Memory:
             "dia_ids": [dia_id]  # Store dia_id in array
         }
         
+        # Generate and store embedding for the content FIRST (atomic update)
+        # If this fails, we haven't modified state yet
+        embedding = self._get_embedding(content, method=self.embedding_method)
+        try:
+            new_matrix = np.vstack([self.embedding_matrix, embedding.reshape(1, -1)])
+            self.embedding_matrix = new_matrix
+            self.embedding_ids.append(memory_id)
+        except Exception as e:
+            # If matrix update fails, rollback/don't proceed
+            raise RuntimeError(f"Failed to update embedding matrix for insert: {e}")
+
+        # Now update python objects
         self.memories.append(turn_data)
         
         # Track dia_id in the set for easy evaluation
         self.dia_ids_set.add(dia_id)
-        
-        # Generate and store embedding for the content
-        embedding = self._get_embedding(content, method=self.embedding_method)
-        new_matrix = np.vstack([self.embedding_matrix, embedding.reshape(1, -1)])
-        self.embedding_matrix = new_matrix
-        self.embedding_ids.append(memory_id)
         
         return turn_data
     
@@ -232,13 +238,16 @@ class Memory:
         if np.allclose(query_embedding, 0):
             return []
         
+        # Optimize lookup: O(N) once instead of O(N) per filtered turn
+        id_to_idx = {mid: i for i, mid in enumerate(self.embedding_ids)}
+        
         results = []
         
         # Get embeddings for the filtered turns
         for turn in turns:
             memory_id = turn["memory_id"]
-            if memory_id in self.embedding_ids:
-                idx = self.embedding_ids.index(memory_id)
+            if memory_id in id_to_idx:
+                idx = id_to_idx[memory_id]
                 turn_embedding = self.embedding_matrix[idx]
                 
                 # Calculate similarity

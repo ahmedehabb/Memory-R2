@@ -166,14 +166,20 @@ class MemoryManager:
             
             for i, command in enumerate(commands):
                 result = self.execute_command(memory, command)
-                results.append({
-                    "command_index": i,
-                    "command": command,
-                    "result": result
-                })
                 
                 # Get operation type (normalize to lowercase)
                 op_type = command.get("operation", "").lower()
+                
+                # Track success status
+                is_success = result["status"] == "success"
+                
+                # Append with explicit success flag for easier tracking
+                results.append({
+                    "command_index": i,
+                    "command": command,
+                    "result": result,
+                    "command_dia_id": command.get("dia_id", None) if is_success else None,
+                })
                 
                 # Count total operations by type
                 if op_type == "insert":
@@ -184,7 +190,7 @@ class MemoryManager:
                     update_total += 1
                 
                 # Count successes
-                if result["status"] == "success":
+                if is_success:
                     success_count += 1
                     
                     # Count successful operations by type
