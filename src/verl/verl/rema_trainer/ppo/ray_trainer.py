@@ -1714,6 +1714,7 @@ class RayReMATrainer(object):
         total_prompt_cnt = 0 
         all_negative_cnt = 0
         all_positive_cnt = 0
+        kept_prompt_cnt = 0
 
         print(f"\n[FIT] Starting training loop: {self.config.trainer.total_epochs} epochs, {len(self.train_dataloader)} batches per epoch")
         print(f"[FIT] Total training steps: {self.total_training_steps}")
@@ -2021,6 +2022,7 @@ class RayReMATrainer(object):
                                 # keep prompt with variance (non-zero advantages)
                                 kept_prompt_uids.append(key_uid)
                             total_prompt_cnt += 1
+                        kept_prompt_cnt += len(kept_prompt_uids)
                     
                     if not self.config.algorithm.filter_groups.enable:
                         # if not enable group filter, keep all data
@@ -2068,6 +2070,7 @@ class RayReMATrainer(object):
                         metrics.update({
                             'rollout/all_negative_cnt': all_negative_cnt,
                             'rollout/all_positive_cnt': all_positive_cnt,
+                            'rollout/kept_prompt_cnt': kept_prompt_cnt,
                             'rollout/total_prompt_cnt': total_prompt_cnt,
                             'rollout/num_gen_batches': num_gen_batches,
                             'rollout/acc_mean': new_batch.batch['acc'].mean().item()
@@ -2199,6 +2202,7 @@ class RayReMATrainer(object):
                 num_gen_batches = 0
                 all_negative_cnt = 0
                 all_positive_cnt = 0
+                kept_prompt_cnt = 0
                 total_prompt_cnt = 0
 
                 if is_last_step:
