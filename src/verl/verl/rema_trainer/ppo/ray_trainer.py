@@ -2009,12 +2009,16 @@ class RayReMATrainer(object):
                         kept_prompt_uids = []
                         for key_uid, acc_this_uid in id2acc.items():
                             acc_this_uid = torch.tensor(acc_this_uid)
-                            if (acc_this_uid == 0).all():
-                                all_negative_cnt += 1
-                            elif (acc_this_uid == 1).all():
-                                all_positive_cnt += 1
+                            # F1 score is continuous. We filter out prompts with zero variance (all scores same)
+                            # as they provide no gradient signal for advantage-based methods (GRPO/ReMax).
+                            if torch.allclose(acc_this_uid.min(), acc_this_uid.max(), atol=1e-6):
+                                if (acc_this_uid < 1e-6).all():  # Effectively 0
+                                    all_negative_cnt += 1
+                                elif (acc_this_uid > 1.0 - 1e-6).all():  # Effectively 1
+                                    all_positive_cnt += 1
+                                # else: constant intermediate score (e.g. all 0.5). Dropped.
                             else:
-                                # keep prompt with none-zero advantages
+                                # keep prompt with variance (non-zero advantages)
                                 kept_prompt_uids.append(key_uid)
                             total_prompt_cnt += 1
                     
