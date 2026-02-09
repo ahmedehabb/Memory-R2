@@ -493,16 +493,16 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         
         # Apply insertion penalty to last turn reward (penalizes wasteful insertions)
         # This encourages efficient memory usage without making reward non-stationary
-        if turn_level_f1_rewards and len(turn_level_f1_rewards) > 0:
-            num_insertions = mem_op_stats.get('insert_successful', 0) if mem_op_stats else 0
-            lambda_insertion = 0.01  # Penalty per insertion
-            insertion_penalty = lambda_insertion * num_insertions
-            turn_level_f1_rewards[-1] = max(0.0, turn_level_f1_rewards[-1] - insertion_penalty)
-            turn_level_bleu_rewards[-1] = max(0.0, turn_level_bleu_rewards[-1] - insertion_penalty)
-            print(f"[LocomoScore] === Insertion Penalty (Applied to Last Turn) ===")
-            print(f"[LocomoScore] Successful insertions in trajectory: {num_insertions}")
-            print(f"[LocomoScore] Penalty: λ * insertions = {lambda_insertion} * {num_insertions} = {insertion_penalty:.4f}")
-            print(f"[LocomoScore] Last turn F1 after penalty: {turn_level_f1_rewards[-1]:.3f}")
+        # if turn_level_f1_rewards and len(turn_level_f1_rewards) > 0:
+        #     num_insertions = mem_op_stats.get('insert_successful', 0) if mem_op_stats else 0
+        #     lambda_insertion = 0.01  # Penalty per insertion
+        #     insertion_penalty = lambda_insertion * num_insertions
+        #     turn_level_f1_rewards[-1] = max(0.0, turn_level_f1_rewards[-1] - insertion_penalty)
+        #     turn_level_bleu_rewards[-1] = max(0.0, turn_level_bleu_rewards[-1] - insertion_penalty)
+        #     print(f"[LocomoScore] === Insertion Penalty (Applied to Last Turn) ===")
+        #     print(f"[LocomoScore] Successful insertions in trajectory: {num_insertions}")
+        #     print(f"[LocomoScore] Penalty: λ * insertions = {lambda_insertion} * {num_insertions} = {insertion_penalty:.4f}")
+        #     print(f"[LocomoScore] Last turn F1 after penalty: {turn_level_f1_rewards[-1]:.3f}")
     else:
         print(f"[LocomoScore] No dia_ids_affected_per_turn provided, skipping turn-level reward computation")
 
@@ -714,13 +714,13 @@ class ReMARewardManager:
             if data[i].meta_info['mask_unfinished_reward']:
                 if turn_finished == 1:  # Successfully completed
                     # Combined Reward: QA F1 + 0.5 * Evidence Coverage
-                    score = 1.0 * qa_scores[i] + 0.5 * evidence_scores[i]
+                    score = 1.0 * qa_scores[i] + 0.0 * evidence_scores[i]
                 else:  # Incomplete trajectory - give 0 score
                     score = 0.0
                     num_incomplete += 1
             else:
                 # No masking - use score regardless of completion status
-                score = 1.0 * qa_scores[i] + 0.5 * evidence_scores[i]
+                score = 1.0 * qa_scores[i] + 0.0 * evidence_scores[i]
             combined_scores.append(score)
         print(f"[RewardManager] Combined scores computed: mean={sum(combined_scores)/len(combined_scores):.4f}")
         print(f"[RewardManager] Incomplete trajectories (turn_finished != 1): {num_incomplete}/{len(combined_scores)}")
@@ -770,14 +770,6 @@ class ReMARewardManager:
                         else:
                             # Complete trajectory: use computed turn rewards
                             reward_tensor_map[f'{role}_turn_level_reward'][i, turn_idx] = turn_f1[turn_idx]
-                    
-                    # Add evidence coverage reward to the last turn (trajectory-level reward)
-                    # This encourages keeping all needed evidence in memory for future chunks
-                    if not should_mask:
-                        last_turn_idx = min(num_turns_computed, max_num_turns) - 1
-                        evidence_bonus = 0.5 * evidence_scores[i]
-                        reward_tensor_map[f'{role}_turn_level_reward'][i, last_turn_idx] += evidence_bonus
-                        # print(f"[RewardManager] Sample {i}: Added evidence bonus {evidence_bonus:.3f} to last turn reward")
 
                 if should_mask:
                     pass
