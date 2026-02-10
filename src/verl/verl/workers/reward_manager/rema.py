@@ -909,19 +909,6 @@ class ReMARewardManager:
         #         if i_bsz == 0:
         #             print(f"  - Assigned {role}_turn_level_reward[{i_bsz}, {num_turns - 1}] = {score}")
 
-        #     # if data_source not in already_print_data_sources:
-        #     #     already_print_data_sources[data_source] = 0
-
-        #     # if already_print_data_sources[data_source] < self.num_examine:
-        #     #     prompt_str = data_item.non_tensor_batch['question']
-        #     #     padded_history = data_item.non_tensor_batch['history']
-        #     #     history = padded_history[:num_turns * 2]
-        #     #     already_print_data_sources[data_source] += 1
-        #     #     print("[question]", prompt_str)
-        #     #     print("[ground_truth]", ground_truth)
-        #     #     print("[answer]", response_str)
-        #     #     print("[score]", score)
-        #     #     print("[history]", history)
 
         # Only cache the best memory during training (test/validation already has only one memory)
         current_split = data.meta_info['split']
