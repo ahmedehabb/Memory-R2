@@ -8,9 +8,10 @@ import pandas as pd
 
 # ===== CONFIG =====
 CHUNK_BY_SESSION = True  # If True, each session becomes one chunk (ignores CHUNK_SIZE)
+MAX_SESSION = None # set to None to use all sessions
 CHUNK_SIZE = 8  # Number of dialogue turns per chunk (only used if CHUNK_BY_SESSION=False)
-INPUT_JSON = "locomo10.json"
-OUTPUT_DIR = Path("processed")
+INPUT_JSON = "/hkfs/work/workspace/scratch/tum_eyi5958-myspace/projects/ReMA-public/data/locomo/locomo10.json"
+OUTPUT_DIR = Path("/hkfs/work/workspace/scratch/tum_eyi5958-myspace/projects/ReMA-public/data/locomo/processed")
 
 # Category 5 (adversarial) questions config
 SKIP_CATEGORY_5 = True  # If True, skip all category 5 (adversarial) questions
@@ -21,14 +22,18 @@ TARGET_QA_PER_CHUNK = 3       # Fixed number of QAs per chunk for balanced train
 MIN_FUTURE_QA = 1             # Always include at least 1 future QA (only used if USE_ONLY_CURRENT_QAS=False)
 # RANDOM_SEED = 41              # For reproducibility
 
+# Redistribution config
+QA_KEEP_RATIO = 1.0           # Ratio of questions to keep in current session (rest are deferred to future sessions)
+
 # Train/Test/Val split
 TRAIN_CONVS = 4
 TEST_CONVS = 5
 VAL_CONVS = 1
 
 # Post-processing for test data, validation data
-MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_TEST = True  # If True, move all QAs to last chunk for test conversations only
+MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_TRAIN = True  # If True, move all QAs to last chunk for train conversations only
 MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_VAL = True  # If True, move all QAs to last chunk for val conversations only
+MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_TEST = True  # If True, move all QAs to last chunk for test conversations only
 
 # Micro training set for overfitting experiments
 CREATE_MICRO_TRAIN = True  # Set to True to create micro_train.{json,parquet}
@@ -38,6 +43,12 @@ MICRO_TRAIN_CHUNKS = 10     # Number of chunks for micro training (for learnabil
 
 
 # ===== HELPERS =====
+def _tokenize(text: str) -> list:
+    """Simple tokenization: lowercase, split on whitespace and punctuation."""
+    if not isinstance(text, str):
+        return []
+    return re.findall(r'\b\w+\b', text.lower())
+
 def parse_datetime(dt_str):
     """Convert '1:56 pm on 8 May, 2023' → ISO string, else None."""
     if not dt_str:
@@ -430,6 +441,8 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
     
     # Group chunks by conversation first
     all_chunks_by_conv = {}
+
+    from collections import defaultdict
     
     stats = {
         'total_chunks': 0,
@@ -461,14 +474,23 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
         assert len(speaker_set) == 2, "Chunk must contain at most 2 unique speakers."
         
         # Extract evidence per session for this conversation
-        max_session = max((t.get('session_id', 1) for t in turns), default=1)
-        session_evidences = extract_evidence_per_session(qa_list, max_session)
+        conv_max_session = max((t.get('session_id', 1) for t in turns), default=1)
+        session_evidences = extract_evidence_per_session(qa_list, conv_max_session)
+
+        # Calculate total tokens for the sessions that will be included (capped by MAX_SESSION if set)
+        effective_max_session_for_tokens = min(conv_max_session, MAX_SESSION) if MAX_SESSION is not None else conv_max_session
+        total_sessions_tokens = sum(len(_tokenize(t.get('text', ''))) for t in turns if t.get('session_id', 1) <= effective_max_session_for_tokens)
+
+        # Track deferred QAs for this conversation: session_id -> list of QAs
+        deferred_qas_by_session = defaultdict(list)
 
         conv_chunks = []
         chunk_counter = 1  # Sequential chunk numbering across sessions
         append_to_next = False  # Flag to merge first chunk with next if no QAs
 
         for chunk_turns, offset, session_id in chunk_conversation_by_session(turns):
+            if MAX_SESSION is not None and session_id > MAX_SESSION:
+                break
             chunk_max_tuple = max_tuple_in_chunk(chunk_turns)
             chunk_min_tuple = min_tuple_in_chunk(chunk_turns)
             
@@ -480,6 +502,50 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                 all_qas = sample_only_current_qas(qa_categorized)
             else:
                 all_qas = sample_balanced_qas(qa_categorized)
+
+            # --- REDISTRIBUTION LOGIC ---
+            # 1. Add any deferred QAs scheduled for this session
+            if deferred_qas_by_session[session_id]:
+                deferred_incoming = deferred_qas_by_session[session_id]
+                # print(f"   📥 Session {session_id}: Received {len(deferred_incoming)} deferred QAs")
+                all_qas.extend(deferred_incoming)
+            
+            # 2. Defer some of TODAY'S questions to FUTURE sessions
+            # Only valid if there ARE future sessions to defer to
+            
+            # Determine max possible session for this conversation (capped by MAX_SESSION)
+            effective_max_session = min(conv_max_session, MAX_SESSION) if MAX_SESSION else conv_max_session
+
+            if session_id < effective_max_session:
+                # We can defer
+                # Shuffle distinct QAs to ensure random selection for deferral vs keeping
+                # (Note: duplicates might exist if standard sampling was used, but USE_ONLY_CURRENT_QAS usually returns unique)
+                random.shuffle(all_qas)
+                
+                total_current = len(all_qas)
+                keep_count = int(total_current * QA_KEEP_RATIO)
+                # Ensure at least 1 kept if there was something to keep, or follow ratio strictly?
+                # Let's follow ratio strictly but ceil/floor might be needed. int() floors.
+                # If we have 1 question and ratio 0.5 -> keep 0? Maybe ensure at least 1 unless 0.
+                if total_current > 0 and keep_count == 0 and QA_KEEP_RATIO > 0:
+                    keep_count = 1
+                
+                qas_to_keep = all_qas[:keep_count]
+                qas_to_defer = all_qas[keep_count:]
+                
+                if qas_to_defer:
+                    # Distribute deferred QAs to future sessions
+                    # Possible future sessions: session_id+1 ... effective_max_session
+                    future_sessions = list(range(session_id + 1, effective_max_session + 1))
+                    
+                    for qa in qas_to_defer:
+                        target_sess = random.choice(future_sessions)
+                        deferred_qas_by_session[target_sess].append(qa)
+                    
+                    # print(f"   📤 Session {session_id}: Deferred {len(qas_to_defer)} QAs to future sessions {min(future_sessions)}-{max(future_sessions)}")
+                    
+                    # Update all_qas to only include kept ones (deferred ones are removed from this session)
+                    all_qas = qas_to_keep
             
             # Count QAs by type for stats
             qa_type_counts = {'current': 0, 'recent': 0, 'distant': 0, 'future': 0}
@@ -511,6 +577,9 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
             # Extract session_time from the first turn of this chunk
             session_time = chunk_turns[0].get('session_time') if chunk_turns else None
 
+            # Calculate total tokens in the chunk's text (sum over all turns)
+            session_tokens = sum(len(_tokenize(t.get('text', ''))) for t in chunk_turns)
+
             chunk_data = {
                 "sample_id": sample_id,
                 "chunk_id": chunk_counter,
@@ -518,6 +587,8 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                 "session_time": session_time,  # Session timestamp
                 "dialogue_num_turns": len(chunk_turns),  # Track actual chunk size
                 "num_questions": len(all_qas),  # Track number of QA pairs
+                "session_tokens": session_tokens,  # Track exactly how many tokens in the dialogue
+                "total_sessions_tokens": total_sessions_tokens, # Track exactly how many tokens in the included sessions
                 "prompt": format_chunk_as_prompt(chunk_turns),  # Required for RLHF, but wont use it directly
                 "turns": chunk_turns,
                 "qa_pairs": all_qas,
@@ -536,6 +607,7 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                     prev_chunk['qa_stats'][qa_type] += chunk_data['qa_stats'][qa_type]
                 prev_chunk['dialogue_num_turns'] += chunk_data['dialogue_num_turns']
                 prev_chunk['num_questions'] += chunk_data['num_questions']
+                prev_chunk['session_tokens'] += chunk_data['session_tokens']
                 prev_chunk['prompt'] = format_chunk_as_prompt(prev_chunk['turns'])
                 # Keep session_evidences from the first chunk (they should be the same session)
                 append_to_next = False
@@ -576,12 +648,34 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
     # Split conversations into train/test/val
     all_conv_ids = sorted(all_chunks_by_conv.keys())
     
-    # Shuffle conversations deterministically
-    random.shuffle(all_conv_ids)
-    
-    train_conv_ids = all_conv_ids[:TRAIN_CONVS]
-    test_conv_ids = all_conv_ids[TRAIN_CONVS:TRAIN_CONVS + TEST_CONVS]
-    val_conv_ids = all_conv_ids[TRAIN_CONVS + TEST_CONVS:TRAIN_CONVS + TEST_CONVS + VAL_CONVS]
+    # Determine split
+    if TRAIN_IDS is not None:
+        # Use fixed training IDs
+        train_conv_ids = [tid for tid in TRAIN_IDS if tid in all_conv_ids]
+        missing_ids = set(TRAIN_IDS) - set(train_conv_ids)
+        if missing_ids:
+            print(f"⚠️  WARNING: {len(missing_ids)} fixed training IDs not found in dataset: {missing_ids}")
+
+        # Use remaining IDs for test/val
+        remaining_ids = [cid for cid in all_conv_ids if cid not in train_conv_ids]
+        if VAL_IDS is not None:
+            val_conv_ids = [vid for vid in VAL_IDS if vid in remaining_ids]
+            missing_ids = set(VAL_IDS) - set(val_conv_ids)
+            if missing_ids:
+                print(f"⚠️  WARNING: {len(missing_ids)} fixed validation IDs not found in dataset: {missing_ids}")
+            remaining_ids = [cid for cid in remaining_ids if cid not in val_conv_ids]
+        else:
+            random.shuffle(remaining_ids)
+            val_conv_ids = remaining_ids[:VAL_CONVS]
+            remaining_ids = remaining_ids[VAL_CONVS:]
+
+        test_conv_ids = remaining_ids[:TEST_CONVS]
+    else:
+        # Random split (original behavior)
+        random.shuffle(all_conv_ids)
+        train_conv_ids = all_conv_ids[:TRAIN_CONVS]
+        test_conv_ids = all_conv_ids[TRAIN_CONVS:TRAIN_CONVS + TEST_CONVS]
+        val_conv_ids = all_conv_ids[TRAIN_CONVS + TEST_CONVS:TRAIN_CONVS + TEST_CONVS + VAL_CONVS]
     
     # Collect chunks for each split
     train_chunks = []
@@ -686,6 +780,50 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                     chunk['qa_stats'] = qa_type_counts
             
             print(f"      ✅ Moved all {len(all_qas_in_conv)} QAs to chunk {len(conv_chunks)} (last chunk)")
+
+        if MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_TRAIN:
+            print(f"\n🔄 POST-PROCESSING: Moving all QAs to last chunk for train conversations...")
+            
+            # Group train_chunks by conversation
+            train_chunks_by_conv = {}
+            for chunk in train_chunks:
+                conv_id = chunk['sample_id']
+                if conv_id not in train_chunks_by_conv:
+                    train_chunks_by_conv[conv_id] = []
+                train_chunks_by_conv[conv_id].append(chunk)
+            
+            # Process each train conversation
+            for conv_id, conv_chunks in train_chunks_by_conv.items():
+                if not conv_chunks:
+                    continue
+                
+                # Collect ALL QA pairs from all chunks
+                all_qas_in_conv = []
+                for chunk in conv_chunks:
+                    all_qas_in_conv.extend(chunk['qa_pairs'])
+                
+                print(f"   📝 Train conv {conv_id}: Collected {len(all_qas_in_conv)} QAs from {len(conv_chunks)} chunks")
+                
+                # Clear QAs from all chunks except the last one
+                for i, chunk in enumerate(conv_chunks):
+                    if i < len(conv_chunks) - 1:
+                        # Not the last chunk - clear QAs
+                        chunk['qa_pairs'] = []
+                        chunk['num_questions'] = 0
+                        chunk['qa_stats'] = {'current': 0, 'recent': 0, 'distant': 0, 'future': 0}
+                    else:
+                        # Last chunk - assign ALL QAs
+                        chunk['qa_pairs'] = all_qas_in_conv
+                        chunk['num_questions'] = len(all_qas_in_conv)
+                        
+                        # Recount QA stats for last chunk
+                        qa_type_counts = {'current': 0, 'recent': 0, 'distant': 0, 'future': 0}
+                        for qa in all_qas_in_conv:
+                            qa_type = qa.get('qa_type', 'current')
+                            qa_type_counts[qa_type] += 1
+                        chunk['qa_stats'] = qa_type_counts
+                
+                print(f"      ✅ Moved all {len(all_qas_in_conv)} QAs to chunk {len(conv_chunks)} (last chunk)")
     
     # Save as both JSON and Parquet
     splits = {
@@ -727,6 +865,8 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                 'qa_stats_json': json.dumps(chunk['qa_stats']),
                 'session_evidences_json': json.dumps(chunk.get('session_evidences', [])),  # Evidence needed for this session
                 'dialogue_num_turns': chunk['dialogue_num_turns'],  # Actual number of turns (may be < CHUNK_SIZE)
+                'session_tokens': chunk.get('session_tokens', 0),
+                'total_sessions_tokens': chunk.get('total_sessions_tokens', 0),
                 'num_qas': len(chunk['qa_pairs']),
                 'current_qas': chunk['qa_stats']['current'],
                 'recent_qas': chunk['qa_stats']['recent'],
@@ -816,4 +956,14 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--max_sessions", type=int, default=MAX_SESSION, help="Max sessions per conversation (overrides global MAX_SESSION)")
+    args = parser.parse_args()
+    
+    # Update global variable if argument is provided
+    if args.max_sessions is not None:
+        MAX_SESSION = args.max_sessions
+        print(f"🔧 Overriding MAX_SESSION with: {MAX_SESSION}")
+        
     process_locomo10()
