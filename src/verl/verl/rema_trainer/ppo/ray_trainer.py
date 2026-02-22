@@ -489,6 +489,8 @@ class RayReMATrainer(object):
 
         self._create_dataloader()
 
+        self.accumulated_batches = []
+
     def _validate_config(self):
         config = self.config
         # number of GPUs total
@@ -634,7 +636,7 @@ class RayReMATrainer(object):
                 dataset=self.train_dataset,
                 batch_size=self.config.data.train_batch_size,
                 drop_last=False,  # Not needed since pad_incomplete=True always creates full batches
-                pad_incomplete=True  # Pad training batches with repeats (acts like extra rollouts)
+                pad_incomplete=False  # Pad training batches with repeats (acts like extra rollouts)
             )
         
             self.train_dataloader = StatefulDataLoader(
@@ -852,8 +854,9 @@ class RayReMATrainer(object):
             print(f"[VAL BATCH {batch_idx + 1}] Repeated batch {self.config.actor_rollout_ref.rollout.val_kwargs.n} times. New size: {len(test_batch.batch)}")
             
             # save rollout idx to use it in memory management (AFTER repeating to get unique indices for each rollout)
-            rollout_idx = torch.arange(0, len(test_batch.batch))
-            test_batch.batch['rollout_idx'] = rollout_idx
+            n_rollouts_val = self.config.actor_rollout_ref.rollout.val_kwargs.n
+            rollout_idx = torch.arange(0, n_rollouts_val).repeat(len(test_batch.batch) // n_rollouts_val)
+            test_batch.batch['rollout_idx'] = rollout_idx.numpy()
             
             # we only do validation on rule-based rm
             if self.config.reward_model.enable and test_batch[0].non_tensor_batch['reward_model']['style'] == 'model':
@@ -870,7 +873,7 @@ class RayReMATrainer(object):
             else:
                 test_gen_batch = test_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx', 'epoch'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json', 'total_sessions_tokens'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'], 
                         deepcopy=True
                     )
@@ -1198,8 +1201,9 @@ class RayReMATrainer(object):
             print(f"[TEST BATCH {batch_idx + 1}] Repeated batch {self.config.actor_rollout_ref.rollout.val_kwargs.n} times. New size: {len(test_batch.batch)}")
             
             # save rollout idx to use it in memory management (AFTER repeating to get unique indices for each rollout)
-            rollout_idx = torch.arange(0, len(test_batch.batch))
-            test_batch.batch['rollout_idx'] = rollout_idx
+            n_rollouts_test = self.config.actor_rollout_ref.rollout.val_kwargs.n
+            rollout_idx = torch.arange(0, n_rollouts_test).repeat(len(test_batch.batch) // n_rollouts_test)
+            test_batch.batch['rollout_idx'] = rollout_idx.numpy()
             
             # we only do test on rule-based rm
             if self.config.reward_model.enable and test_batch[0].non_tensor_batch['reward_model']['style'] == 'model':
@@ -1212,7 +1216,7 @@ class RayReMATrainer(object):
             else:
                 test_gen_batch = test_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx', 'epoch'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json', 'total_sessions_tokens'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'], 
                         deepcopy=True
                     )
@@ -1625,6 +1629,10 @@ class RayReMATrainer(object):
         print("="*80)
 
         self.global_steps = 0
+        
+        # Best validation tracking
+        self.best_val_acc = -1.0
+        self.best_global_step = -1
 
         # load checkpoint before doing anything
         print("\n[FIT] Loading checkpoint...")
@@ -1731,14 +1739,13 @@ class RayReMATrainer(object):
                 timing_raw = {}
 
                 print("batch_dict[chunk_id]: ", batch_dict['chunk_id'] if 'chunk_id' in batch_dict else 'N/A')
+                print("batch_dict[sample_id]: ", batch_dict['sample_id'] if 'sample_id' in batch_dict else 'N/A')
 
                 # create a dummy tensor for the construction function
                 print(f"\n[STEP {self.global_steps}] Creating batch from dataloader...")
                 print(f"[STEP {self.global_steps}] Batch size: {len(batch_dict['question'])}")
                 print(f"[STEP {self.global_steps}] batch_dict keys: {list(batch_dict.keys())}")
-                print(f"[STEP {self.global_steps}] Sample question[0]: {batch_dict['question'][0][:100] if isinstance(batch_dict['question'][0], str) else batch_dict['question'][0]}...")
-                if 'reward_model' in batch_dict:
-                    print(f"[STEP {self.global_steps}] reward_model[0] keys: {list(batch_dict['reward_model'][0].keys()) if isinstance(batch_dict['reward_model'][0], dict) else 'N/A'}")
+                
                 dummy_tensor = torch.arange(0, len(batch_dict['question']))
                 batch_dict['batch_idx'] = dummy_tensor
                 batch_dict['epoch'] = torch.full((len(batch_dict['question']),), epoch, dtype=torch.long)
@@ -1819,8 +1826,13 @@ class RayReMATrainer(object):
                 new_batch = new_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
 
                 # save rollout idx to use it in memory management (AFTER repeating to get unique indices for each rollout)
-                rollout_idx = torch.arange(0, len(new_batch.batch))
-                new_batch.batch['rollout_idx'] = rollout_idx
+                # Ensure rollout_idx is consistent per conversation (0..n-1) specifically for memory caching
+                # This ensures that even if batch order changes, the i-th rollout of a conversation always uses the same index.
+                n_rollouts = self.config.actor_rollout_ref.rollout.n
+                # If interleave=True: [A0, A1... An-1, B0, B1... Bn-1]
+                # We want indices: [0, 1... n-1, 0, 1... n-1]
+                rollout_idx = torch.arange(0, n_rollouts).repeat(len(new_batch.batch) // n_rollouts)
+                new_batch.batch['rollout_idx'] = rollout_idx.numpy()
 
                 num_gen_batches += 1
 
@@ -1836,7 +1848,7 @@ class RayReMATrainer(object):
                     # because verl originally calls this 'chat'
                     gen_batch = new_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx', 'epoch'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json', 'total_sessions_tokens'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'],
                         deepcopy=True
                     )
@@ -1882,7 +1894,7 @@ class RayReMATrainer(object):
                     # # repeat to align with repeated responses in rollout
                     # batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
                     print(f"\n[STEP {self.global_steps}] Merging generation output with original batch...")
-                    print(f"[STEP {self.global_steps}] BEFORE union - gen_batch_output.batch keys: {list(gen_batch_output.batch.keys())}")                    
+                    print(f"[STEP {self.global_steps}] BEFORE union - gen_batch_output.batch keys: {list(gen_batch_output.batch.keys())}")
                     new_batch = new_batch.union(gen_batch_output)
                     print(f"[STEP {self.global_steps}] AFTER union - Merged batch size: {len(new_batch.batch)}")
                     print(f"[STEP {self.global_steps}] AFTER union - Merged new_batch.batch keys: {list(new_batch.batch.keys())}")
@@ -1909,6 +1921,7 @@ class RayReMATrainer(object):
                     #     old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
                     #     batch = batch.union(old_log_prob)
 
+                    batch = new_batch
 
                     # compute values
                     if self.use_critic:
@@ -1917,54 +1930,130 @@ class RayReMATrainer(object):
                             values = self.critic_wg.compute_values(batch)
                             batch = batch.union(values)
 
-                    with _timer('reward', timing_raw):
-                        print(f"\n[STEP {self.global_steps}] Computing rewards...")
-                        # compute scores. Support both model and function-based.
-                        # We first compute the scores using reward model. Then, we call reward_fn to combine
-                        # the results from reward model and rule-based results.
-                        if self.use_rm:
-                            raise NotImplementedError('RM is not implemented yet')
-                            # we first compute reward model score
-                            reward_tensor = self.rm_wg.compute_rm_score(batch)
-                            batch = batch.union(reward_tensor)
+                    # Accumulation Logic
+                    current_chunk_id = batch.non_tensor_batch['chunk_id'][0] if 'chunk_id' in batch.non_tensor_batch else 1
+                    
+                    # Convert to int just in case
+                    if isinstance(current_chunk_id, torch.Tensor):
+                        current_chunk_id = current_chunk_id.item()
+                    
+                    print(f"[STEP {self.global_steps}] chunk_id={current_chunk_id}")
 
-                        # add mask_unfinished_reward to meta_info
-                        new_batch.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
-                        new_batch.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
-                        print(f"[STEP {self.global_steps}] Calling reward_fn (rule-based)...")
-                        # rule-based rm build token-level reward_tensor_map for each agent
-                        # {
-                        #     "meta_thinking_turn_level_reward": tensor([...], device='cuda:0'),
-                        #     "reasoning_turn_level_reward": tensor([...], device='cuda:0'),
-                        # }
-                        reward_tensor_map = self.reward_fn(new_batch)
+                    # so if max session is set to infinity to match all convs without setting manually,
+                    # It will work and accumulate till the last conv !
+                    total_chunks = len(self.train_dataloader)
+                    if current_chunk_id < total_chunks:
+                        print(f"[STEP {self.global_steps}] Accumulating batch (session {current_chunk_id}, total_chunks={total_chunks})...")
+                        self.accumulated_batches.append(batch)
+                        print(f"[STEP {self.global_steps}] Accumulated batches count: {len(self.accumulated_batches)}")
+                        # Skip update, continue to next batch (which should be next session)
+                        # But we must ensure global_steps is handled correctly. 
+                        # If we continue here, global_steps increments at end of loop. 
+                        # Maybe we should NOT increment global_steps for accumulated steps? 
+                        # Or increment it but don't log/save?
+                        # The user wants "epoch level update". Usually 1 update per 5 sessions.
+                        # So we can let global_steps increment, but only do update on the 5th step.
+                        continue
+                    
+                    # If we are here, it matches the final session 
+                    # print(f"[STEP {self.global_steps}] Final session ({current_chunk_id}) reached. Proceeding to update.")
+                    print(f"[STEP {self.global_steps}] Final available session ({current_chunk_id}) reached. Proceeding to update.")
+
+                    # --- 1. Construct Terminal Batch ---
+                    # Combine all batches to find the terminal state of every conversation
+                    all_batches = self.accumulated_batches + [batch]
+                    print(f"[STEP {self.global_steps}] Constructing terminal_batch from {len(all_batches)} batches...")
+                    
+                    # Track the latest occurrence of each (sample_id, rollout_idx)
+                    # key: (sample_id, rollout_idx) -> value: (batch_index_in_all_batches, row_index_in_batch)
+                    latest_seen = {}
+                    
+                    # 1.1 Find the Latest Occurrence (Terminal State)
+                    # Iterate through all batches (accumulated + current) to identify the last time we saw each conversation.
+                    # This handles variable length sessions: the "terminal state" is simply the last available snapshot.
+                    for b_idx, b in enumerate(all_batches):
+                        chunk_id = b.non_tensor_batch['chunk_id'][0] # All items in a batch have the same chunk_id
+                        sample_ids = b.non_tensor_batch['sample_id']
+                        rollout_idxs = b.batch['rollout_idx']
+                        
+                        # Ensure rollout_idxs is a list for consistent indexing
+                        if isinstance(rollout_idxs, torch.Tensor):
+                            rollout_idxs = rollout_idxs.cpu().tolist()
+                        
+                        # Map each unique conversation key (sample_id, rollout_idx) to its location (batch_idx, row_idx).
+                        # Since we iterate batches in chronological order, later occurrences overwrite earlier ones.
+                        # The final value in `latest_seen` is guaranteed to be the terminal state.
+                        for r_idx in range(len(b.batch)):
+                            key = (sample_ids[r_idx], int(rollout_idxs[r_idx]))
+                            latest_seen[key] = (b_idx, r_idx)
+                            
+                    print(f"[STEP {self.global_steps}] Found {len(latest_seen)} unique conversations (terminal states).")
+                    
+                    # 1.2 Group and Extract Terminal States
+                    # We need to construct `terminal_batch` containing these final states.
+                    # We also need `terminal_keys_ordered` to map the resulting rows back to their IDs for reward assignment.
+                    
+                    # Group locations by batch index to minimize slicing operations and ensure deterministic order.
+                    # b_idx -> list of (row_idx, key)
+                    b_idx_to_keys = defaultdict(list)
+                    for key, (b_idx, r_idx) in latest_seen.items():
+                        # [batch_idx] -> list of [row_idx in batch, (sample_id, rollout_idx)]
+                        b_idx_to_keys[b_idx].append((r_idx, key))
+                    
+                    terminal_sub_batches = []
+                    terminal_keys_ordered = [] # Will store (sample_id, rollout_idx) for each row in the final terminal_batch
+                    
+                    # Iterate through batches in order (Batch 0, Batch 1, ...)
+                    for b_idx in sorted(b_idx_to_keys.keys()):
+                        # Sort by row index within the batch. 
+                        # This preserves the relative order of samples as they appeared in the original batch
+                        # and allows for efficient slicing (if indices were contiguous, though here we use list indexing).
+                        rows_and_keys = sorted(b_idx_to_keys[b_idx], key=lambda x: x[0])
+                        row_indices = [x[0] for x in rows_and_keys]
+                        keys = [x[1] for x in rows_and_keys]
+                        
+                        # Extract the terminal rows from this specific batch
+                        sub_batch = all_batches[b_idx][row_indices]
+                        # Since we sorted by batch index and then row index, we can just append
+                        # terminal_sub_batches is now a list of DataProto batches in the order they should be processed
+                        terminal_sub_batches.append(sub_batch)
+                        
+                        # Record the keys corresponding to these rows, keys are (sample_id, rollout_idx)
+                        terminal_keys_ordered.extend(keys)
+                        
+                    terminal_batch = DataProto.concat(terminal_sub_batches)
+                    print(f"[STEP {self.global_steps}] Terminal batch constructed with size {len(terminal_batch.batch)}")
+
+
+                    # --- 2. Compute Rewards on Terminal Batch ---
+                    with _timer('reward', timing_raw):
+                        print(f"\n[STEP {self.global_steps}] Computing rewards for Terminal Batch...")
+                        
+                        if self.use_rm:
+                             raise NotImplementedError('RM is not implemented for delayed feedback yet')
+
+                        terminal_batch.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
+                        terminal_batch.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
+                        
+                        reward_tensor_map = self.reward_fn(terminal_batch)
                         print(f"[STEP {self.global_steps}] Reward computed. Keys: {list(reward_tensor_map.keys())}")
                         
-                        # Extract per-category metrics for training (report per-batch, not accumulated)
+                        # Process metrics (logging only)
                         category_names = ['multi_hop', 'single_hop', 'temporal', 'open_domain', 'adversarial']
                         for cat_name in category_names:
                             f1_sum_key = f'{cat_name}_f1_sum'
                             if f1_sum_key in reward_tensor_map:
-                                # Compute average from sum and count for this batch
                                 f1_sum = reward_tensor_map.pop(f1_sum_key).item()
                                 bleu_sum = reward_tensor_map.pop(f'{cat_name}_bleu_sum').item()
                                 count = int(reward_tensor_map.pop(f'{cat_name}_count').item())
-                                
                                 if count > 0:
-                                    # Report batch-level average (not accumulated)
                                     metrics[f'train/{cat_name}_f1'] = f1_sum / count
                                     metrics[f'train/{cat_name}_bleu'] = bleu_sum / count
                                     metrics[f'train/{cat_name}_count'] = count
-                                    print(f"[STEP {self.global_steps}] Batch category {cat_name}: F1={metrics[f'train/{cat_name}_f1']:.4f}, BLEU={metrics[f'train/{cat_name}_bleu']:.4f}, count={count}")
                         
-                        # Automatically pop all metrics from reward_tensor_map (except turn_level_reward which is handled below)
-                        # Separate scalar metrics (batch-level statistics) from per-sample tensors
-                        keys_to_pop = [key for key in reward_tensor_map.keys() if not key.endswith('_turn_level_reward')]
-                        print(f"[STEP {self.global_steps}] Processing metrics: {', '.join(keys_to_pop)}")
-                        
-                        # Define scalar metric keys (batch-level statistics that shouldn't be in batch)
+                        keys_to_pop = [key for key in reward_tensor_map.keys() if not key.endswith('_turn_level_reward') and key != 'per_session_f1']
                         scalar_metric_keys = [
-                            'memory_size', 'memory_insert_count', 'memory_delete_count', 
+                            'memory_size', 'memory_insert_count', 'memory_delete_count', 'memory_token_count', 'memory_compression_ratio',
                             'memory_update_count', 'memory_ops', 'evidence_precision', 
                             'evidence_recall', 'avg_retrieval_rank', 'memory_failure_rate',
                             'retrieval_failure_rate', 'total_failure_rate'
@@ -1972,152 +2061,166 @@ class RayReMATrainer(object):
                         
                         for key in keys_to_pop:
                             tensor_value = reward_tensor_map.pop(key)
-                            # Check if it's a scalar tensor (batch-level statistic)
                             if key in scalar_metric_keys or tensor_value.dim() == 0:
-                                # Log as metric, don't add to batch (use memory/ prefix for memory metrics)
                                 metric_key = f'memory/{key}' if key in scalar_metric_keys else f'train/{key}'
                                 metrics[metric_key] = tensor_value.item() if tensor_value.dim() == 0 else tensor_value
-                                print(f"[STEP {self.global_steps}] Logged scalar metric '{metric_key}': {metrics[metric_key]}")
                             else:
-                                # Add per-sample tensors to batch
-                                new_batch.batch[key] = tensor_value
+                                mean_val = tensor_value.float().mean().item()
+                                metrics[f'train/{key}'] = mean_val
+                                if key in ['acc', 'bleu', 'evidence']:
+                                    metrics[f'critic/{key}'] = mean_val
                         
-                        # Process turn_level_reward tensors separately
-                        for key_reward, reward_tensor in reward_tensor_map.items():
-                            if not key_reward.endswith('_turn_level_reward'):
-                                continue
-                            new_batch.batch[key_reward] = reward_tensor
-                            # get_turn_mask, shape (bsz, max_num_turns), 1 for valid turn, 0 for invalid turn
-                            turn_mask = verl_F.get_turn_mask(reward_tensor, new_batch.non_tensor_batch['num_turns'])
-                            key_return = key_reward.replace('reward', 'return')
-                            # compute turn_level return with turn_level_gamma
-                            new_batch.batch[key_return] = core_algos.compute_turn_level_return(
-                                reward_tensor, turn_mask, self.config.algorithm.gamma_turn_level)
-                            # print(f"[STEP {self.global_steps}] After turn level reward/return computation: {key_return}: {new_batch.batch[key_return]}")
-                    
-                    
-                    # statistics for group filter
-                    if self.config.actor_rollout_ref.rollout.n > 1:
-                        print(f"\n[STEP {self.global_steps}] Computing group filter statistics...")
-                        # key_reward = list(reward_tensor_map.keys())[0]
-                        # one_agent_reward_tensor = reward_tensor_map[key_reward]
-                        acc_tensor = new_batch.batch['acc']
-                        id2acc = defaultdict(list)
-                        for i_bsz, uid in enumerate(new_batch.non_tensor_batch['uid']):
-                            id2acc[uid].append(acc_tensor[i_bsz])
-                        print(f"[STEP {self.global_steps}] Grouped {len(id2acc)} unique prompts")
-
-                        kept_prompt_uids = []
-                        for key_uid, acc_this_uid in id2acc.items():
-                            acc_this_uid = torch.tensor(acc_this_uid)
-                            # F1 score is continuous. We filter out prompts with zero variance (all scores same)
-                            # as they provide no gradient signal for advantage-based methods (GRPO/ReMax).
-                            if torch.allclose(acc_this_uid.min(), acc_this_uid.max(), atol=1e-6):
-                                if (acc_this_uid < 1e-6).all():  # Effectively 0
-                                    all_negative_cnt += 1
-                                elif (acc_this_uid > 1.0 - 1e-6).all():  # Effectively 1
-                                    all_positive_cnt += 1
-                                # else: constant intermediate score (e.g. all 0.5). Dropped.
-                            else:
-                                # keep prompt with variance (non-zero advantages)
-                                kept_prompt_uids.append(key_uid)
-                            total_prompt_cnt += 1
-                        kept_prompt_cnt += len(kept_prompt_uids)
-                    
-                    if not self.config.algorithm.filter_groups.enable:
-                        # if not enable group filter, keep all data
-                        print(f"[STEP {self.global_steps}] Group filter disabled. Keeping all data.")
-                        batch = new_batch
-                    else:
-                        print(f"[STEP {self.global_steps}] Group filter enabled. Filtering data...")
-                        # filter data based on group filter statistics
-                        num_prompt_in_batch += len(kept_prompt_uids)
-                        print(f"[STEP {self.global_steps}] Kept {len(kept_prompt_uids)} prompts. Total in batch: {num_prompt_in_batch}")
-                        # get kept data batch
-                        kept_traj_idxs = []
-                        for idx, traj_from_prompt_uid in enumerate(new_batch.non_tensor_batch['uid']):
-                            if traj_from_prompt_uid in kept_prompt_uids:
-                                kept_traj_idxs.append(idx)
-                        new_batch = new_batch[kept_traj_idxs]
-                        print(f"[STEP {self.global_steps}] Filtered batch to {len(new_batch.batch)} trajectories")
-                        if batch is None:
-                            batch = new_batch
-                        else:
-                            batch = DataProto.concat([batch, new_batch])
-                            print(f"[STEP {self.global_steps}] Concatenated batches. Total size: {len(batch.batch)}")
+                        # --- 3. Build Global Reward Map ---
+                        # We use 'reasoning_turn_level_reward' as the main reward signal
+                        global_reward_map = {} # (sample_id, rollout_idx) -> reward_value (float)
+                        global_per_session_map = {} # (sample_id, rollout_idx) -> per_session_row (Tensor)
                         
-                        # check if we have enough data
-                        prompt_bsz = self.config.data.train_batch_size
-                        if num_prompt_in_batch < prompt_bsz:
-                            # keep generating
-                            print(f'[STEP {self.global_steps}] {num_prompt_in_batch=} < {prompt_bsz=}')
-                            max_num_gen_batches = self.config.algorithm.filter_groups.max_num_gen_batches
-                            if max_num_gen_batches <= 0 or num_gen_batches < max_num_gen_batches:
-                                print(f'[STEP {self.global_steps}] {num_gen_batches=}. Keep generating...')
-                                continue
-                            else:
-                                raise ValueError(
-                                    f'{num_gen_batches=} >= {max_num_gen_batches=}. Generated too many. Please check your data.'
-                                )
+                        agent_roles = terminal_batch.meta_info['agent_roles']
+                        main_reward_key = 'reasoning_turn_level_reward'
+                        
+                        if main_reward_key in reward_tensor_map:
+                            rewards_all = reward_tensor_map[main_reward_key] # (B_term, T)
+                            outcome_rewards_all = rewards_all.sum(dim=-1) # (B_term,)
+                            
+                            for i, key in enumerate(terminal_keys_ordered):
+                                global_reward_map[key] = outcome_rewards_all[i].item()
+                                
+                            print(f"[STEP {self.global_steps}] Global reward map built with {len(global_reward_map)} entries.")
                         else:
-                            # Align the batch
-                            print(f"[STEP {self.global_steps}] Sufficient data collected. Aligning batch...")
-                            traj_bsz = self.config.data.train_batch_size * self.config.actor_rollout_ref.rollout.n
-                            batch = batch[:traj_bsz]
-                            print(f"[STEP {self.global_steps}] Batch aligned to {traj_bsz} trajectories")
+                            print(f"[WARNING] '{main_reward_key}' not found in reward_tensor_map.")
 
-                    if self.config.actor_rollout_ref.rollout.n > 1:
-                        metrics.update({
-                            'rollout/all_negative_cnt': all_negative_cnt,
-                            'rollout/all_positive_cnt': all_positive_cnt,
-                            'rollout/kept_prompt_cnt': kept_prompt_cnt,
-                            'rollout/total_prompt_cnt': total_prompt_cnt,
-                            'rollout/num_gen_batches': num_gen_batches,
-                            'rollout/acc_mean': new_batch.batch['acc'].mean().item()
-                        })
-                    
-                    with _timer('save_train_generation', timing_raw):
-                        # save train generation
-                        if self.config.trainer.get('save_train_generations', False):
-                            self._save_train_generations(batch)
+
+                        reward_type = self.config.trainer.get('rewardtype', 'global')
+                        print(f"[STEP {self.global_steps}] Reward type from config: {reward_type}")
+
+                        if reward_type == 'cumulative' or reward_type == 'cumulative_per_session_f1':
+                            if 'cumulative_per_session_f1' in reward_tensor_map:
+                                print(f"[STEP {self.global_steps}] Using cumulative per-session F1 for global session map.")
+                                per_session_f1_all = reward_tensor_map['cumulative_per_session_f1'] # (B_term, MaxSessions)
+                                for i, key in enumerate(terminal_keys_ordered):
+                                    global_per_session_map[key] = per_session_f1_all[i]
+                                print(f"[STEP {self.global_steps}] Global per-session reward map built (cumulative).")
+                            else:
+                                print(f"[WARNING] Cumulative reward requested (rewardtype={reward_type}) but 'cumulative_per_session_f1' not found in map!")
+                        
+                        elif reward_type == 'persession' or reward_type == 'per_session_f1':
+                            if 'per_session_f1' in reward_tensor_map:
+                                per_session_f1_all = reward_tensor_map['per_session_f1'] # (B_term, MaxSessions)
+                                for i, key in enumerate(terminal_keys_ordered):
+                                    global_per_session_map[key] = per_session_f1_all[i]
+                                print(f"[STEP {self.global_steps}] Global per-session reward map built.")
+                            else:
+                                print(f"[WARNING] Per-session reward requested (rewardtype={reward_type}) but 'per_session_f1' not found in map!")
+                                
+                        elif reward_type == 'global':
+                            print(f"[STEP {self.global_steps}] Using global outcome reward. Bypassing per-session map.")
+                        else:
+                            print(f"[STEP {self.global_steps}] Unrecognized reward_type '{reward_type}'. Defaulting to global outcome reward.")
+
+
+                        # --- 4. Propagate Rewards to All Batches ---
+                        print(f"[STEP {self.global_steps}] Propagating rewards to all {len(all_batches)} batches...")
+                        
+                        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                        max_turns = self.config.actor_rollout_ref.rollout.max_num_turns
+                        
+                        for b_idx, target_batch in enumerate(all_batches):
+                            # info for this batch
+                            curr_sample_ids = target_batch.non_tensor_batch['sample_id']
+                            curr_rollout_idxs = target_batch.batch['rollout_idx']
+                            if isinstance(curr_rollout_idxs, torch.Tensor):
+                                curr_rollout_idxs = curr_rollout_idxs.cpu().tolist()
+                            curr_num_turns = target_batch.non_tensor_batch['num_turns']
+                            
+                            # Determine session index for this batch
+                            # Note: chunk_id is 1-based index (Session 1, Session 2...)
+                            sess_idx_1based = target_batch.non_tensor_batch['chunk_id'][0]
+                            if isinstance(sess_idx_1based, torch.Tensor):
+                                sess_idx_1based = sess_idx_1based.item()
+                            sess_idx_0based = int(sess_idx_1based) - 1
+                            
+                            bsz = len(target_batch.batch)
+                            
+                            # For each role, apply rewards
+                            for role in agent_roles:
+                                role_reward_key = f'{role}_turn_level_reward'
+                                propagated_reward = torch.zeros((bsz, max_turns), device=device)
+                                
+                                for r_idx in range(bsz):
+                                    key = (curr_sample_ids[r_idx], int(curr_rollout_idxs[r_idx]))
+                                    
+                                    reward_val = 0.0
+                                    
+                                    # Strategy A: Use per-session F1 if available (Dense Reward)
+                                    if key in global_per_session_map:
+                                        per_session_row = global_per_session_map[key]
+                                        # Use the value corresponding to *this batch's* session index
+                                        # Check bounds just in case
+                                        if sess_idx_0based < per_session_row.shape[0]:
+                                            reward_val = per_session_row[sess_idx_0based].item()
+                                    
+                                    # Strategy B: Fallback to outcome reward (Sparse/Global Reward)
+                                    elif key in global_reward_map:
+                                        # If we don't have per-session breakdown, we assign the FINAL outcome reward
+                                        # to the LAST turn of the session? Or should we only assign it at the very end?
+                                        # Usually for PPO with sparse reward, we assign it at the end of trajectory.
+                                        # But here we are doing multi-session.
+                                        # If we are in the terminal batch for this key, assigns it.
+                                        # But wait, 'target_batch' might NOT be the terminal batch for this key 
+                                        # (e.g. if conversation continued).
+                                        # If this conversation ENDED at this batch, we can assign reward.
+                                        # REVISION: Since sessions are treated as independent samples in the PPO buffer
+                                        # (compute_advantage processes each row independently), we MUST assign the 
+                                        # final outcome reward to ALL sessions if we want the signal to reach earlier sessions.
+                                        # Otherwise, Session 1 gets 0 reward and learns nothing about the outcome.
+                                        reward_val = global_reward_map[key]
+                                            
+                                    # Assign to the last turn of this session
+                                    last_turn_idx = curr_num_turns[r_idx] - 1
+                                    if last_turn_idx >= 0 and last_turn_idx < max_turns:
+                                        propagated_reward[r_idx, last_turn_idx] = reward_val
+
+                                target_batch.batch[role_reward_key] = propagated_reward
+                                
+                                # Compute Turn Level Return (GAE/Discounting happens here)
+                                turn_mask = verl_F.get_turn_mask(propagated_reward, curr_num_turns)
+                                key_return = role_reward_key.replace('reward', 'return')
+                                target_batch.batch[key_return] = core_algos.compute_turn_level_return(
+                                    propagated_reward, turn_mask, self.config.algorithm.gamma_turn_level)
+
+                        # Concatenate everything for PPO update
+                        print(f"[STEP {self.global_steps}] Concatenating {len(all_batches)} batches for update...")
+                        batch = DataProto.concat(all_batches)
+                        self.accumulated_batches = [] # Clear accumulation
+                        print(f"[STEP {self.global_steps}] Mega-batch size: {len(batch.batch)}")
 
                     with _timer('adv', timing_raw):
-                        print(f"\n[STEP {self.global_steps}] Computing advantages...")
+                        print(f"\n[STEP {self.global_steps}] Computing advantages (Trajectory Aggregated)...")
                         # Merge different role data into a single DataProto
-                        print(f"[STEP {self.global_steps}] Merging roles data...")
-                        print(f"[STEP {self.global_steps}] Before merge - batch.batch keys: {list(batch.batch.keys())}")
-                        print(f"[STEP {self.global_steps}] Before merge - batch.non_tensor_batch keys: {list(batch.non_tensor_batch.keys())}")
                         merged_batch = merge_roles_data(batch)
-                        print(f"[STEP {self.global_steps}] Merged batch size: {len(merged_batch.batch)}")
-                        print(f"[STEP {self.global_steps}] After merge - merged_batch.batch keys: {list(merged_batch.batch.keys())}")
-                        print(f"[STEP {self.global_steps}] After merge - merged_batch.non_tensor_batch keys: {list(merged_batch.non_tensor_batch.keys())}")
-                        # assign turn_level scores to the last token of each turn, w/ step_ids
-                        #  and then i'll call compute_advantage to distribute the score to all
-                        #  tokens of each step.
-                        print(f"[STEP {self.global_steps}] Computing token-level scores...")
+
+                        # recompute old_log_probs (on merged data)
+                        with _timer('old_log_prob', timing_raw):
+                            print(f"\n[STEP {self.global_steps}] Computing old log probabilities (merged)...")
+                            old_log_prob = self.actor_rollout_wg.compute_log_prob(merged_batch)
+                            merged_batch = merged_batch.union(old_log_prob)
+                            print(f"[STEP {self.global_steps}] Old log probs computed.")
+
+                        if self.use_reference_policy:
+                            # compute reference log_prob
+                            with _timer('ref', timing_raw):
+                                print(f"[STEP {self.global_steps}] Computing reference log probabilities (merged)...")
+                                ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(merged_batch)
+                                merged_batch = merged_batch.union(ref_log_prob)
+                                print(f"[STEP {self.global_steps}] Reference log probs computed.")
+                        
+                        # assign turn_level scores to the last token of each turn
                         token_level_scores = compute_token_level_scores(merged_batch)
-                        print(f"[STEP {self.global_steps}] token_level_scores shape: {token_level_scores.shape}, dtype: {token_level_scores.dtype}")
-                        print(f"[STEP {self.global_steps}] token_level_scores sample[0, :10]: {token_level_scores[0, :10]}")
                         merged_batch.batch['token_level_scores'] = token_level_scores
                         batch = merged_batch
                         
-                        # # compute rewards. apply_kl_penalty if available
-                        # if not self.config.actor_rollout_ref.actor.get('use_kl_loss', False):
-                        #     batch, kl_metrics = apply_kl_penalty(batch,
-                        #                                          kl_ctrl=self.kl_ctrl,
-                        #                                          kl_penalty=self.config.algorithm.kl_penalty)
-                        #     metrics.update(kl_metrics)
-                        # else:
-                        #     batch.batch['token_level_rewards'] = batch.batch['token_level_scores']
-                        
-                        # XXX(ziyu): debug
                         batch.batch['token_level_rewards'] = batch.batch['token_level_scores']
 
-                        # in this case, its usage is changed.
-                        # for REINFORCE++, it's used to distribute the score from last token of each turn
-                        # to all tokens of each step.
-                        # for GRPO, we use turn_level_reward.sum(-1) as the outcome reward and then
-                        # assign each label token the normalized advantage.
                         print(f"[STEP {self.global_steps}] Computing advantages with {self.config.algorithm.adv_estimator}...")
                         batch = compute_advantage(batch,
                                                   adv_estimator=self.config.algorithm.adv_estimator,
@@ -2125,25 +2228,6 @@ class RayReMATrainer(object):
                                                   lam=self.config.algorithm.lam_token_level,
                                                   num_repeat=self.config.actor_rollout_ref.rollout.n)
                         print(f"[STEP {self.global_steps}] Advantages computed.")
-                        print(f"[STEP {self.global_steps}] Final batch.batch keys: {list(batch.batch.keys())}")
-                        if 'advantages' in batch.batch:
-                            print(f"[STEP {self.global_steps}] advantages shape: {batch.batch['advantages'].shape}")
-                            print(f"[STEP {self.global_steps}] advantages sample[0, :10]: {batch.batch['advantages'][0, :10]}")
-
-                    # recompute old_log_probs
-                    with _timer('old_log_prob', timing_raw):
-                        print(f"\n[STEP {self.global_steps}] Computing old log probabilities...")
-                        old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
-                        batch = batch.union(old_log_prob)
-                        print(f"[STEP {self.global_steps}] Old log probs computed.")
-
-                    if self.use_reference_policy:
-                        # compute reference log_prob
-                        with _timer('ref', timing_raw):
-                            print(f"[STEP {self.global_steps}] Computing reference log probabilities...")
-                            ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
-                            batch = batch.union(ref_log_prob)
-                            print(f"[STEP {self.global_steps}] Reference log probs computed.")
 
 
                     # update critic
@@ -2176,6 +2260,23 @@ class RayReMATrainer(object):
                             if is_last_step:
                                 last_val_metrics = val_metrics
                             print(f"[STEP {self.global_steps}] Validation complete.")
+                        
+                        # --- Update Best Checkpoint Info ---
+                        current_val_acc = val_metrics.get('val/acc/locomo', -1.0)
+                        if current_val_acc > self.best_val_acc:
+                            print(f"[STEP {self.global_steps}] New best validation accuracy: {current_val_acc:.4f} (was {self.best_val_acc:.4f})")
+                            self.best_val_acc = current_val_acc
+                            self.best_global_step = self.global_steps
+                            
+                            # Save best info to file
+                            best_info_path = os.path.join(self.config.trainer.default_local_dir, 'best_checkpoint_info.txt')
+                            try:
+                                with open(best_info_path, 'w') as f:
+                                    f.write(f"{self.best_global_step}")
+                                print(f"[STEP {self.global_steps}] Saved best checkpoint info to {best_info_path}")
+                            except Exception as e:
+                                print(f"[WARN] Failed to save best checkpoint info: {e}")
+                                
                         metrics.update(val_metrics)
 
                     if self.config.trainer.save_freq > 0 and ( is_last_step or \
