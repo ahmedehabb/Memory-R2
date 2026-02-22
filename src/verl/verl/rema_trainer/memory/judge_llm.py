@@ -170,28 +170,36 @@ def judge_with_llm(prompt: str) -> str:
             return JUDGE_CACHE[key]
 
     # Call appropriate API (outside lock to avoid blocking other threads)
-    try:
-        if USE_GEMINI:
-            generation_config = genai.types.GenerationConfig(
-                temperature=0.0,
-                top_p=1.0,
-            )
-            response = gemini_model.generate_content(
-                prompt,
-                generation_config=generation_config
-            )
-            result = response.text.strip()
-        else:
-            response = together_client.chat.completions.create(
-                model="ServiceNow-AI/Apriel-1.6-15b-Thinker",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.0,
-                top_p=1.0,
-            )
-            result = response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"[judge error] {e}")
-        result = ""
+    import time
+    max_retries = 3
+    result = ""
+    for attempt in range(max_retries):
+        try:
+            if USE_GEMINI:
+                generation_config = genai.types.GenerationConfig(
+                    temperature=0.0,
+                    top_p=1.0,
+                )
+                response = gemini_model.generate_content(
+                    prompt,
+                    generation_config=generation_config
+                )
+                result = response.text.strip()
+            else:
+                response = together_client.chat.completions.create(
+                    model="ServiceNow-AI/Apriel-1.6-15b-Thinker",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    top_p=1.0,
+                )
+                result = response.choices[0].message.content.strip()
+            break
+        except Exception as e:
+            print(f"[judge error] Attempt {attempt+1}/{max_retries} failed: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(1 + attempt)  # simple backoff
+            else:
+                result = ""
 
     # Thread-safe: save to cache with lock
     with _CACHE_LOCK:
@@ -245,25 +253,32 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
         def call_api(idx_prompt_pair):
             """Helper function for concurrent API calls"""
             orig_idx, prompt = idx_prompt_pair
-            try:
-                if USE_GEMINI:
-                    generation_config = genai.types.GenerationConfig(
-                        temperature=0.0,
-                        top_p=1.0,
-                    )
-                    response = gemini_model.generate_content(prompt, generation_config=generation_config)
-                    response_text = response.text.strip()
-                else:
-                    response = together_client.chat.completions.create(
-                        model="ServiceNow-AI/Apriel-1.6-15b-Thinker",
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0.0,
-                        top_p=1.0,
-                    )
-                    response_text = response.choices[0].message.content.strip()
-                return orig_idx, prompt, response_text, None
-            except Exception as e:
-                return orig_idx, prompt, "", str(e)
+            import time
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if USE_GEMINI:
+                        generation_config = genai.types.GenerationConfig(
+                            temperature=0.0,
+                            top_p=1.0,
+                        )
+                        response = gemini_model.generate_content(prompt, generation_config=generation_config)
+                        response_text = response.text.strip()
+                    else:
+                        response = together_client.chat.completions.create(
+                            model="ServiceNow-AI/Apriel-1.6-15b-Thinker",
+                            messages=[{"role": "user", "content": prompt}],
+                            temperature=0.0,
+                            top_p=1.0,
+                        )
+                        response_text = response.choices[0].message.content.strip()
+                    return orig_idx, prompt, response_text, None
+                except Exception as e:
+                    print(f"[judge_with_llm_batch] Attempt {attempt+1}/{max_retries} failed for idx {orig_idx}: {e}")
+                    if attempt < max_retries - 1:
+                        time.sleep(1 + attempt)
+                    else:
+                        return orig_idx, prompt, "", str(e)
         
         # Use ThreadPoolExecutor for concurrent API calls
         new_entries = 0

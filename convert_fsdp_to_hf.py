@@ -8,7 +8,7 @@ from glob import glob
 from collections import defaultdict
 
 
-def main(fsdp_checkpoint_path, huggingface_model_path, output_path, world_size=8):
+def main(fsdp_checkpoint_path, huggingface_model_path, output_path, world_size=4):
     state_dict = defaultdict(list)
 
     for rank in range(world_size):
