@@ -52,6 +52,9 @@ class Memory:
         
         # Track all dia_ids that have been inserted/updated for easy evaluation
         self.dia_ids_set: set = set()
+        
+        # Track total tokens saved in memory
+        self.total_tokens: int = 0
 
     def _generate_memory_id(self) -> str:
         """Generate a unique ID for a memory item."""
@@ -163,6 +166,9 @@ class Memory:
         
         # Track dia_id in the set for easy evaluation
         self.dia_ids_set.add(dia_id)
+        
+        # Update total tokens count
+        self.total_tokens += len(self._tokenize(content))
         
         return turn_data
     
@@ -321,6 +327,11 @@ class Memory:
         """
         for i, turn in enumerate(self.memories):
             if turn["memory_id"] == memory_id:
+                # Update content tokens count
+                old_content = turn["content"]
+                self.total_tokens -= len(self._tokenize(old_content))
+                self.total_tokens += len(self._tokenize(content))
+                
                 # Update content
                 turn["content"] = content
                 
@@ -354,6 +365,9 @@ class Memory:
         """
         for i, turn in enumerate(self.memories):
             if turn["memory_id"] == memory_id:
+                # Reduce total token count
+                self.total_tokens -= len(self._tokenize(turn["content"]))
+                
                 # Remove dia_ids from the set before deleting the memory
                 for dia_id in turn.get('dia_ids', []):
                     # Only remove if no other memory uses this dia_id
@@ -478,6 +492,7 @@ class Memory:
             self.embedding_matrix = np.empty((0, self._embedding_dim))
             self.embedding_ids = []
             self.dia_ids_set = set()
+            self.total_tokens = 0
         
         # Load memories based on format
         if format == "pickle":
@@ -510,6 +525,9 @@ class Memory:
             self.memories = loaded_memories
             loaded_count = len(loaded_memories)
             
+            # Recalculate total tokens
+            self.total_tokens = sum(len(self._tokenize(m["content"])) for m in self.memories)
+            
             # Restore embeddings if available (pickle new format)
             if loaded_embedding_matrix is not None:
                 self.embedding_matrix = loaded_embedding_matrix
@@ -536,6 +554,7 @@ class Memory:
             for memory in loaded_memories:
                 if memory["memory_id"] not in existing_ids:
                     self.memories.append(memory)
+                    self.total_tokens += len(self._tokenize(memory["content"]))
                     loaded_count += 1
             
             # For append mode, always rebuild embeddings for new memories
