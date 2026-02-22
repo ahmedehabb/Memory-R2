@@ -25,13 +25,23 @@ from tqdm import tqdm
 from verl import DataProto
 from verl.utils.reward_score import _default_compute_score
 import torch
-from pebble import ProcessPool
+from pebble import ThreadPool
 from concurrent.futures import TimeoutError
 from math_verify.errors import TimeoutException
 from verl.rema_trainer.memory.utils.parse_response import extract_answer_from_text
 from verl.rema_trainer.memory.memory_core.memory_manager import MemoryManager
 from verl.rema_trainer.memory.utils.qa_prompt_generator import generate_qa_prompt
 from verl.rema_trainer.memory.judge_llm import judge_with_llm
+import re
+
+def parse_dia_id(dia_id):
+    """Parse dia_id like 'D8:17' -> (session:int, dia:int)."""
+    if not dia_id or not isinstance(dia_id, str):
+        return None, None
+    m = re.search(r"D(?P<sess>\d+):(?P<dia>\d+)", dia_id.strip())
+    if not m:
+        return None, None
+    return int(m.group("sess")), int(m.group("dia"))
 
 # Category ID to human-readable name mapping
 # Used for per-category metrics (F1 and BLEU scores)
@@ -103,8 +113,8 @@ def compute_bleu(prediction, truth):
 
 def compute_score_fn(compute_score, params):
     # data_source, response, ground_truth, extra_info = params
-    qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, session_id, session_evidences, extra_info, mem_op_stats, dia_ids_affected_per_turn = params
-    return compute_score(qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, session_id, session_evidences, extra_info, mem_op_stats, dia_ids_affected_per_turn)
+    qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, session_id, session_evidences, extra_info, mem_op_stats, dia_ids_affected_per_turn, total_sessions_tokens = params
+    return compute_score(qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, session_id, session_evidences, extra_info, mem_op_stats, dia_ids_affected_per_turn, total_sessions_tokens)
 
 def process_single_qa(qa_pair, memory, speakers, session_time):
     """Process a single QA pair - to be called in parallel"""
@@ -138,29 +148,7 @@ def process_single_qa(qa_pair, memory, speakers, session_time):
         'prompt': prompt
     }
 
-def compute_memory_penalty(mem_op_stats, weights=None):
-    """
-    Compute a penalty for memory actions during a rollout.
-
-    Args:
-        mem_op_stats: dict with keys 'insert_successful', 'delete_successful', 'update_successful'
-        weights: dict with weights for each action type, e.g.:
-            {"INSERT": 0.3, "UPDATE": 0.1, "DELETE": 0.05}
-
-    Returns:
-        penalty: float, higher penalty = worse memory usage
-    """
-    if weights is None:
-        weights = {"INSERT": 0.2, "UPDATE": 0.1, "DELETE": 0.05}
-
-    penalty = (
-        mem_op_stats.get('insert_successful', 0) * weights["INSERT"] +
-        mem_op_stats.get('update_successful', 0) * weights["UPDATE"] +
-        mem_op_stats.get('delete_successful', 0) * weights["DELETE"]
-    )
-    return penalty
-
-def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, session_id: int, session_evidences: list, extra_info: dict=None, mem_op_stats: dict=None, dia_ids_affected_per_turn: list=None) -> tuple[float, dict]:
+def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, session_id: int, session_evidences: list, extra_info: dict=None, mem_op_stats: dict=None, dia_ids_affected_per_turn: list=None, total_sessions_tokens: int=None) -> tuple[float, dict]:
     key = f"{conv_id}_chunk{chunk_id}_epoch{epoch}"
     memory = MemoryManager().get_snapshot(sample_id=conv_id, chunk_id=chunk_id, epoch=epoch, split=split, index_in_batch=index)
     
@@ -177,12 +165,17 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         'memory_failure_rate': 0.0,
         'retrieval_failure_rate': 0.0,
         'total_failure_rate': 0.0,
+        'memory_token_count': 0,
+        'memory_compression_ratio': 0.0,
     }
     
     # Memory size: number of memory items stored
     if memory is not None and hasattr(memory, 'memories'):
         tracking_metrics['memory_size'] = len(memory.memories)
-        print(f"[LocomoScore] Memory size for conv {conv_id}, chunk {chunk_id}: {tracking_metrics['memory_size']} memory items")
+        tracking_metrics['memory_token_count'] = memory.total_tokens
+        compression_ratio = max(0.0, 1.0 - (memory.total_tokens / total_sessions_tokens))
+        tracking_metrics['memory_compression_ratio'] = compression_ratio
+        print(f"[LocomoScore] Memory size for conv {conv_id}, chunk {chunk_id}: {tracking_metrics['memory_size']} memory items, {tracking_metrics['memory_token_count']} tokens")
     
     # Memory operation counts (individual and total)
     if mem_op_stats is not None:
@@ -217,6 +210,9 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     # Per-category tracking
     category_f1_scores = {}  # {category: [f1_scores]}
     category_bleu_scores = {}  # {category: [bleu_scores]}
+    
+    # Per-session tracking for dense rewards
+    session_f1_scores = {}  # {session_id: [f1_scores]}
 
     # Calculate session-level evidence coverage
     # Compare memory's dia_ids_set against session_evidences needed for this session
@@ -230,9 +226,9 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
             print(f"[LocomoScore] Missing evidence dia_ids: {sorted(list(missing))[:10]}...")  # Show first 10
     else:
         evidence_retrieval_coverage = 0.0
-        print(f"[LocomoScore] No session_evidences or dia_ids_set available, evidence coverage = 0.0")
+        # print(f"[LocomoScore] No session_evidences or dia_ids_set available, evidence coverage = 0.0")
     
-    print(f"[LocomoScore] Processing {num_questions} questions for conv {conv_id}, chunk {chunk_id}")
+    # print(f"[LocomoScore] Processing {num_questions} questions for conv {conv_id}, chunk {chunk_id}")
     
     # Handle different question counts
     if num_questions == 0:
@@ -240,7 +236,7 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         results = []
     else:
         # Use parallel processing for any number of questions
-        print(f"[LocomoScore] Using parallel processing for {num_questions} questions")
+        # print(f"[LocomoScore] Using parallel processing for {num_questions} questions")
         with ThreadPoolExecutor(max_workers=min(num_questions, 8)) as executor:
             futures = [executor.submit(process_single_qa, qa_pair, memory, speakers, session_time) 
                       for qa_pair in qa_pairs]
@@ -263,14 +259,31 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         category_f1_scores[category].append(question_score)
         category_bleu_scores[category].append(bleu_score)
 
+        # Track per-session scores for dense rewards
+        # Extract sessions from dia_ids_needed_for_q
+        q_sessions = set()
+        for ev_id in (dia_ids_needed_for_q or []):
+            s, _ = parse_dia_id(ev_id)
+            if s is not None:
+                q_sessions.add(s)
+        
+        # If no evidence session found, default to current session
+        if not q_sessions:
+            q_sessions.add(session_id)
+            
+        for s in q_sessions:
+            if s not in session_f1_scores:
+                session_f1_scores[s] = []
+            session_f1_scores[s].append(question_score)
+
         # Accumulate scores for averaging
         qa_scores += question_score
         bleu_scores += bleu_score
         
-        print(f"[LocomoScore] Q{qa_idx+1}/{num_questions} [{CATEGORY_NAMES[category]}]: {result['question']}")
-        print(f"[LocomoScore] Gold: {result['gold_answer']}, Predicted: {result['predicted_answer']}, F1: {question_score}, BLEU: {bleu_score}")
-        print(f"[LocomoScore] Speaker 1 dia_ids (ranked): {speaker_1_dia_ids}")
-        print(f"[LocomoScore] Speaker 2 dia_ids (ranked): {speaker_2_dia_ids}")
+        # print(f"[LocomoScore] Q{qa_idx+1}/{num_questions} [{CATEGORY_NAMES[category]}]: {result['question']}")
+        # print(f"[LocomoScore] Gold: {result['gold_answer']}, Predicted: {result['predicted_answer']}, F1: {question_score}, BLEU: {bleu_score}")
+        # print(f"[LocomoScore] Speaker 1 dia_ids (ranked): {speaker_1_dia_ids}")
+        # print(f"[LocomoScore] Speaker 2 dia_ids (ranked): {speaker_2_dia_ids}")
 
         # Track retrieval quality metrics for each question
         if dia_ids_needed_for_q and len(dia_ids_needed_for_q) > 0:
@@ -375,11 +388,11 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
                         print(f"[LocomoScore]   dia_id '{needed_id}' NOT RETRIEVED from either speaker")
             
             # Show retrieved memory context
-            if 'prompt' in result and result['prompt']:
-                retrieved_memory_idx = result['prompt'].find("Memories for user")
-                if retrieved_memory_idx != -1:
-                    memory_section = result['prompt'][retrieved_memory_idx:]
-                    print(f"[LocomoScore] Retrieved memory preview:\n{memory_section}...\n")
+            # if 'prompt' in result and result['prompt']:
+            #     retrieved_memory_idx = result['prompt'].find("Memories for user")
+            #     if retrieved_memory_idx != -1:
+            #         memory_section = result['prompt'][retrieved_memory_idx:]
+            #         print(f"[LocomoScore] Retrieved memory preview:\n{memory_section}...\n")
     
     # Calculate average scores
     avg_f1_score = qa_scores / num_questions if num_questions > 0 else 0.0
@@ -446,6 +459,8 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         turn_bleu_scores = {turn_id: [] for turn_id in range(max_turn_id + 1)}
         
         # Assign QA scores to turns based on evidence requirements
+        # TODO:: should we do it this way based on what our memory did in turn i, or assign directly to the turn
+        # that was responsible for that evidence?? even though it worked on it or not ? 
         for qa_idx, result in enumerate(results):
             question_score = result['question_score']
             bleu_score = result['bleu_score']
@@ -515,19 +530,24 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         "split": split
     }
     
+    # Compute average scores per session
+    per_session_f1 = {}
+    for s, scores in session_f1_scores.items():
+        per_session_f1[s] = sum(scores) / len(scores) if scores else 0.0
+
     # Cache is never used, since we always get new stuff due to (generation, retrieval, ... ) randomness
     # Force merge cache before returning (critical for ProcessPool workers)
     # from verl.rema_trainer.memory.judge_llm import merge_to_main_cache
     # merge_to_main_cache()
     
-    # Return F1 score, BLEU score, evidence score, category_raw_scores, memory_info, tracking_metrics, and turn-level rewards
-    return avg_f1_score, avg_bleu_score, evidence_retrieval_coverage, category_raw_scores, memory_info, tracking_metrics, turn_level_f1_rewards, turn_level_bleu_rewards
+    # Return F1 score, BLEU score, evidence score, category_raw_scores, memory_info, tracking_metrics, turn_level_f1_rewards, turn_level_bleu_rewards and per_session_f1
+    return avg_f1_score, compression_ratio, avg_bleu_score, evidence_retrieval_coverage, category_raw_scores, memory_info, tracking_metrics, turn_level_f1_rewards, turn_level_bleu_rewards, per_session_f1
 
 class ReMARewardManager:
     """The reward manager.
     """
 
-    def __init__(self, tokenizer, num_examine, compute_score=None, top_k_percentage=0.3) -> None:
+    def __init__(self, tokenizer, num_examine, compute_score=None, top_k_percentage=0.5) -> None:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         # self.compute_score = compute_score or _default_compute_score
@@ -569,24 +589,6 @@ class ReMARewardManager:
             scores.append(score)
         data.batch['acc'] = torch.tensor(scores, dtype=torch.float32, device=prompt_ids.device)
         return scores
-
-    def rank_to_grpo_rewards(self, scores: torch.Tensor):
-        """
-        Convert rollout scores into GRPO rewards using linear scaling.
-        scores: Tensor of shape (N,) for SAME conversation.
-        Returns: Tensor of shape (N,) with values in [-1, +1].
-        """
-        N = scores.numel()
-        if N == 1:
-            return torch.zeros_like(scores)
-        
-        # Handle ties: double argsort gives ranks (0 = best, N-1 = worst)
-        ranks = torch.argsort(torch.argsort(scores, descending=True)).float()
-        
-        # Linear scaling: best=+1, worst=-1, linear interpolation in between
-        rewards = 1.0 - 2.0 * ranks / (N - 1)
-        
-        return rewards
 
     def __call__(self, data: DataProto)-> Dict[str, torch.Tensor]:
         """We will expand this function gradually based on the available datasets"""
@@ -646,11 +648,13 @@ class ReMARewardManager:
              (list(data[i].non_tensor_batch.get('dia_ids_affected_per_turn', [])) 
               if data[i].non_tensor_batch.get('dia_ids_affected_per_turn') is not None 
               else None),
+             data[i].non_tensor_batch.get('total_sessions_tokens', 0),
              )
             for i in range(len(data))
         ]
 
         qa_scores = []  # Track QA accuracy (F1) separately
+        compression_ratios = []  # Track compression ratios separately
         bleu_scores = []  # Track BLEU scores separately
         evidence_scores = [] # Track evidence scores separately
         category_stats_list = []  # Track per-category stats
@@ -658,17 +662,19 @@ class ReMARewardManager:
         tracking_metrics_list = []  # Track additional metrics (memory size, retrieval quality, etc.)
         turn_level_f1_list = []  # Track turn-level F1 rewards
         turn_level_bleu_list = []  # Track turn-level BLEU rewards
-        print(f"\n[RewardManager] Starting score computation with ProcessPool...")
-        with ProcessPool(max_workers=16) as pool:  # Parallel processing with 16 workers
-            future = pool.map(partial(compute_score_fn, self.compute_score), params, timeout=7200)
+        per_session_f1_list = []  # Track per-session F1 rewards
+        print(f"\n[RewardManager] Starting score computation with ThreadPool...")
+        with ThreadPool(max_workers=16) as pool:  # Parallel processing with 16 threads
+            future = pool.map(partial(compute_score_fn, self.compute_score), params, timeout=3600)
             iterator = future.result()
             with tqdm(total=len(data), desc="Computing scores") as pbar:
                 while True:
                     try:
                         result = next(iterator)
-                        # Updated format: (f1_score, bleu_score, evidence_score, category_stats, memory_info, tracking_metrics, turn_level_f1, turn_level_bleu)
-                        qa_score, bleu_score, evidence_score, category_stats, memory_info, tracking_metrics, turn_f1, turn_bleu = result
+                        # Updated format: (f1_score, bleu_score, evidence_score, category_stats, memory_info, tracking_metrics, turn_level_f1, turn_level_bleu, per_session_f1)
+                        qa_score, comp_ratio, bleu_score, evidence_score, category_stats, memory_info, tracking_metrics, turn_f1, turn_bleu, per_session_f1 = result
                         qa_scores.append(qa_score)
+                        compression_ratios.append(comp_ratio)
                         bleu_scores.append(bleu_score)
                         evidence_scores.append(evidence_score)
                         category_stats_list.append(category_stats)
@@ -676,9 +682,11 @@ class ReMARewardManager:
                         tracking_metrics_list.append(tracking_metrics)
                         turn_level_f1_list.append(turn_f1)
                         turn_level_bleu_list.append(turn_bleu)
+                        per_session_f1_list.append(per_session_f1)
                     except TimeoutError:
                         print('[RewardManager] Time Out')
                         qa_scores.append(0.0)
+                        compression_ratios.append(0.0)
                         bleu_scores.append(0.0)
                         evidence_scores.append(0.0)
                         category_stats_list.append({'f1_scores': {}, 'bleu_scores': {}})
@@ -686,9 +694,11 @@ class ReMARewardManager:
                         tracking_metrics_list.append({})
                         turn_level_f1_list.append(None)
                         turn_level_bleu_list.append(None)
+                        per_session_f1_list.append({})
                     except TimeoutException:
                         print('[RewardManager] Math verify internal timeout')
                         qa_scores.append(0.0)
+                        compression_ratios.append(0.0)
                         bleu_scores.append(0.0)
                         evidence_scores.append(0.0)
                         category_stats_list.append({'f1_scores': {}, 'bleu_scores': {}})
@@ -696,6 +706,7 @@ class ReMARewardManager:
                         tracking_metrics_list.append({})
                         turn_level_f1_list.append(None)
                         turn_level_bleu_list.append(None)
+                        per_session_f1_list.append({})
                     except StopIteration:
                         break
                     except Exception as e:
@@ -712,15 +723,15 @@ class ReMARewardManager:
             turn_finished = data[i].batch[f'{agent_roles[0]}_turn_finished'].item()
             # Only apply masking if enabled
             if data[i].meta_info['mask_unfinished_reward']:
-                if turn_finished == 1:  # Successfully completed
-                    # Combined Reward: QA F1 + 0.5 * Evidence Coverage
-                    score = 1.0 * qa_scores[i] + 0.0 * evidence_scores[i]
+                if turn_finished == 1 or max_num_turns == 1:  # Successfully completed
+                    # Combined Reward: QA F1 * Compression Ratio
+                    score = qa_scores[i] * compression_ratios[i]
                 else:  # Incomplete trajectory - give 0 score
                     score = 0.0
                     num_incomplete += 1
             else:
                 # No masking - use score regardless of completion status
-                score = 1.0 * qa_scores[i] + 0.0 * evidence_scores[i]
+                score = qa_scores[i] * compression_ratios[i]
             combined_scores.append(score)
         print(f"[RewardManager] Combined scores computed: mean={sum(combined_scores)/len(combined_scores):.4f}")
         print(f"[RewardManager] Incomplete trajectories (turn_finished != 1): {num_incomplete}/{len(combined_scores)}")
@@ -737,6 +748,7 @@ class ReMARewardManager:
         
         assert len(evidence_scores) == len(data)
         assert len(qa_scores) == len(data)
+        assert len(compression_ratios) == len(data)
         assert len(bleu_scores) == len(data)
         assert len(category_stats_list) == len(data)
         accuracy = torch.tensor(qa_scores, dtype=torch.float32) # bsz - F1 accuracy
@@ -746,42 +758,69 @@ class ReMARewardManager:
         reward_tensor_map['bleu'] = bleu
         reward_tensor_map['evidence'] = evidence
         
-        # Populate turn-level rewards from dia_id-based causality
-        print(f"\n[RewardManager] Populating turn-level rewards from dia_id causality...")
-        for i in range(batch_size):
-            turn_f1 = turn_level_f1_list[i]
-            turn_bleu = turn_level_bleu_list[i]
-            turn_finished = data[i].batch[f'{agent_roles[0]}_turn_finished'].item()
-            
-            # Apply masking: if trajectory incomplete AND masking enabled, zero out turn rewards
-            should_mask = (turn_finished != 1) and data[i].meta_info['mask_unfinished_reward']
-            
-            if turn_f1 is not None and len(turn_f1) > 0:
-                num_turns_computed = len(turn_f1)
-                # print(f"[RewardManager] Sample {i}: Got {num_turns_computed} turn-level F1 rewards: {[f'{x:.3f}' for x in turn_f1]}")
-                
-                # Assign to all roles (both agents benefit from good memory operations)
-                for role in agent_roles:
-                    # Use turn-level F1 rewards (can also combine with BLEU if desired)
-                    for turn_idx in range(min(num_turns_computed, max_num_turns)):
-                        if should_mask:
-                            # Incomplete trajectory: zero out turn rewards (consistent with combined_scores masking)
-                            reward_tensor_map[f'{role}_turn_level_reward'][i, turn_idx] = 0.0
-                        else:
-                            # Complete trajectory: use computed turn rewards
-                            reward_tensor_map[f'{role}_turn_level_reward'][i, turn_idx] = turn_f1[turn_idx]
+        # Construct per-session F1 reward tensor
+        # max_sessions is passed via session_id of current batch (which is the last session)
+        # Find the max session_id across ALL items in the batch to avoid truncation/crashes
+        all_session_ids = []
+        for d in data:
+            s_id = d.non_tensor_batch['session_id']
+            if isinstance(s_id, torch.Tensor):
+                s_id = s_id.item()
+            all_session_ids.append(s_id)
+        
+        max_sessions = max(all_session_ids) if all_session_ids else 0
+        per_session_f1_tensor = torch.zeros(batch_size, max_sessions)
+        for i, ps_f1 in enumerate(per_session_f1_list):
+            for s_id, score in ps_f1.items():
+                if 1 <= s_id <= max_sessions:
+                    per_session_f1_tensor[i, s_id - 1] = score
+        
+        reward_tensor_map['per_session_f1'] = per_session_f1_tensor
 
-                if should_mask:
-                    pass
-                    # print(f"[RewardManager] Sample {i}: Masked turn-level rewards (turn_finished={turn_finished}, masking enabled)")
-            else:
-                # print(f"[RewardManager] Sample {i}: No turn-level rewards computed (using fallback)")
-                # Fallback: use overall F1 score distributed evenly across turns (with masking)
-                for role in agent_roles:
-                    if should_mask:
-                        reward_tensor_map[f'{role}_turn_level_reward'][i, :] = 0.0
-                    else:
-                        reward_tensor_map[f'{role}_turn_level_reward'][i, :] = combined_scores[i] / max_num_turns
+        # Now saving the cumulative per session reward like session i affects all future sessions i+1,i+2,...
+        # reward of session i = r_i + r_{i+1} + ... + r_n
+        # We need a suffix sum (sum from i to end), but cumsum gives a prefix sum (sum from start to i).
+        # Trick: Flip the tensor -> cumsum -> Flip back
+        # [r1, r2, r3] -> flip -> [r3, r2, r1] -> cumsum -> [r3, r3+r2, r3+r2+r1] -> flip -> [r1+r2+r3, r2+r3, r3]
+        cumulative_per_session_f1_tensor = torch.flip(torch.cumsum(torch.flip(per_session_f1_tensor, dims=[1]), dim=1), dims=[1])
+        reward_tensor_map['cumulative_per_session_f1'] = cumulative_per_session_f1_tensor
+
+        # Populate turn-level rewards from dia_id-based causality
+        # print(f"\n[RewardManager] Populating turn-level rewards from dia_id causality...")
+        # for i in range(batch_size):
+        #     turn_f1 = turn_level_f1_list[i]
+        #     turn_bleu = turn_level_bleu_list[i]
+        #     turn_finished = data[i].batch[f'{agent_roles[0]}_turn_finished'].item()
+            
+        #     # Apply masking: if trajectory incomplete AND masking enabled, zero out turn rewards
+        #     should_mask = (turn_finished != 1) and data[i].meta_info['mask_unfinished_reward']
+            
+        #     if turn_f1 is not None and len(turn_f1) > 0:
+        #         num_turns_computed = len(turn_f1)
+        #         # print(f"[RewardManager] Sample {i}: Got {num_turns_computed} turn-level F1 rewards: {[f'{x:.3f}' for x in turn_f1]}")
+                
+        #         # Assign to all roles (both agents benefit from good memory operations)
+        #         for role in agent_roles:
+        #             # Use turn-level F1 rewards (can also combine with BLEU if desired)
+        #             for turn_idx in range(min(num_turns_computed, max_num_turns)):
+        #                 if should_mask:
+        #                     # Incomplete trajectory: zero out turn rewards (consistent with combined_scores masking)
+        #                     reward_tensor_map[f'{role}_turn_level_reward'][i, turn_idx] = 0.0
+        #                 else:
+        #                     # Complete trajectory: use computed turn rewards
+        #                     reward_tensor_map[f'{role}_turn_level_reward'][i, turn_idx] = turn_f1[turn_idx]
+
+        #         if should_mask:
+        #             pass
+        #             # print(f"[RewardManager] Sample {i}: Masked turn-level rewards (turn_finished={turn_finished}, masking enabled)")
+        #     else:
+        #         # print(f"[RewardManager] Sample {i}: No turn-level rewards computed (using fallback)")
+        #         # Fallback: use overall F1 score distributed evenly across turns (with masking)
+        #         for role in agent_roles:
+        #             if should_mask:
+        #                 reward_tensor_map[f'{role}_turn_level_reward'][i, :] = 0.0
+        #             else:
+        #                 reward_tensor_map[f'{role}_turn_level_reward'][i, :] = combined_scores[i] / max_num_turns
 
         reward_tensor_map['evidence'] = evidence
         
@@ -799,6 +838,8 @@ class ReMARewardManager:
             avg_memory_failure = sum(m.get('memory_failure_rate', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
             avg_retrieval_failure = sum(m.get('retrieval_failure_rate', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
             avg_total_failure = sum(m.get('total_failure_rate', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_memory_token_count = sum(m.get('memory_token_count', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
+            avg_compression_ratio = sum(m.get('memory_compression_ratio', 0) for m in tracking_metrics_list) / len(tracking_metrics_list)
             
             # Add to reward_tensor_map as scalar tensors for logging
             reward_tensor_map['memory_size'] = torch.tensor(avg_memory_size, dtype=torch.float32)
@@ -812,7 +853,8 @@ class ReMARewardManager:
             reward_tensor_map['memory_failure_rate'] = torch.tensor(avg_memory_failure, dtype=torch.float32)
             reward_tensor_map['retrieval_failure_rate'] = torch.tensor(avg_retrieval_failure, dtype=torch.float32)
             reward_tensor_map['total_failure_rate'] = torch.tensor(avg_total_failure, dtype=torch.float32)
-
+            reward_tensor_map['memory_token_count'] = torch.tensor(avg_memory_token_count, dtype=torch.float32)
+            reward_tensor_map['memory_compression_ratio'] = torch.tensor(avg_compression_ratio, dtype=torch.float32)
         
         # Compute category statistics for all modes (training, validation, test)
         # For training: metrics are reported per-batch (not accumulated)
@@ -875,39 +917,39 @@ class ReMARewardManager:
         else:
             print(f"[RewardManager] No category data found in this batch")
 
-        print(f"\n[RewardManager] Turn-level rewards already assigned via dia_id causality (see above). Skipping old reward assignment logic.")
-        # print(f"\n[RewardManager] Processing {len(data)} data items to assign rewards...")
-        # for i_bsz in range(len(data)):
-        #     data_item = data[i_bsz]  # DataProtoItem
+        # print(f"\n[RewardManager] Turn-level rewards already assigned via dia_id causality (see above). Skipping old reward assignment logic.")
+        print(f"\n[RewardManager] Processing {len(data)} data items to assign rewards...")
+        for i_bsz in range(len(data)):
+            data_item = data[i_bsz]  # DataProtoItem
 
-        #     # Use precomputed combined score (already masked for incomplete trajectories)
-        #     score = combined_scores[i_bsz]
+            # Use precomputed combined score (already masked for incomplete trajectories)
+            score = combined_scores[i_bsz]
             
-        #     num_turns = data_item.non_tensor_batch['num_turns']
+            num_turns = data_item.non_tensor_batch['num_turns']
             
-        #     for i_role, role in enumerate(agent_roles):
+            for i_role, role in enumerate(agent_roles):
                 
-        #         # Both roles get the same combined score (aligned incentives)
-        #         # Score is already masked in combined_scores computation above
+                # Both roles get the same combined score (aligned incentives)
+                # Score is already masked in combined_scores computation above
                 
-        #         if i_bsz == 0:
-        #             turn_finished = data_item.batch[f'{role}_turn_finished'].item()
-        #             print(f"  - {role}_turn_finished: {turn_finished}")
+                if i_bsz == 0:
+                    turn_finished = data_item.batch[f'{role}_turn_finished'].item()
+                    print(f"  - {role}_turn_finished: {turn_finished}")
 
-        #         # TODO:: Should add my format reward here not this one !
+                # TODO:: Should add my format reward here not this one !
 
-        #         # if turn_finished == 0 and data_item.meta_info['use_format_reward'] and max_num_turns == 1:
-        #         #     # XXX(ziyu): only add format reward for normally finished 1-turn conversation
-        #         #     last_round_msg = data_item.non_tensor_batch['history'][i_role]
-        #         #     assert last_round_msg['role'] == role, role
+                # if turn_finished == 0 and data_item.meta_info['use_format_reward'] and max_num_turns == 1:
+                #     # XXX(ziyu): only add format reward for normally finished 1-turn conversation
+                #     last_round_msg = data_item.non_tensor_batch['history'][i_role]
+                #     assert last_round_msg['role'] == role, role
 
-        #         #     format_r = compute_format_r(data_source, role, last_round_msg['content'])
-        #         #     if i_bsz == 0:
-        #         #         print(f"  - Adding format reward for {role}: {format_r}")
-        #         #     score += format_r
-        #         reward_tensor_map[f'{role}_turn_level_reward'][i_bsz, num_turns - 1] = score
-        #         if i_bsz == 0:
-        #             print(f"  - Assigned {role}_turn_level_reward[{i_bsz}, {num_turns - 1}] = {score}")
+                #     format_r = compute_format_r(data_source, role, last_round_msg['content'])
+                #     if i_bsz == 0:
+                #         print(f"  - Adding format reward for {role}: {format_r}")
+                #     score += format_r
+                reward_tensor_map[f'{role}_turn_level_reward'][i_bsz, num_turns - 1] = score
+                if i_bsz == 0:
+                    print(f"  - Assigned {role}_turn_level_reward[{i_bsz}, {num_turns - 1}] = {score}")
 
 
         # Only cache the best memory during training (test/validation already has only one memory)
