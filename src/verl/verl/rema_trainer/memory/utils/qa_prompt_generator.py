@@ -10,6 +10,9 @@ import json
 from pathlib import Path
 from verl.rema_trainer.memory.memory_core.memory import Memory
 
+# Module-level cache for template files (path -> content)
+_TEMPLATE_CACHE: Dict[str, str] = {}
+
 
 def format_memories_for_speaker(
     memory: Memory,
@@ -131,9 +134,12 @@ def generate_qa_prompt(
         # Look for qa.txt in ../prompts/ relative to this file
         prompt_template_path = Path(__file__).parent.parent / "prompts" / "qa.txt"
     
-    # Load the template
-    with open(prompt_template_path, "r") as f:
-        template = f.read()
+    # Load the template (cached after first read)
+    cache_key = str(prompt_template_path)
+    if cache_key not in _TEMPLATE_CACHE:
+        with open(prompt_template_path, "r") as f:
+            _TEMPLATE_CACHE[cache_key] = f.read()
+    template = _TEMPLATE_CACHE[cache_key]
     
     # Get memories for each speaker using similarity search
     speaker_1_memories, speaker_1_dia_ids = format_memories_for_speaker(
