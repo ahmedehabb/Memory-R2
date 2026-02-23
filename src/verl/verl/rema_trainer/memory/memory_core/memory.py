@@ -9,9 +9,13 @@ import numpy as np
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
-from sklearn.metrics.pairwise import cosine_similarity
 from rank_bm25 import BM25Okapi
 from verl.rema_trainer.memory.memory_core.embedding_cache import get_cache
+
+# Load env once at module level instead of per-embedding call
+load_dotenv()
+
+_INITIAL_EMBED_CAPACITY = 64  # Pre-allocation size for embedding matrix
 
 class Memory:
     """Stores LLM-generated memory items (summaries/facts extracted from conversations) in RAM."""
@@ -45,10 +49,13 @@ class Memory:
         else:
             raise NotImplementedError(f"Embedding method '{self.embedding_method}' is not implemented yet.")
         
-        # Embeddings stored as matrices for batch operations
-        self.embedding_matrix: np.ndarray = np.empty((0, self._embedding_dim))
+        # Embeddings stored as pre-allocated matrix for O(1) inserts
+        self._embed_capacity = _INITIAL_EMBED_CAPACITY
+        self.embedding_matrix: np.ndarray = np.empty((self._embed_capacity, self._embedding_dim))
+        self._embed_count: int = 0  # Number of actual embeddings stored
         # Memory ID mappings to track which row corresponds to which memory
         self.embedding_ids: List[str] = []  # memory_ids
+        self._embedding_id_to_idx: Dict[str, int] = {}  # O(1) lookup: memory_id -> matrix row index
         
         # Track all dia_ids that have been inserted/updated for easy evaluation
         self.dia_ids_set: set = set()
@@ -79,7 +86,6 @@ class Memory:
         
         if method == "openai":
             try:
-                load_dotenv()
                 client = openai.OpenAI()
                 response = client.embeddings.create(
                     model="text-embedding-3-small",
@@ -154,9 +160,13 @@ class Memory:
         # If this fails, we haven't modified state yet
         embedding = self._get_embedding(content, method=self.embedding_method)
         try:
-            new_matrix = np.vstack([self.embedding_matrix, embedding.reshape(1, -1)])
-            self.embedding_matrix = new_matrix
+            # Grow matrix if at capacity
+            if self._embed_count >= self._embed_capacity:
+                self._grow_embedding_matrix()
+            self.embedding_matrix[self._embed_count] = embedding
             self.embedding_ids.append(memory_id)
+            self._embedding_id_to_idx[memory_id] = self._embed_count
+            self._embed_count += 1
         except Exception as e:
             # If matrix update fails, rollback/don't proceed
             raise RuntimeError(f"Failed to update embedding matrix for insert: {e}")
@@ -233,50 +243,9 @@ class Memory:
         else:
             raise ValueError(f"Unknown search method: {search_method}. Use 'bm25' or 'text-embedding'.")
     
-    def _search_embedding(self, turns: List[Dict[str, any]], query: str,
-                          top_k: int = None, min_score: float = 0.0) -> List[Tuple[Dict[str, any], float]]:
-        """Search memory items using embedding similarity."""
-        if not turns:
-            return []
-        
-        # Get query embedding
-        query_embedding = self._get_embedding(query, method=self.embedding_method)
-        if np.allclose(query_embedding, 0):
-            return []
-        
-        # Optimize lookup: O(N) once instead of O(N) per filtered turn
-        id_to_idx = {mid: i for i, mid in enumerate(self.embedding_ids)}
-        
-        results = []
-        
-        # Get embeddings for the filtered turns
-        for turn in turns:
-            memory_id = turn["memory_id"]
-            if memory_id in id_to_idx:
-                idx = id_to_idx[memory_id]
-                turn_embedding = self.embedding_matrix[idx]
-                
-                # Calculate similarity
-                similarity = cosine_similarity(
-                    query_embedding.reshape(1, -1),
-                    turn_embedding.reshape(1, -1)
-                )[0][0]
-                
-                if similarity >= min_score:
-                    results.append((turn, float(similarity)))
-        
-        # Sort by similarity descending
-        results.sort(key=lambda x: x[1], reverse=True)
-        
-        # Apply top_k limit
-        if top_k is not None:
-            results = results[:top_k]
-        
-        return results
-    
     def _search_bm25(self, turns: List[Dict[str, any]], query: str,
                      top_k: int = None, min_score: float = 0.0) -> List[Tuple[Dict[str, any], float]]:
-        """Search memory items using BM25."""
+        """Search memory items using BM25 (lazy — index built only when called)."""
         if not turns:
             return []
         
@@ -286,15 +255,10 @@ class Memory:
             return []
         
         # Tokenize all turn contents
-        tokenized_corpus = []
-        for turn in turns:
-            doc_tokens = self._tokenize(turn["content"])
-            tokenized_corpus.append(doc_tokens)
+        tokenized_corpus = [self._tokenize(turn["content"]) for turn in turns]
         
-        # Create BM25 object
+        # Create BM25 object (lazy, only when bm25 search is requested)
         bm25 = BM25Okapi(tokenized_corpus)
-        
-        # Get scores
         doc_scores = bm25.get_scores(query_tokens)
         
         # Create results
@@ -305,6 +269,59 @@ class Memory:
                 results.append((turn, float(score)))
         
         # Sort by score descending
+        results.sort(key=lambda x: x[1], reverse=True)
+        
+        if top_k is not None:
+            results = results[:top_k]
+        
+        return results
+    
+    def _search_embedding(self, turns: List[Dict[str, any]], query: str,
+                          top_k: int = None, min_score: float = 0.0) -> List[Tuple[Dict[str, any], float]]:
+        """Search memory items using batched embedding similarity."""
+        if not turns:
+            return []
+        
+        # Get query embedding
+        query_embedding = self._get_embedding(query, method=self.embedding_method)
+        if np.allclose(query_embedding, 0):
+            return []
+        
+        # Build a single matrix of filtered embeddings for batched cosine similarity
+        valid_turns = []
+        valid_indices = []
+        for turn in turns:
+            memory_id = turn["memory_id"]
+            if memory_id in self._embedding_id_to_idx:
+                valid_turns.append(turn)
+                valid_indices.append(self._embedding_id_to_idx[memory_id])
+        
+        if not valid_turns:
+            return []
+        
+        # Single batched cosine similarity computation
+        filtered_matrix = self.embedding_matrix[valid_indices]  # (N, dim)
+        query_vec = query_embedding.reshape(1, -1)  # (1, dim)
+        
+        # Manual cosine similarity (avoids sklearn overhead)
+        query_norm = np.linalg.norm(query_vec)
+        if query_norm == 0:
+            return []
+        filtered_norms = np.linalg.norm(filtered_matrix, axis=1)  # (N,)
+        # Avoid division by zero
+        filtered_norms = np.where(filtered_norms == 0, 1.0, filtered_norms)
+        similarities = (filtered_matrix @ query_vec.T).squeeze() / (filtered_norms * query_norm)  # (N,)
+        
+        # Ensure similarities is 1-D even for single result
+        similarities = np.atleast_1d(similarities)
+        
+        # Filter by min_score and build results
+        results = []
+        for i, (turn, sim) in enumerate(zip(valid_turns, similarities)):
+            if sim >= min_score:
+                results.append((turn, float(sim)))
+        
+        # Sort by similarity descending
         results.sort(key=lambda x: x[1], reverse=True)
         
         # Apply top_k limit
@@ -345,8 +362,8 @@ class Memory:
                 self.dia_ids_set.add(dia_id)
                 
                 # Regenerate embedding for the new content
-                if memory_id in self.embedding_ids:
-                    idx = self.embedding_ids.index(memory_id)
+                if memory_id in self._embedding_id_to_idx:
+                    idx = self._embedding_id_to_idx[memory_id]
                     new_embedding = self._get_embedding(content, method=self.embedding_method)
                     self.embedding_matrix[idx] = new_embedding
                 
@@ -376,12 +393,20 @@ class Memory:
                 
                 self.memories.pop(i)
                 
-                # Remove embedding
-                if memory_id in self.embedding_ids:
-                    idx = self.embedding_ids.index(memory_id)
-                    new_matrix = np.delete(self.embedding_matrix, idx, axis=0)
-                    self.embedding_matrix = new_matrix
-                    self.embedding_ids.pop(idx)
+                # Remove embedding using O(1) lookup and swap-with-last
+                if memory_id in self._embedding_id_to_idx:
+                    idx = self._embedding_id_to_idx[memory_id]
+                    last_idx = self._embed_count - 1
+                    if idx != last_idx:
+                        # Swap with last element for O(1) removal
+                        self.embedding_matrix[idx] = self.embedding_matrix[last_idx]
+                        last_id = self.embedding_ids[last_idx]
+                        self.embedding_ids[idx] = last_id
+                        self._embedding_id_to_idx[last_id] = idx
+                    # Remove last element
+                    self._embed_count -= 1
+                    self.embedding_ids.pop()
+                    del self._embedding_id_to_idx[memory_id]
                 
                 return True
         return False
@@ -432,7 +457,7 @@ class Memory:
             with open(f"{save_path}.pkl", "wb") as f:
                 pickle.dump({
                     'memories': self.memories,  # Each memory contains dia_ids array
-                    'embedding_matrix': self.embedding_matrix,
+                    'embedding_matrix': self.embedding_matrix[:self._embed_count],  # Only save used portion
                     'embedding_ids': self.embedding_ids,
                     'dia_ids_set': self.dia_ids_set  # Set of all dia_ids for easy evaluation
                 }, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -489,8 +514,11 @@ class Memory:
         
         if clear_existing:
             self.memories = []
-            self.embedding_matrix = np.empty((0, self._embedding_dim))
+            self._embed_capacity = _INITIAL_EMBED_CAPACITY
+            self.embedding_matrix = np.empty((self._embed_capacity, self._embedding_dim))
+            self._embed_count = 0
             self.embedding_ids = []
+            self._embedding_id_to_idx = {}
             self.dia_ids_set = set()
             self.total_tokens = 0
         
@@ -530,8 +558,12 @@ class Memory:
             
             # Restore embeddings if available (pickle new format)
             if loaded_embedding_matrix is not None:
-                self.embedding_matrix = loaded_embedding_matrix
+                self._embed_count = len(loaded_embedding_ids)
+                self._embed_capacity = max(_INITIAL_EMBED_CAPACITY, self._embed_count * 2)
+                self.embedding_matrix = np.empty((self._embed_capacity, self._embedding_dim))
+                self.embedding_matrix[:self._embed_count] = loaded_embedding_matrix
                 self.embedding_ids = loaded_embedding_ids
+                self._embedding_id_to_idx = {mid: i for i, mid in enumerate(self.embedding_ids)}
             else:
                 # No embeddings saved, need to rebuild from cache
                 if self.memories:
@@ -564,11 +596,12 @@ class Memory:
                     mid = memory["memory_id"]
                     if mid not in existing_ids_set:
                         embedding = self._get_embedding(memory["content"], method=self.embedding_method)
-                        self.embedding_matrix = np.vstack([self.embedding_matrix, embedding.reshape(1, -1)])
+                        if self._embed_count >= self._embed_capacity:
+                            self._grow_embedding_matrix()
+                        self.embedding_matrix[self._embed_count] = embedding
                         self.embedding_ids.append(mid)
-                        # Also add dia_ids to the set
-                        for dia_id in memory.get('dia_ids', []):
-                            self.dia_ids_set.add(dia_id)
+                        self._embedding_id_to_idx[mid] = self._embed_count
+                        self._embed_count += 1
                         # Also add dia_ids to the set
                         for dia_id in memory.get('dia_ids', []):
                             self.dia_ids_set.add(dia_id)
@@ -576,15 +609,30 @@ class Memory:
         print(f"✓ Loaded {loaded_count} memories from '{save_name}' in {directory}")
         return loaded_count
     
+    def _grow_embedding_matrix(self) -> None:
+        """Double the capacity of the pre-allocated embedding matrix."""
+        new_capacity = self._embed_capacity * 2
+        new_matrix = np.empty((new_capacity, self._embedding_dim))
+        new_matrix[:self._embed_count] = self.embedding_matrix[:self._embed_count]
+        self.embedding_matrix = new_matrix
+        self._embed_capacity = new_capacity
+
     def _rebuild_embeddings(self) -> None:
         """Rebuild the embedding matrix from current memories (uses cache)."""
-        self.embedding_matrix = np.empty((0, self._embedding_dim))
+        count = len(self.memories)
+        self._embed_capacity = max(_INITIAL_EMBED_CAPACITY, count * 2)
+        self.embedding_matrix = np.empty((self._embed_capacity, self._embedding_dim))
+        self._embed_count = 0
         self.embedding_ids = []
+        self._embedding_id_to_idx = {}
         
         for memory in self.memories:
             embedding = self._get_embedding(memory["content"], method=self.embedding_method)
-            self.embedding_matrix = np.vstack([self.embedding_matrix, embedding.reshape(1, -1)])
-            self.embedding_ids.append(memory["memory_id"])
+            self.embedding_matrix[self._embed_count] = embedding
+            mid = memory["memory_id"]
+            self.embedding_ids.append(mid)
+            self._embedding_id_to_idx[mid] = self._embed_count
+            self._embed_count += 1
     
     def list_saves(self, directory: str = "memory_store") -> List[Dict[str, any]]:
         """
