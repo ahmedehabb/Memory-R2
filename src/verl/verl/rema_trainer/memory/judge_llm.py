@@ -204,13 +204,12 @@ def judge_with_llm(prompt: str) -> str:
     # Thread-safe: save to cache with lock
     with _CACHE_LOCK:
         JUDGE_CACHE[key] = result
-        _save_process_cache()  # non-blocking save
 
-        # Increment counter and merge if threshold reached
+        # Increment counter and save periodically (not on every entry)
         _NEW_ENTRIES_COUNT += 1
-        # if _NEW_ENTRIES_COUNT >= MERGE_EVERY_N:
-        #     merge_to_main_cache()
-        #     _NEW_ENTRIES_COUNT = 0
+        if _NEW_ENTRIES_COUNT >= MERGE_EVERY_N:
+            _save_process_cache()
+            _NEW_ENTRIES_COUNT = 0
 
     return result
 
