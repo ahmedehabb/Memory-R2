@@ -114,6 +114,7 @@ def compute_gae_advantage_return(token_level_rewards: torch.Tensor, values: torc
             nextvalues = values[:, t + 1] if t < gen_len - 1 else 0.0
             delta = token_level_rewards[:, t] + gamma * nextvalues - values[:, t]
             lastgaelam = delta + gamma * lam * lastgaelam
+            lastgaelam = lastgaelam * eos_mask[:, t]  # reset at masked positions (e.g. prompt tokens between turns)
             advantages_reversed.append(lastgaelam)
         advantages = torch.stack(advantages_reversed[::-1], dim=1)
 

@@ -203,16 +203,12 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
     # prepare response group
     # TODO: add other ways to estimate advantages
     if adv_estimator == AdvantageEstimator.GAE:
-        raise NotImplementedError('GAE is not implemented yet')
         values = data.batch['values']
-        responses = data.batch['responses']
-        response_length = responses.size(-1)
-        attention_mask = data.batch['attention_mask']
-        response_mask = attention_mask[:, -response_length:]
+        step_mask = (data.batch['step_ids'] != -100).float()
         token_level_rewards = data.batch['token_level_rewards']
         advantages, returns = core_algos.compute_gae_advantage_return(token_level_rewards=token_level_rewards,
                                                                       values=values,
-                                                                      eos_mask=response_mask,
+                                                                      eos_mask=step_mask,
                                                                       gamma=gamma,
                                                                       lam=lam)
         data.batch['advantages'] = advantages
@@ -2221,7 +2217,13 @@ class RayReMATrainer(object):
                         
                         batch.batch['token_level_rewards'] = batch.batch['token_level_scores']
 
-                        print(f"[STEP {self.global_steps}] Computing advantages with {self.config.algorithm.adv_estimator}...")
+                        # compute critic values for GAE (after merge, before advantage computation)
+                        if self.use_critic:
+                            with _timer('values', timing_raw):
+                                values = self.critic_wg.compute_values(batch)
+                                batch = batch.union(values)
+
+                        # print(f"[STEP {self.global_steps}] Computing advantages with {self.config.algorithm.adv_estimator}...")
                         batch = compute_advantage(batch,
                                                   adv_estimator=self.config.algorithm.adv_estimator,
                                                   gamma=self.config.algorithm.gamma_token_level,
