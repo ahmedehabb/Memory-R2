@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Implement a multiprocess PPOCritic
+Implement a multiprocess PPOCritic (multi-turn only)
 """
 import itertools
 from typing import Iterable
@@ -48,9 +48,6 @@ class DataParallelPPOCritic(BasePPOCritic):
         self.ulysses_sequence_parallel_size = self.config.get('ulysses_sequence_parallel_size', 1)
 
     def _forward_micro_batch(self, micro_batch):
-        has_responses = 'responses' in micro_batch
-        if has_responses:
-            response_length = micro_batch['responses'].size(-1)
         multi_modal_inputs = {}
         if 'multi_modal_inputs' in micro_batch:
             for key in micro_batch['multi_modal_inputs'][0].keys():
@@ -103,27 +100,18 @@ class DataParallelPPOCritic(BasePPOCritic):
 
                 # pad it back
                 values = pad_input(values_rmpad, indices=indices, batch=batch, seqlen=seqlen).squeeze(-1)
-                if has_responses:
-                    # Original single-turn mode: slice to response region
-                    values = values[:, -response_length - 1:-1]
-                else:
-                    # Multi-turn mode: shift values to align V(s_t) = v_raw(t-1)
-                    # v_raw[b, t-1] = value after seeing tokens 0..t-1 = V(s_t)
-                    # So values[b, t] should be v_raw[b, t-1], hence prepend zero
-                    values = torch.cat([torch.zeros_like(values[:, :1]), values[:, :-1]], dim=-1)
             else:
                 output = self.critic_module(input_ids=input_ids,
                                             attention_mask=attention_mask,
                                             position_ids=position_ids,
                                             **multi_modal_inputs,
                                             use_cache=False)  # prevent model thinks we are generating
-                values = output.logits
-                if has_responses:
-                    values = values[:, -response_length - 1:-1].squeeze(-1)
-                else:
-                    # Multi-turn mode: shift values to align V(s_t) = v_raw(t-1)
-                    values = values.squeeze(-1)
-                    values = torch.cat([torch.zeros_like(values[:, :1]), values[:, :-1]], dim=-1)
+                values = output.logits.squeeze(-1)
+
+            # Shift values to align V(s_t) = v_raw(t-1)
+            # v_raw[b, t-1] = value after seeing tokens 0..t-1 = V(s_t)
+            # So values[b, t] should be v_raw[b, t-1], hence prepend zero
+            values = torch.cat([torch.zeros_like(values[:, :1]), values[:, :-1]], dim=-1)
             return values
 
     def _optimizer_step(self):
@@ -139,11 +127,7 @@ class DataParallelPPOCritic(BasePPOCritic):
     def compute_values(self, data: DataProto) -> torch.Tensor:
         self.critic_module.eval()
         micro_batch_size = data.meta_info['micro_batch_size']
-        has_responses = 'responses' in data.batch.keys()
-        if has_responses:
-            select_keys = ['responses', 'input_ids', 'attention_mask', 'position_ids']
-        else:
-            select_keys = ['input_ids', 'attention_mask', 'position_ids', 'step_ids']
+        select_keys = ['input_ids', 'attention_mask', 'position_ids', 'step_ids']
         batch = data.select(batch_keys=select_keys).batch
         use_dynamic_bsz = data.meta_info['use_dynamic_bsz']
         has_multi_modal_inputs = 'multi_modal_inputs' in data.non_tensor_batch.keys()
@@ -169,16 +153,9 @@ class DataParallelPPOCritic(BasePPOCritic):
             values_lst.append(values)
         values = torch.concat(values_lst, dim=0)
 
-        if has_responses:
-            # Original single-turn mode: mask with attention_mask response region
-            responses = data.batch['responses']
-            attention_mask = data.batch['attention_mask']
-            response_length = responses.size(1)
-            values = values * attention_mask[:, -response_length - 1:-1]
-        else:
-            # Multi-turn mode: mask with step_ids (values already (bs, seq_len) after padding in _forward)
-            step_mask = (data.batch['step_ids'] != -100).float()
-            values = values * step_mask
+        # Mask with step_ids (values already shifted in _forward_micro_batch)
+        step_mask = (data.batch['step_ids'] != -100).float()
+        values = values * step_mask
 
         if use_dynamic_bsz:
             indices = list(itertools.chain.from_iterable(indices))
@@ -193,11 +170,7 @@ class DataParallelPPOCritic(BasePPOCritic):
         self.critic_module.train()
         metrics = {}
 
-        has_responses = 'responses' in data.batch.keys()
-        if has_responses:
-            select_keys = ['input_ids', 'responses', 'attention_mask', 'position_ids', 'values', 'returns']
-        else:
-            select_keys = ['input_ids', 'attention_mask', 'position_ids', 'step_ids', 'values', 'returns']
+        select_keys = ['input_ids', 'attention_mask', 'position_ids', 'step_ids', 'values', 'returns']
         batch = data.select(batch_keys=select_keys).batch
         has_multi_modal_inputs = 'multi_modal_inputs' in data.non_tensor_batch.keys()
 
@@ -232,20 +205,12 @@ class DataParallelPPOCritic(BasePPOCritic):
                         data = {**data.batch.to(torch.cuda.current_device()), **data.non_tensor_batch}
                     else:
                         data = data.to(torch.cuda.current_device())  # critic device is cpu when using offload
-                    input_ids = data['input_ids']
-                    attention_mask = data['attention_mask']
-                    position_ids = data['position_ids']
                     values = data['values']
                     returns = data['returns']
 
-                    if has_responses:
-                        responses = data['responses']
-                        response_length = responses.size(1)
-                        eos_mask = attention_mask[:, -response_length - 1:-1]
-                    else:
-                        # Multi-turn mode: use step_ids for masking
-                        step_ids = data['step_ids']
-                        eos_mask = (step_ids != -100).float()
+                    # Use step_ids for masking
+                    step_ids = data['step_ids']
+                    eos_mask = (step_ids != -100).float()
 
                     vpreds = self._forward_micro_batch(data)
 
