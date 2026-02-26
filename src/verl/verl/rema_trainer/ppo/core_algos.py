@@ -129,6 +129,123 @@ def compute_gae_advantage_return(token_level_rewards: torch.Tensor, values: torc
     return advantages, returns
 
 
+def compute_bi_level_gae_advantage_return(
+    token_level_rewards: torch.Tensor,
+    values: torch.Tensor,
+    eos_mask: torch.Tensor,
+    step_ids: torch.Tensor,
+    gamma: float,
+    lam: float,
+    high_level_gamma: float,
+    max_num_turns: int,
+):
+    """Bi-level GAE adapted from "RAGEN" (vectorized). 
+
+    Phase 1: High-level GAE across turn EOS positions using high_level_gamma.
+             Computes the return for each turn considering future turns.
+    Phase 2: Token-level GAE within each turn independently using gamma.
+             Each turn is treated as a separate episode, with the high-level
+             return placed at the EOS token as the 'reward'.
+
+    This cleanly separates the two levels of MDP (agentic turn-level and
+    token-level) and avoids double-discounting.
+
+    Args:
+        token_level_rewards: (bs, gen_len) rewards placed at EOS of each turn
+        values: (bs, gen_len) shifted values V(s_t)
+        eos_mask: (bs, gen_len) 1 for agent tokens, 0 for obs/padding
+        step_ids: (bs, gen_len) turn index per token, -100 for non-agent
+        gamma: token-level discount factor
+        lam: GAE lambda
+        high_level_gamma: turn-level discount factor
+        max_num_turns: maximum number of turns
+
+    Returns:
+        advantages: (bs, gen_len)
+        returns: (bs, gen_len)
+    """
+    bs, gen_len = token_level_rewards.shape
+    device = values.device
+
+    with torch.no_grad():
+        # --- Phase 1: High-level GAE at turn EOS positions ---
+        # Find the last token position of each turn for each batch element
+        seq_indices = torch.arange(gen_len, device=device).unsqueeze(0).expand(bs, -1)
+
+        eos_values = torch.zeros(bs, max_num_turns, device=device, dtype=values.dtype)
+        eos_rewards = torch.zeros(bs, max_num_turns, device=device, dtype=values.dtype)
+        eos_positions = torch.full((bs, max_num_turns), -1, device=device, dtype=torch.long)
+
+        for i_turn in range(max_num_turns):
+            turn_mask = (step_ids == i_turn)
+            last_pos = torch.where(turn_mask, seq_indices, torch.tensor(-1, device=device))
+            last_pos, _ = last_pos.max(dim=1)  # (bs,)
+
+            valid = last_pos >= 0
+            pos_clamped = last_pos.clamp(min=0)
+
+            eos_values[:, i_turn] = values.gather(1, pos_clamped.unsqueeze(1)).squeeze(1) * valid.float()
+            eos_rewards[:, i_turn] = token_level_rewards.gather(1, pos_clamped.unsqueeze(1)).squeeze(1) * valid.float()
+            eos_positions[:, i_turn] = last_pos
+
+        turn_valid = (eos_positions >= 0).float()
+
+        # High-level GAE across turns (backward)
+        high_advantages = torch.zeros(bs, max_num_turns, device=device, dtype=values.dtype)
+        lastgaelam = torch.zeros(bs, device=device, dtype=values.dtype)
+
+        for t in reversed(range(max_num_turns)):
+            if t == max_num_turns - 1:
+                nextvalue = torch.zeros(bs, device=device, dtype=values.dtype)
+            else:
+                nextvalue = eos_values[:, t + 1] * turn_valid[:, t + 1]
+
+            delta = eos_rewards[:, t] + high_level_gamma * nextvalue - eos_values[:, t]
+            lastgaelam = (delta + high_level_gamma * lam * lastgaelam) * turn_valid[:, t]
+            high_advantages[:, t] = lastgaelam
+
+        high_returns = high_advantages + eos_values
+
+        # --- Phase 2: Token-level GAE within each turn ---
+        # Place high-level returns at EOS positions as 'rewards' for Phase 2
+        updated_rewards = torch.zeros_like(token_level_rewards)
+        # Build turn-end reset mask (1 at last token of each turn)
+        is_turn_end = torch.zeros_like(eos_mask)
+        batch_indices = torch.arange(bs, device=device)
+
+        for t in range(max_num_turns):
+            valid = eos_positions[:, t] >= 0
+            pos = eos_positions[:, t].clamp(min=0)
+            updated_rewards[batch_indices[valid], pos[valid]] = high_returns[:, t][valid]
+            is_turn_end[batch_indices[valid], pos[valid]] = 1.0
+
+        # Token-level GAE with reset at turn boundaries
+        advantages_reversed = []
+        lastgaelam = torch.zeros(bs, device=device, dtype=values.dtype)
+        nextvalues = torch.zeros(bs, device=device, dtype=values.dtype)
+
+        for t in reversed(range(gen_len)):
+            # At EOS (turn-end) positions: reset nextvalue and lastgaelam
+            reset = is_turn_end[:, t]
+            nextvalues_eff = nextvalues * (1 - reset)
+            lastgaelam_eff = lastgaelam * (1 - reset)
+
+            delta = updated_rewards[:, t] + gamma * nextvalues_eff - values[:, t]
+            lastgaelam_ = delta + gamma * lam * lastgaelam_eff
+
+            # Skip observation tokens (preserve previous values across obs)
+            nextvalues = values[:, t] * eos_mask[:, t] + (1 - eos_mask[:, t]) * nextvalues
+            lastgaelam = lastgaelam_ * eos_mask[:, t] + (1 - eos_mask[:, t]) * lastgaelam
+
+            advantages_reversed.append(lastgaelam)
+
+        advantages = torch.stack(advantages_reversed[::-1], dim=1)
+        returns = advantages + values
+        advantages = verl_F.masked_whiten(advantages, eos_mask)
+
+    return advantages, returns
+
+
 # NOTE(sgm): this implementation only consider outcome supervision, where the reward is a scalar.
 def compute_grpo_outcome_advantage(token_level_rewards: torch.Tensor,
                                    eos_mask: torch.Tensor,
