@@ -70,6 +70,7 @@ class AdvantageEstimator(str, Enum):
     Using an enumeration class to avoid spelling errors in adv_estimator
     """
     GAE = 'gae'
+    BI_LEVEL_GAE = 'bi_level_gae'
     GRPO = 'grpo'
     REINFORCE_PLUS_PLUS = 'reinforce_plus_plus'
     REMAX = 'remax'
@@ -202,6 +203,41 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
                                                                       eos_mask=step_mask,
                                                                       gamma=gamma,
                                                                       lam=lam)
+        data.batch['advantages'] = advantages
+        data.batch['returns'] = returns
+    elif adv_estimator == AdvantageEstimator.BI_LEVEL_GAE:
+        values = data.batch['values']
+        step_ids = data.batch['step_ids']
+        step_mask = (step_ids != -100).float()
+        max_num_turns = data.meta_info['max_num_turns']
+        # Use RAW per-turn rewards (not discounted turn_level_return)
+        # because bi-level GAE handles cross-turn discounting internally
+        bsz, seq_len = step_ids.shape
+        token_level_rewards_raw = torch.zeros((bsz, seq_len), dtype=torch.float32, device=values.device)
+        turn_level_reward = data.batch['turn_level_reward']
+        for i_turn in range(max_num_turns):
+            last_indices = get_last_index_of_turn(step_ids, i_turn)
+            valid_mask = last_indices != -1
+            if (~valid_mask).all():
+                break
+            batch_indices = torch.arange(bsz, device=values.device)
+            token_level_rewards_raw[batch_indices[valid_mask], last_indices[valid_mask]] = \
+                turn_level_reward[:, i_turn][valid_mask]
+        # Also add any per-token KL penalty if it was applied
+        if 'token_level_rewards' in data.batch and data.batch.get('token_level_scores', None) is not None:
+            kl_penalty_per_token = data.batch['token_level_rewards'] - data.batch['token_level_scores']
+            token_level_rewards_raw = token_level_rewards_raw + kl_penalty_per_token
+        high_level_gamma = data.meta_info.get('gamma_turn_level', 1.0)
+        advantages, returns = core_algos.compute_bi_level_gae_advantage_return(
+            token_level_rewards=token_level_rewards_raw,
+            values=values,
+            eos_mask=step_mask,
+            step_ids=step_ids,
+            gamma=gamma,
+            lam=lam,
+            high_level_gamma=high_level_gamma,
+            max_num_turns=max_num_turns,
+        )
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
     elif adv_estimator == AdvantageEstimator.GRPO:
