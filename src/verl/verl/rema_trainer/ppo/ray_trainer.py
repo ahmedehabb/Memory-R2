@@ -167,35 +167,26 @@ import torch
 from verl.utils.torch_functional import masked_mean
 
 
-def apply_kl_penalty(data: DataProto, kl_ctrl: core_algos.AdaptiveKLController, kl_penalty='kl'):
-    responses = data.batch['responses']
-    response_length = responses.size(1)
-    token_level_scores = data.batch['token_level_scores']
-    batch_size = data.batch.batch_size[0]
-    attention_mask = data.batch['attention_mask']
-    response_mask = attention_mask[:, -response_length:]
+def apply_kl_penalty(data: DataProto, kl_ctrl, kl_penalty='kl'):
+    """Apply KL penalty to token-level rewards using step_ids-based masking.
+    
+    Computes KL divergence between old and reference log probs, masks it
+    with valid step positions (step_ids != -100), and subtracts the
+    weighted KL from token_level_scores to produce token_level_rewards.
+    Also updates the adaptive KL controller.
+    """
+    step_mask = (data.batch['step_ids'] != -100).float()
+    kld = core_algos.kl_penalty(data.batch['old_log_probs'], data.batch['ref_log_prob'],
+                                kl_penalty=kl_penalty)
+    kld = kld * step_mask
+    beta = kl_ctrl.value
+    data.batch['token_level_rewards'] = data.batch['token_level_scores'] - beta * kld
 
-    # compute kl between ref_policy and current policy
-    if 'ref_log_prob' in data.batch.keys():
-        kld = core_algos.kl_penalty(data.batch['old_log_probs'], data.batch['ref_log_prob'],
-                                    kl_penalty=kl_penalty)  # (batch_size, response_length)
-        kld = kld * response_mask
-        beta = kl_ctrl.value
-    else:
-        beta = 0
-        kld = torch.zeros_like(response_mask, dtype=torch.float32)
-
-    token_level_rewards = token_level_scores - beta * kld
-
-    current_kl = masked_mean(kld, mask=response_mask, axis=-1)  # average over sequence
+    current_kl = masked_mean(kld, mask=step_mask, axis=-1)
     current_kl = torch.mean(current_kl, dim=0).item()
+    kl_ctrl.update(current_kl=current_kl, n_steps=len(data.batch))
 
-    # according to https://github.com/huggingface/trl/blob/951ca1841f29114b969b57b26c7d3e80a39f75a0/trl/trainer/ppo_trainer.py#L837
-    kl_ctrl.update(current_kl=current_kl, n_steps=batch_size)
-    data.batch['token_level_rewards'] = token_level_rewards
-
-    metrics = {'critic/kl': current_kl, 'critic/kl_coeff': beta}
-
+    metrics = {'critic/kl_in_reward': current_kl, 'critic/kl_coeff': beta}
     return data, metrics
 
 
@@ -2215,7 +2206,14 @@ class RayReMATrainer(object):
                         merged_batch.batch['token_level_scores'] = token_level_scores
                         batch = merged_batch
                         
-                        batch.batch['token_level_rewards'] = batch.batch['token_level_scores']
+                        # Apply KL penalty to token-level rewards if enabled
+                        # This makes rewards dense (per-token KL signal) instead of sparse (turn-end only)
+                        if self.config.algorithm.get('use_kl_in_reward', False) and self.use_reference_policy:
+                            batch, kl_metrics = apply_kl_penalty(
+                                batch, self.kl_ctrl, kl_penalty=self.config.algorithm.kl_penalty)
+                            metrics.update(kl_metrics)
+                        else:
+                            batch.batch['token_level_rewards'] = batch.batch['token_level_scores']
 
                         # compute critic values for GAE (after merge, before advantage computation)
                         if self.use_critic:
