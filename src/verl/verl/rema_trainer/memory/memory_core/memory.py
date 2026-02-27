@@ -480,7 +480,7 @@ class Memory:
             json.dump(metadata, f, indent=2)
         
         ext = ".pkl" if format == "pickle" else ".json"
-        print(f"✓ Saved {len(self.memories)} memories to '{save_name}{ext}' in {directory}")
+        # print(f"✓ Saved {len(self.memories)} memories to '{save_name}{ext}' in {directory}")
         return str(save_path)
     
     def load(self, save_name: str, directory: str = "memory_store", 
@@ -579,7 +579,7 @@ class Memory:
                 for memory in self.memories:
                     for dia_id in memory.get('dia_ids', []):
                         self.dia_ids_set.add(dia_id)
-                print(f"✓ Rebuilt dia_ids_set from memories: {len(self.dia_ids_set)} unique dia_ids")
+                # print(f"✓ Rebuilt dia_ids_set from memories: {len(self.dia_ids_set)} unique dia_ids")
         else:
             existing_ids = set(m["memory_id"] for m in self.memories)
             loaded_count = 0
@@ -606,7 +606,7 @@ class Memory:
                         for dia_id in memory.get('dia_ids', []):
                             self.dia_ids_set.add(dia_id)
         
-        print(f"✓ Loaded {loaded_count} memories from '{save_name}' in {directory}")
+        # print(f"✓ Loaded {loaded_count} memories from '{save_name}' in {directory}")
         return loaded_count
     
     def _grow_embedding_matrix(self) -> None:

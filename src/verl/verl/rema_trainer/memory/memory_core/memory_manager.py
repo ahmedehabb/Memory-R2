@@ -357,7 +357,7 @@ class MemoryManager:
         
         # Validate search method
         if search_method not in ["bm25", "text-embedding"]:
-            return self._error_result(f"Invalid search_method: {search_method}")
+            return self._error_result(f"Invalid search_method: {search_method}. Use 'bm25' or 'text-embedding'.")
         
         # Validate optional filter types
         if sample_id is not None and not isinstance(sample_id, str):
@@ -502,7 +502,7 @@ class MemoryManager:
         snapshot_json = snapshot_dir / f"{snapshot_name}.json"
         
         if snapshot_pkl.exists():
-            print("Found pickle snapshot")
+            # print("Found pickle snapshot")
             # Load pickle format (fast)
             new_memory = Memory(
                 embedding_method=self.embedding_method,
@@ -510,7 +510,7 @@ class MemoryManager:
             )
             try:
                 new_memory.load(snapshot_name, directory=str(snapshot_dir), format="pickle")
-                print(f"✓ Loaded snapshot (pickle): epoch_{epoch}/{sample_id}/chunk_{chunk_id} ({len(new_memory.memories)} memories)")
+                # print(f"✓ Loaded snapshot (pickle): epoch_{epoch}/{sample_id}/chunk_{chunk_id} ({len(new_memory.memories)} memories)")
                 return new_memory
             except Exception as e:
                 print(f"⚠ Error loading pickle snapshot, returning None: {e}")
@@ -523,7 +523,7 @@ class MemoryManager:
             )
             try:
                 new_memory.load(snapshot_name, directory=str(snapshot_dir), format="json")
-                print(f"✓ Loaded snapshot (json): epoch_{epoch}/{sample_id}/chunk_{chunk_id} ({len(new_memory.memories)} memories)")
+                # print(f"✓ Loaded snapshot (json): epoch_{epoch}/{sample_id}/chunk_{chunk_id} ({len(new_memory.memories)} memories)")
                 return new_memory
             except Exception as e:
                 print(f"⚠ Error loading json snapshot, returning None: {e}")
@@ -590,7 +590,7 @@ class MemoryManager:
         # Save snapshot with specified format
         save_path = memory.save(snapshot_name, directory=str(snapshot_dir), format=format)
         ext = ".pkl" if format == "pickle" else ".json"
-        print(f"✓ Cached snapshot: epoch_{epoch}/{sample_id}/{snapshot_name}{ext} ({len(memory.memories)} memories)")
+        # print(f"✓ Cached snapshot: epoch_{epoch}/{sample_id}/{snapshot_name}{ext} ({len(memory.memories)} memories)")
         
         return save_path
 
@@ -640,7 +640,7 @@ class MemoryManager:
             operation_value = op.get("operation") or ""
             # If operation_value is not a string (e.g., dict, list), convert to string or skip
             if not isinstance(operation_value, str):
-                print(f"[MemoryManager] Warning: operation field is {type(operation_value)}, expected str. Skipping operation: {op}")
+                # print(f"[MemoryManager] Warning: operation field is {type(operation_value)}, expected str. Skipping operation: {op}")
                 continue
             op["operation"] = operation_value.lower()
             if op["operation"] == "insert":

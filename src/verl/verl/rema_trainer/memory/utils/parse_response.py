@@ -46,12 +46,12 @@ def extract_llm_json_from_response(response_text: str) -> Dict[str, Any]:
             parsed["_parse_success"] = True  # Mark as successfully parsed
             return parsed
         except json.JSONDecodeError as e:
-            print(f"Failed to parse extracted JSON: {e}")
-            print(f"Extracted JSON text: {json_text}")
+            # print(f"Failed to parse extracted JSON: {e}")
+            # print(f"Extracted JSON text: {json_text}")
             return {"_parse_success": False}
     else:
-        print(f"No JSON found in response")
-        print(f"Raw response: {response_text}")
+        # print(f"No JSON found in response")
+        # print(f"Raw response: {response_text}")
         return {"_parse_success": False}
 
 

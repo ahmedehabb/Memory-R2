@@ -171,7 +171,7 @@ def judge_with_llm(prompt: str) -> str:
 
     # Call appropriate API (outside lock to avoid blocking other threads)
     import time
-    max_retries = 3
+    max_retries = 10
     result = ""
     for attempt in range(max_retries):
         try:
@@ -253,7 +253,7 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
             """Helper function for concurrent API calls"""
             orig_idx, prompt = idx_prompt_pair
             import time
-            max_retries = 3
+            max_retries = 10
             for attempt in range(max_retries):
                 try:
                     if USE_GEMINI:
