@@ -1943,12 +1943,7 @@ class RayReMATrainer(object):
 
                     batch = new_batch
 
-                    # compute values
-                    if self.use_critic:
-                        raise NotImplementedError('critic is not implemented yet')
-                        with _timer('values', timing_raw):
-                            values = self.critic_wg.compute_values(batch)
-                            batch = batch.union(values)
+                    # NOTE: critic values are computed after merge_roles_data below
 
                     # Accumulation Logic
                     current_chunk_id = batch.non_tensor_batch['chunk_id'][0] if 'chunk_id' in batch.non_tensor_batch else 1
@@ -2255,6 +2250,8 @@ class RayReMATrainer(object):
                                 batch = batch.union(values)
 
                         # print(f"[STEP {self.global_steps}] Computing advantages with {self.config.algorithm.adv_estimator}...")
+                        batch.meta_info['gamma_turn_level'] = self.config.algorithm.gamma_turn_level
+                        batch.meta_info['use_bilevel_gae'] = self.config.algorithm.get('use_bilevel_gae', False)
                         batch = compute_advantage(batch,
                                                   adv_estimator=self.config.algorithm.adv_estimator,
                                                   gamma=self.config.algorithm.gamma_token_level,
