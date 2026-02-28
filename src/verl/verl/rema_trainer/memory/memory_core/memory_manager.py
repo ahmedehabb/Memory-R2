@@ -491,8 +491,8 @@ class MemoryManager:
         
         # Construct directory path: base/epoch_N/conv-ID/
         snapshot_dir = Path(base_dir) / f"epoch_{epoch}" / sample_id
-        # Only use index_in_batch suffix for train split (test/validation have no repeated indices)
-        if split == "train" and index_in_batch >= 0:
+        # Always use index_in_batch suffix if provided (to support n > 1 rollouts in validation/test)
+        if index_in_batch >= 0:
             snapshot_name = f"chunk_{chunk_id}_idx_{index_in_batch}"
         else:
             snapshot_name = f"chunk_{chunk_id}"
@@ -581,8 +581,8 @@ class MemoryManager:
         
         # Construct directory path: base/epoch_N/conv-ID/
         snapshot_dir = Path(base_dir) / f"epoch_{epoch}" / sample_id
-        # Only use index_in_batch suffix for train split (test/validation have no repeated indices)
-        if split == "train" and index_in_batch >= 0:
+        # Always use index_in_batch suffix if provided (to support n > 1 rollouts in validation/test)
+        if index_in_batch >= 0:
             snapshot_name = f"chunk_{chunk_id}_idx_{index_in_batch}"
         else:
             snapshot_name = f"chunk_{chunk_id}"
