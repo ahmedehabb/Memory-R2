@@ -11,6 +11,7 @@ import numpy as np
 from typing import Optional, Dict, Any
 from pathlib import Path
 import time
+from collections import OrderedDict
 
 
 class EmbeddingCache:
@@ -53,18 +54,23 @@ class EmbeddingCache:
             self.cache_dir.mkdir(parents=True, exist_ok=True)
             
             # In-memory index for statistics only (NOT persisted to avoid race conditions)
-            self.index = {}
+            # Removed self.index as it creates a memory leak (we never clear it automatically) 
+            # and we only need basic hit/miss counters.
+            
+            # In-memory fast cache to avoid repeated disk reads (LRU cache)
+            self.memory_cache = OrderedDict()
+            self.max_memory_cache_size = 50000
             
             # Statistics
             self.stats = {
                 "hits": 0,
                 "misses": 0,
                 "total_requests": 0,
-                "cache_size": 0
+                "disk_hits": 0,    # New stat
+                "ram_hits": 0      # New stat
             }
     
-    # Index methods removed - no disk persistence to avoid race conditions in parallel processes
-    # Files on disk are the source of truth, index is in-memory only for statistics
+    # Files on disk are the source of truth, memory_cache is in-memory LRU
     
     def _compute_hash(self, text: str, method: str, model: str = None) -> str:
         """
@@ -111,32 +117,32 @@ class EmbeddingCache:
         self.stats["total_requests"] += 1
         
         cache_hash = self._compute_hash(text, method, model)
+        
+        # Check in-memory fast cache first
+        if hasattr(self, 'memory_cache') and cache_hash in self.memory_cache:
+            self.stats["hits"] += 1
+            self.stats["ram_hits"] += 1
+            # Move to end to mark as recently used
+            self.memory_cache.move_to_end(cache_hash)
+            return self.memory_cache[cache_hash]
+            
         cache_path = self._get_cache_path(cache_hash)
         
-        # Check disk directly - files are source of truth, not index!
-        if not cache_path.exists():
-            self.stats["misses"] += 1
-            print(f"Warning: Cache miss for hash: {cache_hash}")
-            return None
-        
+        # Check disk directly using try/except to avoid an extra network filesystem stat() call
         try:
             embedding = np.load(cache_path)
             self.stats["hits"] += 1
+            self.stats["disk_hits"] += 1
             
-            # Update in-memory index for statistics only (not persisted)
-            self.index[cache_hash] = {
-                "method": method,
-                "model": model,
-                "text_length": len(text),
-                "embedding_dim": len(embedding) if embedding.ndim == 1 else embedding.shape[-1],
-                "last_accessed": time.time(),
-                "cache_file": str(cache_path)
-            }
-            self.stats["cache_size"] = len(self.index)
+            # Add to in-memory cache
+            if hasattr(self, 'memory_cache'):
+                self.memory_cache[cache_hash] = embedding
+                if len(self.memory_cache) > self.max_memory_cache_size:
+                    self.memory_cache.popitem(last=False)
             
             return embedding
-        except Exception as e:
-            print(f"Warning: Failed to load cached embedding: {e}")
+        except OSError:
+            # FileNotFoundError or other read errors (cache miss is expected during new rollouts)
             self.stats["misses"] += 1
             return None
     
@@ -161,55 +167,26 @@ class EmbeddingCache:
             # Save embedding to disk
             np.save(cache_path, embedding)
             
-            # Update in-memory index for statistics only (not persisted)
-            self.index[cache_hash] = {
-                "method": method,
-                "model": model,
-                "text_length": len(text),
-                "embedding_dim": len(embedding) if embedding.ndim == 1 else embedding.shape[-1],
-                "created": time.time(),
-                "last_accessed": time.time(),
-                "cost": cost,
-                "cache_file": str(cache_path)
-            }
-            self.stats["cache_size"] = len(self.index)
+            # Update in-memory fast cache
+            if hasattr(self, 'memory_cache'):
+                self.memory_cache[cache_hash] = embedding
+                if len(self.memory_cache) > self.max_memory_cache_size:
+                    self.memory_cache.popitem(last=False)
             
         except Exception as e:
             print(f"Warning: Failed to cache embedding: {e}")
     
     def clear(self, method: str = None):
         """
-        Clear the cache.
-        
-        Args:
-            method: If specified, only clear embeddings from this method
+        Clear the cache (Disk clearing omitted for performance and safety during multi-worker runs).
+        Only RAM cache is cleared here.
         """
         if not self.enabled:
             return
-        
-        if method is None:
-            # Clear all
-            for cache_info in self.index.values():
-                cache_file = Path(cache_info["cache_file"])
-                if cache_file.exists():
-                    cache_file.unlink()
             
-            self.index = {}
-        else:
-            # Clear only specific method
-            to_remove = []
-            for cache_hash, cache_info in self.index.items():
-                if cache_info["method"] == method:
-                    cache_file = Path(cache_info["cache_file"])
-                    if cache_file.exists():
-                        cache_file.unlink()
-                    to_remove.append(cache_hash)
-            
-            for cache_hash in to_remove:
-                del self.index[cache_hash]
-        
-        self.stats["cache_size"] = len(self.index)
-        print(f"Cache cleared (in-memory index). Remaining entries: {len(self.index)}")
+        if hasattr(self, 'memory_cache'):
+            self.memory_cache.clear()
+            print("RAM cache cleared.")
     
     def get_stats(self) -> Dict[str, Any]:
         """
@@ -226,16 +203,13 @@ class EmbeddingCache:
         else:
             stats["hit_rate"] = 0.0
         
-        # Calculate estimated cost savings (for OpenAI embeddings)
-        # Assuming text-embedding-3-small costs $0.00002 per 1K tokens
-        # Average ~4 chars per token
-        total_saved_cost = 0.0
-        for cache_info in self.index.values():
-            if cache_info["method"] == "openai":
-                total_saved_cost += cache_info.get("cost", 0.0)
-        
-        stats["estimated_cost_saved"] = total_saved_cost
+        # Calculate estimated cost savings no longer accurate without self.index
+        stats["estimated_cost_saved"] = 0.0
         stats["enabled"] = self.enabled
+        
+        # Add cache sizes
+        if hasattr(self, 'memory_cache'):
+            stats["ram_cache_size"] = len(self.memory_cache)
         
         return stats
     
@@ -249,60 +223,17 @@ class EmbeddingCache:
         Returns:
             Dict with cache details
         """
-        # Sort by last accessed time
-        sorted_entries = sorted(
-            self.index.items(),
-            key=lambda x: x[1]["last_accessed"],
-            reverse=True
-        )
-        
-        recent_entries = []
-        for cache_hash, info in sorted_entries[:top_n]:
-            recent_entries.append({
-                "hash": cache_hash[:8] + "...",
-                "method": info["method"],
-                "model": info.get("model"),
-                "text_length": info["text_length"],
-                "embedding_dim": info["embedding_dim"],
-                "age_hours": (time.time() - info["created"]) / 3600,
-                "last_accessed_hours_ago": (time.time() - info["last_accessed"]) / 3600
-            })
-        
         return {
-            "total_entries": len(self.index),
-            "recent_entries": recent_entries,
+            "total_entries_in_ram": len(self.memory_cache) if hasattr(self, 'memory_cache') else 0,
             "cache_dir": str(self.cache_dir),
             "stats": self.get_stats()
         }
     
     def cleanup_old_entries(self, max_age_days: int = 30):
         """
-        Remove cache entries older than specified days.
-        
-        Args:
-            max_age_days: Maximum age in days before removal
+        Cleanup disabled to avoid iterating over cluster disk contents.
         """
-        if not self.enabled:
-            return
-        
-        max_age_seconds = max_age_days * 24 * 3600
-        current_time = time.time()
-        
-        to_remove = []
-        for cache_hash, cache_info in self.index.items():
-            age = current_time - cache_info["last_accessed"]
-            if age > max_age_seconds:
-                cache_file = Path(cache_info["cache_file"])
-                if cache_file.exists():
-                    cache_file.unlink()
-                to_remove.append(cache_hash)
-        
-        for cache_hash in to_remove:
-            del self.index[cache_hash]
-        
-        self.stats["cache_size"] = len(self.index)
-        
-        print(f"Cleaned up {len(to_remove)} old entries from disk and in-memory index")
+        pass
 
 
 # Global cache instance
