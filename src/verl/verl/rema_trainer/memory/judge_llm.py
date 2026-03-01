@@ -41,7 +41,11 @@ if USE_GEMINI:
     together_client = None
 else:
     print("[judge_llm] Using Together AI API")
-    together_client = Together()
+    _together_keys = [k.strip() for k in os.environ.get("TOGETHER_API_KEY", "").split(",") if k.strip()]
+    if not _together_keys:
+        together_clients = [Together()]
+    else:
+        together_clients = [Together(api_key=k) for k in _together_keys]
     gemini_model = None
 
 # --------------------------
@@ -186,7 +190,8 @@ def judge_with_llm(prompt: str) -> str:
                 )
                 result = response.text.strip()
             else:
-                response = together_client.chat.completions.create(
+                client_idx = attempt % len(together_clients)
+                response = together_clients[client_idx].chat.completions.create(
                     model="ServiceNow-AI/Apriel-1.6-15b-Thinker",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.0,
@@ -197,7 +202,7 @@ def judge_with_llm(prompt: str) -> str:
         except Exception as e:
             print(f"[judge error] Attempt {attempt+1}/{max_retries} failed: {e}")
             if attempt < max_retries - 1:
-                time.sleep(1 + attempt)  # simple backoff
+                time.sleep(0.1)  # tiny sleep to quickly try next key
             else:
                 result = ""
 
@@ -264,7 +269,8 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
                         response = gemini_model.generate_content(prompt, generation_config=generation_config)
                         response_text = response.text.strip()
                     else:
-                        response = together_client.chat.completions.create(
+                        client_idx = attempt % len(together_clients)
+                        response = together_clients[client_idx].chat.completions.create(
                             model="ServiceNow-AI/Apriel-1.6-15b-Thinker",
                             messages=[{"role": "user", "content": prompt}],
                             temperature=0.0,
@@ -275,7 +281,7 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
                 except Exception as e:
                     print(f"[judge_with_llm_batch] Attempt {attempt+1}/{max_retries} failed for idx {orig_idx}: {e}")
                     if attempt < max_retries - 1:
-                        time.sleep(1 + attempt)
+                        time.sleep(0.1)  # tiny sleep to quickly try next key
                     else:
                         return orig_idx, prompt, "", str(e)
         
