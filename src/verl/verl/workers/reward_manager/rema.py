@@ -725,13 +725,13 @@ class ReMARewardManager:
             if data[i].meta_info['mask_unfinished_reward']:
                 if turn_finished == 1 or max_num_turns == 1:  # Successfully completed
                     # Combined Reward: QA F1 * Compression Ratio
-                    score = qa_scores[i] * compression_ratios[i]
+                    score = qa_scores[i] + compression_penalty * compression_ratios[i]
                 else:  # Incomplete trajectory - give 0 score
                     score = 0.0
                     num_incomplete += 1
             else:
                 # No masking - use score regardless of completion status
-                score = qa_scores[i] * compression_ratios[i]
+                score = qa_scores[i] + compression_penalty * compression_ratios[i]
             combined_scores.append(score)
         print(f"[RewardManager] Combined scores computed: mean={sum(combined_scores)/len(combined_scores):.4f}")
         print(f"[RewardManager] Incomplete trajectories (turn_finished != 1): {num_incomplete}/{len(combined_scores)}")
