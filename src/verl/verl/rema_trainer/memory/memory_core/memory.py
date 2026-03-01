@@ -111,6 +111,70 @@ class Memory:
         else:
             raise ValueError(f"Unknown embedding method: {method}. Use 'openai'.")
     
+    def _get_embeddings_batch(self, texts: List[str], method: str = "openai") -> List[np.ndarray]:
+        """Generate embeddings for multiple texts in a single API call.
+        
+        Checks cache first for each text. Only texts with cache misses are sent
+        to the API in one batch request, reducing network round-trips.
+        
+        Args:
+            texts: List of texts to embed
+            method: Embedding method to use
+        
+        Returns:
+            List of numpy arrays (same order as input texts)
+        """
+        if not texts:
+            return []
+        
+        results = [None] * len(texts)
+        uncached_indices = []
+        uncached_texts = []
+        
+        # Check cache for each text
+        for i, text in enumerate(texts):
+            if self.enable_cache and self.cache is not None:
+                cached = self.cache.get(text, method, model="text-embedding-3-small")
+                if cached is not None:
+                    results[i] = cached
+                    continue
+            uncached_indices.append(i)
+            uncached_texts.append(text)
+        
+        # Batch API call for cache misses
+        if uncached_texts and method == "openai":
+            try:
+                client = openai.OpenAI()
+                response = client.embeddings.create(
+                    model="text-embedding-3-small",
+                    input=uncached_texts
+                )
+                # Response data is in same order as input
+                for j, data_item in enumerate(response.data):
+                    embedding = np.array(data_item.embedding)
+                    orig_idx = uncached_indices[j]
+                    results[orig_idx] = embedding
+                    
+                    # Cache each embedding
+                    if self.enable_cache and self.cache is not None:
+                        text = uncached_texts[j]
+                        estimated_tokens = len(text) / 4
+                        cost = (estimated_tokens / 1000) * 0.00002
+                        self.cache.set(text, embedding, method, model="text-embedding-3-small", cost=cost)
+            except Exception as e:
+                print(f"Error in batch embedding API call: {e}")
+                # Fall back to zeros for failed embeddings
+                for j in range(len(uncached_texts)):
+                    if results[uncached_indices[j]] is None:
+                        results[uncached_indices[j]] = np.zeros(self._embedding_dim)
+        
+        # Fill any remaining None entries
+        for i in range(len(results)):
+            if results[i] is None:
+                results[i] = np.zeros(self._embedding_dim)
+        
+        return results
+    
     def _tokenize(self, text: str) -> List[str]:
         """Simple tokenization: lowercase, split on whitespace and punctuation."""
         tokens = re.findall(r'\b\w+\b', text.lower())
@@ -461,23 +525,22 @@ class Memory:
                     'embedding_ids': self.embedding_ids,
                     'dia_ids_set': self.dia_ids_set  # Set of all dia_ids for easy evaluation
                 }, f, protocol=pickle.HIGHEST_PROTOCOL)
-        
-        # Always save JSON for human readability (regardless of format)
-        with open(f"{save_path}.json", "w") as f:
-            json.dump(self.memories, f, indent=2)
-        
-        # Save metadata (always JSON for human readability)
-        metadata = {
-            "save_name": save_name,
-            "total_memories": len(self.memories),
-            "unique_conversations": len(set(m["sample_id"] for m in self.memories)) if self.memories else 0,
-            "unique_speakers": list(set(m["speaker"] for m in self.memories)) if self.memories else [],
-            "saved_at": datetime.now().isoformat(),
-            "embedding_method": self.embedding_method,
-            "format": format
-        }
-        with open(f"{save_path}_metadata.json", "w") as f:
-            json.dump(metadata, f, indent=2)
+        else:
+            # JSON format: save memories + metadata for human readability
+            with open(f"{save_path}.json", "w") as f:
+                json.dump(self.memories, f, indent=2)
+            
+            metadata = {
+                "save_name": save_name,
+                "total_memories": len(self.memories),
+                "unique_conversations": len(set(m["sample_id"] for m in self.memories)) if self.memories else 0,
+                "unique_speakers": list(set(m["speaker"] for m in self.memories)) if self.memories else [],
+                "saved_at": datetime.now().isoformat(),
+                "embedding_method": self.embedding_method,
+                "format": format
+            }
+            with open(f"{save_path}_metadata.json", "w") as f:
+                json.dump(metadata, f, indent=2)
         
         ext = ".pkl" if format == "pickle" else ".json"
         # print(f"✓ Saved {len(self.memories)} memories to '{save_name}{ext}' in {directory}")
@@ -618,7 +681,7 @@ class Memory:
         self._embed_capacity = new_capacity
 
     def _rebuild_embeddings(self) -> None:
-        """Rebuild the embedding matrix from current memories (uses cache)."""
+        """Rebuild the embedding matrix from current memories (uses batch API + cache)."""
         count = len(self.memories)
         self._embed_capacity = max(_INITIAL_EMBED_CAPACITY, count * 2)
         self.embedding_matrix = np.empty((self._embed_capacity, self._embedding_dim))
@@ -626,8 +689,14 @@ class Memory:
         self.embedding_ids = []
         self._embedding_id_to_idx = {}
         
-        for memory in self.memories:
-            embedding = self._get_embedding(memory["content"], method=self.embedding_method)
+        if not self.memories:
+            return
+        
+        # Batch fetch all embeddings at once
+        texts = [memory["content"] for memory in self.memories]
+        embeddings = self._get_embeddings_batch(texts, method=self.embedding_method)
+        
+        for memory, embedding in zip(self.memories, embeddings):
             self.embedding_matrix[self._embed_count] = embedding
             mid = memory["memory_id"]
             self.embedding_ids.append(mid)
