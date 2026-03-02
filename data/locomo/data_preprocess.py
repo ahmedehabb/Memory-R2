@@ -30,6 +30,15 @@ TRAIN_CONVS = 4
 TEST_CONVS = 5
 VAL_CONVS = 1
 
+
+# Fixed Training IDs (to ensure reproducibility across generations)
+TRAIN_IDS = ["conv-41"] #, "conv-44", "conv-49", "conv-50" ]
+VAL_IDS = ["conv-43"]
+TEST_IDS = ["conv-42", "conv-47", "conv-48", "conv-30", "conv-26"]
+# Set to None to use random sampling
+# TRAIN_IDS = None
+# VAL_IDS = None
+
 # Post-processing for test data, validation data
 MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_TRAIN = True  # If True, move all QAs to last chunk for train conversations only
 MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_VAL = True  # If True, move all QAs to last chunk for val conversations only
@@ -431,6 +440,169 @@ def format_chunk_as_prompt(chunk_turns):
     return ""
 
 
+def process_single_conversation(conv, conv_idx, max_session_limit):
+    """Process a single conversation with a given max_session limit.
+    
+    Args:
+        conv: conversation dict from locomo10.json
+        conv_idx: index of the conversation
+        max_session_limit: max sessions to include (None = all sessions)
+    
+    Returns:
+        (sample_id, conv_chunks, chunk_stats) or None if no chunks
+    """
+    from collections import defaultdict
+    
+    sample_id = conv.get("sample_id", f"conv-{conv_idx}")
+    qa_list = conv.get("qa", [])
+    conversation = conv.get("conversation", {})
+    turns = flatten_conversation(conversation)
+    
+    # Meta information
+    speaker_set = set()
+    for t in turns[:2]:
+        spk = t.get("speaker")
+        if spk:
+            speaker_set.add(spk)
+    assert len(speaker_set) == 2, "Chunk must contain at most 2 unique speakers."
+    
+    # Extract evidence per session for this conversation
+    conv_max_session = max((t.get('session_id', 1) for t in turns), default=1)
+    session_evidences = extract_evidence_per_session(qa_list, conv_max_session)
+    
+    # Calculate total tokens for the sessions that will be included
+    effective_max_session_for_tokens = min(conv_max_session, max_session_limit) if max_session_limit is not None else conv_max_session
+    total_sessions_tokens = sum(len(_tokenize(t.get('text', ''))) for t in turns if t.get('session_id', 1) <= effective_max_session_for_tokens)
+    
+    # Track deferred QAs for this conversation
+    deferred_qas_by_session = defaultdict(list)
+    
+    conv_chunks = []
+    chunk_counter = 1
+    append_to_next = False
+    chunk_stats = {
+        'total_chunks': 0, 'total_qas': 0,
+        'current_qas': 0, 'recent_qas': 0, 'distant_qas': 0, 'future_qas': 0,
+        'duplicate_qas': 0, 'dummy_qas': 0, 'partial_chunks': 0, 'chunk_sizes': [],
+    }
+    
+    for chunk_turns, offset, session_id in chunk_conversation_by_session(turns):
+        if max_session_limit is not None and session_id > max_session_limit:
+            break
+        chunk_max_tuple = max_tuple_in_chunk(chunk_turns)
+        chunk_min_tuple = min_tuple_in_chunk(chunk_turns)
+        
+        # Categorize QAs by recency
+        qa_categorized = categorize_qas_by_recency(qa_list, chunk_max_tuple, chunk_min_tuple)
+        
+        # Sample QAs based on configuration
+        if USE_ONLY_CURRENT_QAS:
+            all_qas = sample_only_current_qas(qa_categorized)
+        else:
+            all_qas = sample_balanced_qas(qa_categorized)
+        
+        # --- REDISTRIBUTION LOGIC ---
+        if deferred_qas_by_session[session_id]:
+            deferred_incoming = deferred_qas_by_session[session_id]
+            all_qas.extend(deferred_incoming)
+        
+        effective_max_session = min(conv_max_session, max_session_limit) if max_session_limit else conv_max_session
+        
+        if session_id < effective_max_session:
+            random.shuffle(all_qas)
+            total_current = len(all_qas)
+            keep_count = int(total_current * QA_KEEP_RATIO)
+            if total_current > 0 and keep_count == 0 and QA_KEEP_RATIO > 0:
+                keep_count = 1
+            qas_to_keep = all_qas[:keep_count]
+            qas_to_defer = all_qas[keep_count:]
+            if qas_to_defer:
+                future_sessions = list(range(session_id + 1, effective_max_session + 1))
+                for qa in qas_to_defer:
+                    target_sess = random.choice(future_sessions)
+                    deferred_qas_by_session[target_sess].append(qa)
+                all_qas = qas_to_keep
+        
+        # Count QAs by type
+        qa_type_counts = {'current': 0, 'recent': 0, 'distant': 0, 'future': 0}
+        duplicate_count = 0
+        dummy_count = 0
+        for qa in all_qas:
+            if qa.get('is_duplicate', False): duplicate_count += 1
+            if qa.get('is_dummy', False): dummy_count += 1
+            qa_type = qa.get('qa_type', 'current')
+            qa_type_counts[qa_type] += 1
+        
+        chunk_stats['total_chunks'] += 1
+        chunk_stats['total_qas'] += len(all_qas)
+        chunk_stats['current_qas'] += qa_type_counts['current']
+        chunk_stats['recent_qas'] += qa_type_counts['recent']
+        chunk_stats['distant_qas'] += qa_type_counts['distant']
+        chunk_stats['future_qas'] += qa_type_counts['future']
+        chunk_stats['duplicate_qas'] += duplicate_count
+        chunk_stats['dummy_qas'] += dummy_count
+        chunk_stats['chunk_sizes'].append(len(chunk_turns))
+        if len(chunk_turns) < CHUNK_SIZE:
+            chunk_stats['partial_chunks'] += 1
+        
+        session_time = chunk_turns[0].get('session_time') if chunk_turns else None
+        session_tokens = sum(len(_tokenize(t.get('text', ''))) for t in chunk_turns)
+        
+        chunk_data = {
+            "sample_id": sample_id,
+            "chunk_id": chunk_counter,
+            "session_id": session_id,
+            "session_time": session_time,
+            "dialogue_num_turns": len(chunk_turns),
+            "num_questions": len(all_qas),
+            "session_tokens": session_tokens,
+            "total_sessions_tokens": total_sessions_tokens,
+            "prompt": format_chunk_as_prompt(chunk_turns),
+            "turns": chunk_turns,
+            "qa_pairs": all_qas,
+            "qa_stats": qa_type_counts,
+            "speakers": list(speaker_set),
+            "session_evidences": session_evidences.get(session_id, [])
+        }
+        
+        if append_to_next and conv_chunks[-1]['session_id'] == chunk_data['session_id']:
+            prev_chunk = conv_chunks[-1]
+            prev_chunk['turns'].extend(chunk_data['turns'])
+            prev_chunk['qa_pairs'].extend(chunk_data['qa_pairs'])
+            for qa_type in ['current','recent','distant','future']:
+                prev_chunk['qa_stats'][qa_type] += chunk_data['qa_stats'][qa_type]
+            prev_chunk['dialogue_num_turns'] += chunk_data['dialogue_num_turns']
+            prev_chunk['num_questions'] += chunk_data['num_questions']
+            prev_chunk['session_tokens'] += chunk_data['session_tokens']
+            prev_chunk['prompt'] = format_chunk_as_prompt(prev_chunk['turns'])
+            append_to_next = False
+        else:
+            conv_chunks.append(chunk_data)
+            chunk_counter += 1
+        
+        if chunk_data['num_questions'] == 0 and (conv_chunks[-2]["session_id"] != chunk_data['session_id'] if len(conv_chunks) > 1 else True):
+            append_to_next = True
+            continue
+        
+        if (
+            len(conv_chunks) > 1
+            and chunk_data['num_questions'] == 0
+            and conv_chunks[-2]['session_id'] == chunk_data['session_id']
+        ):
+            prev_chunk = conv_chunks[-2]
+            prev_chunk['turns'].extend(chunk_data['turns'])
+            prev_chunk['qa_pairs'].extend(chunk_data['qa_pairs'])
+            for qa_type in ['current','recent','distant','future']:
+                prev_chunk['qa_stats'][qa_type] += chunk_data['qa_stats'][qa_type]
+            prev_chunk['dialogue_num_turns'] += chunk_data['dialogue_num_turns']
+            prev_chunk['num_questions'] += chunk_data['num_questions']
+            prev_chunk['prompt'] = format_chunk_as_prompt(prev_chunk['turns'])
+            conv_chunks.pop(-1)
+            chunk_counter -= 1
+    
+    return sample_id, conv_chunks, chunk_stats
+
+
 def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
     """Process LoCoMo10 dataset and create train/test/val splits."""
     
@@ -439,9 +611,6 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
     
     data = json.loads(Path(data_path).read_text(encoding="utf-8"))
     
-    # Group chunks by conversation first
-    all_chunks_by_conv = {}
-
     from collections import defaultdict
     
     stats = {
@@ -457,226 +626,55 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
         'chunk_sizes': [],  # Track all chunk sizes for stats
     }
 
-    for conv_idx, conv in enumerate(data):
-        sample_id = conv.get("sample_id", f"conv-{conv_idx}")
-        qa_list = conv.get("qa", [])
-        conversation = conv.get("conversation", {})
-        turns = flatten_conversation(conversation)
-        
-        # Meta information
-        speaker_set = set()
-        # from first 2 turns to get the 2 speakers
-        for t in turns[:2]:
-            spk = t.get("speaker")
-            if spk:
-                speaker_set.add(spk)
-
-        assert len(speaker_set) == 2, "Chunk must contain at most 2 unique speakers."
-        
-        # Extract evidence per session for this conversation
-        conv_max_session = max((t.get('session_id', 1) for t in turns), default=1)
-        session_evidences = extract_evidence_per_session(qa_list, conv_max_session)
-
-        # Calculate total tokens for the sessions that will be included (capped by MAX_SESSION if set)
-        effective_max_session_for_tokens = min(conv_max_session, MAX_SESSION) if MAX_SESSION is not None else conv_max_session
-        total_sessions_tokens = sum(len(_tokenize(t.get('text', ''))) for t in turns if t.get('session_id', 1) <= effective_max_session_for_tokens)
-
-        # Track deferred QAs for this conversation: session_id -> list of QAs
-        deferred_qas_by_session = defaultdict(list)
-
-        conv_chunks = []
-        chunk_counter = 1  # Sequential chunk numbering across sessions
-        append_to_next = False  # Flag to merge first chunk with next if no QAs
-
-        for chunk_turns, offset, session_id in chunk_conversation_by_session(turns):
-            if MAX_SESSION is not None and session_id > MAX_SESSION:
-                break
-            chunk_max_tuple = max_tuple_in_chunk(chunk_turns)
-            chunk_min_tuple = min_tuple_in_chunk(chunk_turns)
-            
-            # Categorize QAs by recency
-            qa_categorized = categorize_qas_by_recency(qa_list, chunk_max_tuple, chunk_min_tuple)
-            
-            # Sample QAs based on configuration
-            if USE_ONLY_CURRENT_QAS:
-                all_qas = sample_only_current_qas(qa_categorized)
-            else:
-                all_qas = sample_balanced_qas(qa_categorized)
-
-            # --- REDISTRIBUTION LOGIC ---
-            # 1. Add any deferred QAs scheduled for this session
-            if deferred_qas_by_session[session_id]:
-                deferred_incoming = deferred_qas_by_session[session_id]
-                # print(f"   📥 Session {session_id}: Received {len(deferred_incoming)} deferred QAs")
-                all_qas.extend(deferred_incoming)
-            
-            # 2. Defer some of TODAY'S questions to FUTURE sessions
-            # Only valid if there ARE future sessions to defer to
-            
-            # Determine max possible session for this conversation (capped by MAX_SESSION)
-            effective_max_session = min(conv_max_session, MAX_SESSION) if MAX_SESSION else conv_max_session
-
-            if session_id < effective_max_session:
-                # We can defer
-                # Shuffle distinct QAs to ensure random selection for deferral vs keeping
-                # (Note: duplicates might exist if standard sampling was used, but USE_ONLY_CURRENT_QAS usually returns unique)
-                random.shuffle(all_qas)
-                
-                total_current = len(all_qas)
-                keep_count = int(total_current * QA_KEEP_RATIO)
-                # Ensure at least 1 kept if there was something to keep, or follow ratio strictly?
-                # Let's follow ratio strictly but ceil/floor might be needed. int() floors.
-                # If we have 1 question and ratio 0.5 -> keep 0? Maybe ensure at least 1 unless 0.
-                if total_current > 0 and keep_count == 0 and QA_KEEP_RATIO > 0:
-                    keep_count = 1
-                
-                qas_to_keep = all_qas[:keep_count]
-                qas_to_defer = all_qas[keep_count:]
-                
-                if qas_to_defer:
-                    # Distribute deferred QAs to future sessions
-                    # Possible future sessions: session_id+1 ... effective_max_session
-                    future_sessions = list(range(session_id + 1, effective_max_session + 1))
-                    
-                    for qa in qas_to_defer:
-                        target_sess = random.choice(future_sessions)
-                        deferred_qas_by_session[target_sess].append(qa)
-                    
-                    # print(f"   📤 Session {session_id}: Deferred {len(qas_to_defer)} QAs to future sessions {min(future_sessions)}-{max(future_sessions)}")
-                    
-                    # Update all_qas to only include kept ones (deferred ones are removed from this session)
-                    all_qas = qas_to_keep
-            
-            # Count QAs by type for stats
-            qa_type_counts = {'current': 0, 'recent': 0, 'distant': 0, 'future': 0}
-            duplicate_count = 0
-            dummy_count = 0
-
-            for qa in all_qas:
-                if qa.get('is_duplicate', False):
-                    duplicate_count += 1
-                if qa.get('is_dummy', False):
-                    dummy_count += 1
-                
-                qa_type = qa.get('qa_type', 'current')
-                qa_type_counts[qa_type] += 1
-            
-            # Update stats
-            stats['total_chunks'] += 1
-            stats['total_qas'] += len(all_qas)
-            stats['current_qas'] += qa_type_counts['current']
-            stats['recent_qas'] += qa_type_counts['recent']
-            stats['distant_qas'] += qa_type_counts['distant']
-            stats['future_qas'] += qa_type_counts['future']
-            stats['duplicate_qas'] += duplicate_count
-            stats['dummy_qas'] += dummy_count
-            stats['chunk_sizes'].append(len(chunk_turns))
-            if len(chunk_turns) < CHUNK_SIZE:
-                stats['partial_chunks'] += 1
-
-            # Extract session_time from the first turn of this chunk
-            session_time = chunk_turns[0].get('session_time') if chunk_turns else None
-
-            # Calculate total tokens in the chunk's text (sum over all turns)
-            session_tokens = sum(len(_tokenize(t.get('text', ''))) for t in chunk_turns)
-
-            chunk_data = {
-                "sample_id": sample_id,
-                "chunk_id": chunk_counter,
-                "session_id": session_id,  # Track which session this chunk belongs to
-                "session_time": session_time,  # Session timestamp
-                "dialogue_num_turns": len(chunk_turns),  # Track actual chunk size
-                "num_questions": len(all_qas),  # Track number of QA pairs
-                "session_tokens": session_tokens,  # Track exactly how many tokens in the dialogue
-                "total_sessions_tokens": total_sessions_tokens, # Track exactly how many tokens in the included sessions
-                "prompt": format_chunk_as_prompt(chunk_turns),  # Required for RLHF, but wont use it directly
-                "turns": chunk_turns,
-                "qa_pairs": all_qas,
-                "qa_stats": qa_type_counts,
-                "speakers": list(speaker_set),  # Include unique speakers in the chunk
-                "session_evidences": session_evidences.get(session_id, [])  # Evidence needed for this session
-            }
-
-            if append_to_next and conv_chunks[-1]['session_id'] == chunk_data['session_id']:
-                print(f"⚠️  Merging first chunk of session {chunk_data['session_id']} in conv {sample_id} with next chunk due to no questions.")
-                # Merge with previous chunk
-                prev_chunk = conv_chunks[-1]
-                prev_chunk['turns'].extend(chunk_data['turns'])
-                prev_chunk['qa_pairs'].extend(chunk_data['qa_pairs'])
-                for qa_type in ['current','recent','distant','future']:
-                    prev_chunk['qa_stats'][qa_type] += chunk_data['qa_stats'][qa_type]
-                prev_chunk['dialogue_num_turns'] += chunk_data['dialogue_num_turns']
-                prev_chunk['num_questions'] += chunk_data['num_questions']
-                prev_chunk['session_tokens'] += chunk_data['session_tokens']
-                prev_chunk['prompt'] = format_chunk_as_prompt(prev_chunk['turns'])
-                # Keep session_evidences from the first chunk (they should be the same session)
-                append_to_next = False
-            else:
-                # Normal case: just append chunk
-                conv_chunks.append(chunk_data)
-                chunk_counter += 1
-
-            # If I am first chunk of a session, and it has no questions, merge it with next chunk, so save it as temporary and check later
-            # check in next iteration, we check counter = 2 because we have already incremented it
-            if chunk_data['num_questions'] == 0 and (conv_chunks[-2]["session_id"] != chunk_data['session_id'] if len(conv_chunks) > 1 else True):
-                print(f"⚠️  First chunk of session {chunk_data['session_id']} in conv {sample_id} has no questions, will merge with next chunk.")
-                append_to_next = True
-                continue
-
-            # 🔹 Merge last chunk if it doesnt contain questions
-            if (
-                len(conv_chunks) > 1
-                and chunk_data['num_questions'] == 0
-                and conv_chunks[-2]['session_id'] == chunk_data['session_id']
-            ):
-                prev_chunk = conv_chunks[-2]
-                # Merge turns, QAs, update counts
-                prev_chunk['turns'].extend(chunk_data['turns'])
-                prev_chunk['qa_pairs'].extend(chunk_data['qa_pairs'])
-                for qa_type in ['current','recent','distant','future']:
-                    prev_chunk['qa_stats'][qa_type] += chunk_data['qa_stats'][qa_type]
-                prev_chunk['dialogue_num_turns'] += chunk_data['dialogue_num_turns']
-                prev_chunk['num_questions'] += chunk_data['num_questions']
-                prev_chunk['prompt'] = format_chunk_as_prompt(prev_chunk['turns'])
-                # Keep session_evidences from the first chunk (they should be the same session)
-                conv_chunks.pop(-1)  # Remove the merged chunk
-                chunk_counter -= 1
-
-        
-        all_chunks_by_conv[sample_id] = conv_chunks
+    # --- Step 1: Determine train/val/test conversation IDs ---
+    # We need to know the split BEFORE processing so we can apply
+    # MAX_SESSION only to training conversations.
+    all_conv_ids_raw = sorted([conv.get("sample_id", f"conv-{i}") for i, conv in enumerate(data)])
     
-    # Split conversations into train/test/val
-    all_conv_ids = sorted(all_chunks_by_conv.keys())
-    
-    # Determine split
     if TRAIN_IDS is not None:
-        # Use fixed training IDs
-        train_conv_ids = [tid for tid in TRAIN_IDS if tid in all_conv_ids]
-        missing_ids = set(TRAIN_IDS) - set(train_conv_ids)
-        if missing_ids:
-            print(f"⚠️  WARNING: {len(missing_ids)} fixed training IDs not found in dataset: {missing_ids}")
-
-        # Use remaining IDs for test/val
-        remaining_ids = [cid for cid in all_conv_ids if cid not in train_conv_ids]
+        train_conv_ids = [tid for tid in TRAIN_IDS if tid in all_conv_ids_raw]
+        remaining_ids = [cid for cid in all_conv_ids_raw if cid not in train_conv_ids]
         if VAL_IDS is not None:
             val_conv_ids = [vid for vid in VAL_IDS if vid in remaining_ids]
-            missing_ids = set(VAL_IDS) - set(val_conv_ids)
-            if missing_ids:
-                print(f"⚠️  WARNING: {len(missing_ids)} fixed validation IDs not found in dataset: {missing_ids}")
             remaining_ids = [cid for cid in remaining_ids if cid not in val_conv_ids]
         else:
             random.shuffle(remaining_ids)
             val_conv_ids = remaining_ids[:VAL_CONVS]
             remaining_ids = remaining_ids[VAL_CONVS:]
-
         test_conv_ids = remaining_ids[:TEST_CONVS]
     else:
-        # Random split (original behavior)
-        random.shuffle(all_conv_ids)
-        train_conv_ids = all_conv_ids[:TRAIN_CONVS]
-        test_conv_ids = all_conv_ids[TRAIN_CONVS:TRAIN_CONVS + TEST_CONVS]
-        val_conv_ids = all_conv_ids[TRAIN_CONVS + TEST_CONVS:TRAIN_CONVS + TEST_CONVS + VAL_CONVS]
+        random.shuffle(all_conv_ids_raw)
+        train_conv_ids = all_conv_ids_raw[:TRAIN_CONVS]
+        test_conv_ids = all_conv_ids_raw[TRAIN_CONVS:TRAIN_CONVS + TEST_CONVS]
+        val_conv_ids = all_conv_ids_raw[TRAIN_CONVS + TEST_CONVS:TRAIN_CONVS + TEST_CONVS + VAL_CONVS]
     
+    train_conv_id_set = set(train_conv_ids)
+    
+    # --- Step 2: Process each conversation with appropriate max_session ---
+    all_chunks_by_conv = {}
+    
+    for conv_idx, conv in enumerate(data):
+        sample_id = conv.get("sample_id", f"conv-{conv_idx}")
+        
+        # Apply MAX_SESSION only to training conversations;
+        # val/test always use all sessions for consistent evaluation
+        if sample_id in train_conv_id_set:
+            max_session_limit = MAX_SESSION
+        else:
+            max_session_limit = None  # No truncation for val/test
+        
+        sample_id, conv_chunks, chunk_stats = process_single_conversation(conv, conv_idx, max_session_limit)
+        all_chunks_by_conv[sample_id] = conv_chunks
+        
+        # Accumulate stats
+        for key in ['total_chunks', 'total_qas', 'current_qas', 'recent_qas', 'distant_qas', 'future_qas', 'duplicate_qas', 'dummy_qas', 'partial_chunks']:
+            stats[key] += chunk_stats[key]
+        stats['chunk_sizes'].extend(chunk_stats['chunk_sizes'])
+    
+    if MAX_SESSION is not None:
+        print(f"\n📋 Session truncation: train={MAX_SESSION} sessions, val/test=ALL sessions")
+    
+    # Split IDs already determined above (Step 1)
     # Collect chunks for each split
     train_chunks = []
     test_chunks = []
@@ -959,11 +957,26 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--max_sessions", type=int, default=MAX_SESSION, help="Max sessions per conversation (overrides global MAX_SESSION)")
+    parser.add_argument("--train_convs", type=int, default=None, help="Number of training conversations (overrides global TRAIN_CONVS and disables fixed TRAIN_IDS)")
+    parser.add_argument("--test_convs", type=int, default=None, help="Number of test conversations (overrides global TEST_CONVS and disables fixed TEST_IDS)")
+    parser.add_argument("--val_convs", type=int, default=None, help="Number of validation conversations (overrides global VAL_CONVS and disables fixed VAL_IDS)")
     args = parser.parse_args()
     
     # Update global variable if argument is provided
     if args.max_sessions is not None:
         MAX_SESSION = args.max_sessions
         print(f"🔧 Overriding MAX_SESSION with: {MAX_SESSION}")
+        
+    if args.train_convs is not None:
+        TRAIN_CONVS = args.train_convs
+        print(f"🔧 Overriding TRAIN_CONVS with: {TRAIN_CONVS}")
+        
+    if args.test_convs is not None:
+        TEST_CONVS = args.test_convs
+        print(f"🔧 Overriding TEST_CONVS with: {TEST_CONVS}")
+        
+    if args.val_convs is not None:
+        VAL_CONVS = args.val_convs
+        print(f"🔧 Overriding VAL_CONVS with: {VAL_CONVS}")
         
     process_locomo10()
