@@ -128,7 +128,7 @@ critic:
     warmup_style: constant  # select from constant/cosine
     total_training_steps: -1  # must be override by program
   model:
-    path: ~/models/deepseek-llm-7b-chat
+    path: ${actor_rollout_ref.model.path}
     tokenizer_path: ${actor_rollout_ref.model.path}
     override_config: { }
     external_lib: ${actor_rollout_ref.model.external_lib}
@@ -195,7 +195,7 @@ algorithm:
   gamma_token_level: 1.0
   lam_token_level: 1.0
   lam_turn_level: 1.0
-  gamma_turn_level: 1.0
+  gamma_turn_level: 0.95
 
   filter_groups:
     enable: False # We try to avoid forgetting to set enable
