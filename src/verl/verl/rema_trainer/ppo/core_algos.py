@@ -208,7 +208,9 @@ def compute_bi_level_gae_advantage_return(
 
         # --- Phase 2: Token-level GAE within each turn ---
         # Place high-level returns at EOS positions as 'rewards' for Phase 2
-        updated_rewards = torch.zeros_like(token_level_rewards)
+        # updated_rewards = torch.zeros_like(token_level_rewards)
+        # TODO:: change old because You must initialize updated_rewards as a clone of token_level_rewards so that you preserve the KL penalties before overwriting the EOS positions!
+        updated_rewards = token_level_rewards.clone()
         # Build turn-end reset mask (1 at last token of each turn)
         is_turn_end = torch.zeros_like(eos_mask)
         batch_indices = torch.arange(bs, device=device)

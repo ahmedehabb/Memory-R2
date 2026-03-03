@@ -58,7 +58,7 @@ def _hash_prompt(prompt: str) -> str:
 def _save_process_cache():
     """Save per-process cache to disk (non-blocking)."""
     with open(PROCESS_CACHE_FILE, "w") as f:
-        json.dump(JUDGE_CACHE, f, indent=2)
+        json.dump(JUDGE_CACHE, f, separators=(',', ':'))
 
 def merge_to_main_cache():
     """Merge per-process cache into the main cache safely and sync back."""
@@ -156,7 +156,7 @@ def merge_to_main_cache():
 
 # Counter for new entries
 _NEW_ENTRIES_COUNT = 0
-MERGE_EVERY_N = 20  # merge after every 20 new entries (reduce lock contention)
+MERGE_EVERY_N = 100  # merge after every 20 new entries (reduce lock contention)
 
 
 def judge_with_llm(prompt: str) -> str:

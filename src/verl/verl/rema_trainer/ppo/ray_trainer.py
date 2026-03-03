@@ -773,9 +773,9 @@ class RayReMATrainer(object):
         self.validation_generations_logger.log(self.config.trainer.logger, samples, self.global_steps)
 
     def _validate(self):
-        print("\n" + "="*80)
-        print("STARTING VALIDATION")
-        print("="*80)
+        # print("\n" + "="*80)
+        # print("STARTING VALIDATION")
+        # print("="*80)
         
         num_turns_lst = []
         history_lst = []
@@ -795,7 +795,7 @@ class RayReMATrainer(object):
         data_source_lst = []
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
-        print(f"\n[VALIDATE] Configuring rollout meta_info with max_num_turns={max_num_turns}")
+        # print(f"\n[VALIDATE] Configuring rollout meta_info with max_num_turns={max_num_turns}")
         if max_num_turns > 1:
             from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             from prompt import FINISH_FLAG
@@ -808,10 +808,10 @@ class RayReMATrainer(object):
                 },
                 'max_num_turns': max_num_turns
             }
-            print(f"[VALIDATE] Multi-turn mode enabled with FINISH_FLAG")
-            print(f"[VALIDATE] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
-            print(f"[VALIDATE] agent_roles: {rollout_meta_info['agent_roles']}")
-            print(f"[VALIDATE] finish_flag: {rollout_meta_info['finish_flag'][:50] if rollout_meta_info['finish_flag'] else None}...")
+            # print(f"[VALIDATE] Multi-turn mode enabled with FINISH_FLAG")
+            # print(f"[VALIDATE] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            # print(f"[VALIDATE] agent_roles: {rollout_meta_info['agent_roles']}")
+            # print(f"[VALIDATE] finish_flag: {rollout_meta_info['finish_flag'][:50] if rollout_meta_info['finish_flag'] else None}...")
         else:
             from prompt.math.single_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             rollout_meta_info = {
@@ -823,21 +823,21 @@ class RayReMATrainer(object):
                 },
                 'max_num_turns': max_num_turns
             }
-            print(f"[VALIDATE] Single-turn mode enabled (no FINISH_FLAG)")
-            print(f"[VALIDATE] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
-            print(f"[VALIDATE] agent_roles: {rollout_meta_info['agent_roles']}")
+            # print(f"[VALIDATE] Single-turn mode enabled (no FINISH_FLAG)")
+            # print(f"[VALIDATE] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            # print(f"[VALIDATE] agent_roles: {rollout_meta_info['agent_roles']}")
 
-        print(f"\n[VALIDATE] Starting validation loop: {len(self.val_dataloader)} batches")
-        print(f"[VALIDATE] Strategy: Check qa_pairs_json for each sample - if non-empty, conversation has ended and will be evaluated")
+        # print(f"\n[VALIDATE] Starting validation loop: {len(self.val_dataloader)} batches")
+        # print(f"[VALIDATE] Strategy: Check qa_pairs_json for each sample - if non-empty, conversation has ended and will be evaluated")
         total_batches = len(self.val_dataloader)
         
         for batch_idx, test_data in enumerate(self.val_dataloader):
-            print(f"\n{'*'*80}")
-            print(f"VALIDATION BATCH {batch_idx + 1}/{total_batches}")
-            print(f"{'*'*80}")
-            print(f"\n[VAL BATCH {batch_idx + 1}] Creating batch from dataloader...")
-            print(f"[VAL BATCH {batch_idx + 1}] Batch size: {len(test_data['question'])}")
-            print(f"[VAL BATCH {batch_idx + 1}] test_data keys: {list(test_data.keys())}")
+            # print(f"\n{'*'*80}")
+            # print(f"VALIDATION BATCH {batch_idx + 1}/{total_batches}")
+            # print(f"{'*'*80}")
+            # print(f"\n[VAL BATCH {batch_idx + 1}] Creating batch from dataloader...")
+            # print(f"[VAL BATCH {batch_idx + 1}] Batch size: {len(test_data['question'])}")
+            # print(f"[VAL BATCH {batch_idx + 1}] test_data keys: {list(test_data.keys())}")
             
             dummy_tensor = torch.arange(0, len(test_data['question']))
             test_data['batch_idx'] = dummy_tensor
@@ -848,30 +848,21 @@ class RayReMATrainer(object):
             rollout_meta_info['split'] = 'validation'
             
             test_batch: DataProto = DataProto.from_single_dict(test_data, meta_info=rollout_meta_info)
-            print(f"[VAL BATCH {batch_idx + 1}] test_batch.batch keys: {list(test_batch.batch.keys())}")
-            print(f"[VAL BATCH {batch_idx + 1}] test_batch.non_tensor_batch keys: {list(test_batch.non_tensor_batch.keys())}")
+            # print(f"[VAL BATCH {batch_idx + 1}] test_batch.batch keys: {list(test_batch.batch.keys())}")
+            # print(f"[VAL BATCH {batch_idx + 1}] test_batch.non_tensor_batch keys: {list(test_batch.non_tensor_batch.keys())}")
 
             # Check which samples have finished (non-zero num_questions) BEFORE repeating
             num_questions_list = test_batch.non_tensor_batch['num_qas']
             finished_mask = [num_questions > 0 for num_questions in num_questions_list]
             num_finished = sum(finished_mask)
-            print(f"[VAL BATCH {batch_idx + 1}] Found {num_finished}/{len(finished_mask)} finished conversations (with non-empty qa_pairs_json)")
+            # print(f"[VAL BATCH {batch_idx + 1}] Found {num_finished}/{len(finished_mask)} finished conversations (with non-empty qa_pairs_json)")
 
-            # Store original inputs and ground truths BEFORE repeating
-            input_texts = test_batch.non_tensor_batch['question']
-            sample_inputs.extend(input_texts)
-            print(f"[VAL BATCH {batch_idx + 1}] Collected {len(input_texts)} input texts")
-
-            # Store original ground truth if available
-            # TODO: support multi- groundtruths
-            ground_truths = [json.loads(x)[0]["answer"] if json.loads(x) else "N/A" for x in test_batch.non_tensor_batch['qa_pairs_json']]
-            sample_groundtruths.extend(ground_truths)
-            print(f"[VAL BATCH {batch_idx + 1}] Collected {len(ground_truths)} ground truths")
+            # (Generation inputs and ground truths will be collected only for finished conversations)
 
             # repeat test batch
             test_batch = test_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n,
                                            interleave=True)
-            print(f"[VAL BATCH {batch_idx + 1}] Repeated batch {self.config.actor_rollout_ref.rollout.val_kwargs.n} times. New size: {len(test_batch.batch)}")
+            # print(f"[VAL BATCH {batch_idx + 1}] Repeated batch {self.config.actor_rollout_ref.rollout.val_kwargs.n} times. New size: {len(test_batch.batch)}")
             
             # save rollout idx to use it in memory management (AFTER repeating to get unique indices for each rollout)
             n_rollouts_val = self.config.actor_rollout_ref.rollout.val_kwargs.n
@@ -880,10 +871,10 @@ class RayReMATrainer(object):
             
             # we only do validation on rule-based rm
             if self.config.reward_model.enable and test_batch[0].non_tensor_batch['reward_model']['style'] == 'model':
-                print(f"[VAL BATCH {batch_idx + 1}] Skipping model-based reward model validation")
+                # print(f"[VAL BATCH {batch_idx + 1}] Skipping model-based reward model validation")
                 return {}
 
-            print(f"\n[VAL BATCH {batch_idx + 1}] Preparing generation batch...")
+            # print(f"\n[VAL BATCH {batch_idx + 1}] Preparing generation batch...")
             if 'multi_modal_inputs' in test_batch.non_tensor_batch.keys():
                 raise NotImplementedError('multi_modal_inputs validation not implemented yet')
                 test_gen_batch = test_batch.pop(
@@ -898,10 +889,10 @@ class RayReMATrainer(object):
                         deepcopy=True
                     )
             
-            print(f"[VAL BATCH {batch_idx + 1}] Generation batch prepared with {len(test_gen_batch.batch)} samples")
-            print(f"[VAL BATCH {batch_idx + 1}] test_gen_batch.batch keys: {list(test_gen_batch.batch.keys())}")
-            print(f"[VAL BATCH {batch_idx + 1}] test_gen_batch.non_tensor_batch keys: {list(test_gen_batch.non_tensor_batch.keys())}")
-            print(f"[VAL BATCH {batch_idx + 1}] test_gen_batch.meta_info keys: {list(test_gen_batch.meta_info.keys())}")
+            # print(f"[VAL BATCH {batch_idx + 1}] Generation batch prepared with {len(test_gen_batch.batch)} samples")
+            # print(f"[VAL BATCH {batch_idx + 1}] test_gen_batch.batch keys: {list(test_gen_batch.batch.keys())}")
+            # print(f"[VAL BATCH {batch_idx + 1}] test_gen_batch.non_tensor_batch keys: {list(test_gen_batch.non_tensor_batch.keys())}")
+            # print(f"[VAL BATCH {batch_idx + 1}] test_gen_batch.meta_info keys: {list(test_gen_batch.meta_info.keys())}")
             
             test_gen_batch.meta_info.update({
                 'eos_token_id': self.tokenizer.eos_token_id,
@@ -910,46 +901,39 @@ class RayReMATrainer(object):
                 'do_sample': self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
                 'validate': True,
             })
-            print(f'[VAL BATCH {batch_idx + 1}] test_gen_batch meta_info: {test_gen_batch.meta_info}')
+            # print(f'[VAL BATCH {batch_idx + 1}] test_gen_batch meta_info: {test_gen_batch.meta_info}')
 
             # pad to be divisible by dp_size
-            print(f"\n[VAL BATCH {batch_idx + 1}] Padding to be divisible by world_size={self.actor_rollout_wg.world_size}...")
+            # print(f"\n[VAL BATCH {batch_idx + 1}] Padding to be divisible by world_size={self.actor_rollout_wg.world_size}...")
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
-            print(f"[VAL BATCH {batch_idx + 1}] Padded batch size: {len(test_gen_batch_padded.batch)}, pad_size: {pad_size}")
+            # print(f"[VAL BATCH {batch_idx + 1}] Padded batch size: {len(test_gen_batch_padded.batch)}, pad_size: {pad_size}")
             
-            print(f"[VAL BATCH {batch_idx + 1}] >>> Calling multi_turn_generate_sequences...")
+            # print(f"[VAL BATCH {batch_idx + 1}] >>> Calling multi_turn_generate_sequences...")
             test_output_gen_batch_padded = self.actor_rollout_wg.multi_turn_generate_sequences(test_gen_batch_padded)
-            print(f"[VAL BATCH {batch_idx + 1}] <<< Generation complete")
+            # print(f"[VAL BATCH {batch_idx + 1}] <<< Generation complete")
 
             # unpad
-            print(f"[VAL BATCH {batch_idx + 1}] Unpadding batch...")
+            # print(f"[VAL BATCH {batch_idx + 1}] Unpadding batch...")
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
-            print(f'[VAL BATCH {batch_idx + 1}] Validation generation end. Output batch size: {len(test_output_gen_batch.batch)}')
+            # print(f'[VAL BATCH {batch_idx + 1}] Validation generation end. Output batch size: {len(test_output_gen_batch.batch)}')
 
-            # Store generated outputs
-            print(f"\n[VAL BATCH {batch_idx + 1}] Processing outputs...")
-            output_texts = test_output_gen_batch.non_tensor_batch['response']
-            sample_outputs.extend(output_texts)
-            print(f"[VAL BATCH {batch_idx + 1}] Collected {len(output_texts)} output texts")
-            print(f"[VAL BATCH {batch_idx + 1}] Sample output[0]: {output_texts[0][:100] if isinstance(output_texts[0], str) else output_texts[0]}...")
-
-            history_lst.append(test_output_gen_batch.non_tensor_batch['history'].tolist())
+            # (Generated outputs and history will be collected only for finished conversations)
             
             # Collect generation metrics (num_turns, completion_tokens) from ALL batches
             num_turns = torch.tensor(test_output_gen_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
             num_turns_lst.append(num_turns)
-            print(f"[VAL BATCH {batch_idx + 1}] num_turns (all samples): min={num_turns.min()}, max={num_turns.max()}, mean={num_turns.float().mean()}")
+            # print(f"[VAL BATCH {batch_idx + 1}] num_turns (all samples): min={num_turns.min()}, max={num_turns.max()}, mean={num_turns.float().mean()}")
             
             turn_level_completion_tokens = test_output_gen_batch.batch['meta_thinking_num_gen_tokens'].cpu() + \
                 test_output_gen_batch.batch['reasoning_num_gen_tokens'].cpu()
             completion_tokens = turn_level_completion_tokens.sum(dim=-1)
             completion_tokens_lst.append(completion_tokens)
-            print(f"[VAL BATCH {batch_idx + 1}] completion_tokens (all samples): min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
+            # print(f"[VAL BATCH {batch_idx + 1}] completion_tokens (all samples): min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
             
             # Check if any conversations finished in this batch and evaluate them
             if num_finished > 0:
-                print(f"[VAL BATCH {batch_idx + 1}] Evaluating {num_finished} finished conversations...")
-                print(f"[VAL BATCH {batch_idx + 1}] Merging generation output with test batch...")
+                # print(f"[VAL BATCH {batch_idx + 1}] Evaluating {num_finished} finished conversations...")
+                # print(f"[VAL BATCH {batch_idx + 1}] Merging generation output with test batch...")
                 test_batch_with_gen = test_batch.union(test_output_gen_batch)
                 test_batch_with_gen.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
                 test_batch_with_gen.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
@@ -962,38 +946,45 @@ class RayReMATrainer(object):
                         # Add all repeated versions of this finished sample
                         finished_indices.extend([i * repeat_times + j for j in range(repeat_times)])
                 
-                print(f"[VAL BATCH {batch_idx + 1}] Filtering to {len(finished_indices)} samples (finished conversations after repeating)")
+                # print(f"[VAL BATCH {batch_idx + 1}] Filtering to {len(finished_indices)} samples (finished conversations after repeating)")
                 
                 # Select only finished samples
                 finished_test_batch = test_batch_with_gen[finished_indices]
                 
+                # Safely collect inputs, outputs, ground truths and history for ONLY finished conversations
+                sample_inputs.extend(finished_test_batch.non_tensor_batch['question'])
+                sample_outputs.extend(finished_test_batch.non_tensor_batch['response'])
+                history_lst.extend(finished_test_batch.non_tensor_batch['history'].tolist())
+                gts = [json.loads(x)[0]["answer"] if (isinstance(x, str) and json.loads(x)) else "N/A" for x in finished_test_batch.non_tensor_batch['qa_pairs_json']]
+                sample_groundtruths.extend(gts)
+                
                 # Compute rewards for finished conversations
-                print(f"[VAL BATCH {batch_idx + 1}] Computing rewards for finished conversations...")
-                reward_tensor = self.val_reward_fn(finished_test_batch)
-                print(f"[VAL BATCH {batch_idx + 1}] Reward tensor keys: {list(reward_tensor.keys())}")
+                # print(f"[VAL BATCH {batch_idx + 1}] Computing rewards for finished conversations...")
+                reward_tensor = self.val_reward_fn(finished_test_batch, compression_penalty=self.config.trainer.compression_penalty)
+                # print(f"[VAL BATCH {batch_idx + 1}] Reward tensor keys: {list(reward_tensor.keys())}")
                 
                 reward_tensor_lst.append(reward_tensor['reasoning_turn_level_reward'])
                 reward_tensor_dict_lst.append(reward_tensor)  # Store full dict
                 acc_tensor_lst.append(reward_tensor['acc'])
                 bleu_tensor_lst.append(reward_tensor['bleu'])
-                print(f"[VAL BATCH {batch_idx + 1}] reasoning_turn_level_reward shape: {reward_tensor['reasoning_turn_level_reward'].shape}")
-                print(f"[VAL BATCH {batch_idx + 1}] acc shape: {reward_tensor['acc'].shape}")
-                print(f"[VAL BATCH {batch_idx + 1}] bleu shape: {reward_tensor['bleu'].shape}")
+                # print(f"[VAL BATCH {batch_idx + 1}] reasoning_turn_level_reward shape: {reward_tensor['reasoning_turn_level_reward'].shape}")
+                # print(f"[VAL BATCH {batch_idx + 1}] acc shape: {reward_tensor['acc'].shape}")
+                # print(f"[VAL BATCH {batch_idx + 1}] bleu shape: {reward_tensor['bleu'].shape}")
                 
                 # Store scores
                 scores = reward_tensor['reasoning_turn_level_reward'].sum(-1).cpu().tolist()
                 sample_scores.extend(scores)
-                print(f"[VAL BATCH {batch_idx + 1}] Sample scores[0]: {scores[0]}")
+                # print(f"[VAL BATCH {batch_idx + 1}] Sample scores[0]: {scores[0]}")
                 
                 # Get data sources from finished samples
                 data_source_lst.append(finished_test_batch.non_tensor_batch.get('subset', ['locomo'] * reward_tensor['reasoning_turn_level_reward'].shape[0]))
-            else:
-                print(f"[VAL BATCH {batch_idx + 1}] No finished conversations in this batch, skipping reward computation")
+            # else:
+                # print(f"[VAL BATCH {batch_idx + 1}] No finished conversations in this batch, skipping reward computation")
             
-            print(f"[VAL BATCH {batch_idx + 1}] Batch processing complete\n")
+            # print(f"[VAL BATCH {batch_idx + 1}] Batch processing complete\n")
 
         # Now compute final metrics from all finished conversations across all batches
-        print(f"\n[VALIDATE] All batches processed. Computing final metrics...")
+        # print(f"\n[VALIDATE] All batches processed. Computing final metrics...")
         
         if len(reward_tensor_lst) == 0:
             print("[VALIDATE] WARNING: No finished conversations found across all batches!")
@@ -1003,15 +994,15 @@ class RayReMATrainer(object):
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores, groundtruths=sample_groundtruths, histories=history_lst)
 
         # Concatenate all accumulated tensors
-        print(f"[VALIDATE] Concatenating reward tensors from {len(reward_tensor_lst)} batches with finished conversations...")
+        # print(f"[VALIDATE] Concatenating reward tensors from {len(reward_tensor_lst)} batches with finished conversations...")
         reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (total_finished_samples,)
         acc_tensor = torch.cat(acc_tensor_lst, dim=0).cpu()  # (total_finished_samples,)
         bleu_tensor = torch.cat(bleu_tensor_lst, dim=0).cpu()  # (total_finished_samples,)
         data_sources = np.concatenate(data_source_lst, axis=0)
-        print(f"[VALIDATE] Total finished samples evaluated: {reward_tensor.shape[0]}")
-        print(f"[VALIDATE] Mean reward: {reward_tensor.mean().item():.4f}")
-        print(f"[VALIDATE] Mean accuracy: {acc_tensor.mean().item():.4f}")
-        print(f"[VALIDATE] Mean BLEU: {bleu_tensor.mean().item():.4f}")
+        # print(f"[VALIDATE] Total finished samples evaluated: {reward_tensor.shape[0]}")
+        # print(f"[VALIDATE] Mean reward: {reward_tensor.mean().item():.4f}")
+        # print(f"[VALIDATE] Mean accuracy: {acc_tensor.mean().item():.4f}")
+        # print(f"[VALIDATE] Mean BLEU: {bleu_tensor.mean().item():.4f}")
 
         # Compute metrics for all finished conversations
         data_source_reward = {}
@@ -1032,17 +1023,17 @@ class RayReMATrainer(object):
         metric_dict = {}
         for data_source, rewards in data_source_reward.items():
             metric_dict[f'val/test_score/{data_source}'] = np.mean(rewards)
-            print(f"[VALIDATE] {data_source} mean reward: {np.mean(rewards):.4f}")
+            # print(f"[VALIDATE] {data_source} mean reward: {np.mean(rewards):.4f}")
         for data_source, accs in data_source_acc.items():
             metric_dict[f'val/acc/{data_source}'] = np.mean(accs)
-            print(f"[VALIDATE] {data_source} mean accuracy: {np.mean(accs):.4f}")
+            # print(f"[VALIDATE] {data_source} mean accuracy: {np.mean(accs):.4f}")
         for data_source, bleus in data_source_bleu.items():
             metric_dict[f'val/bleu/{data_source}'] = np.mean(bleus)
-            print(f"[VALIDATE] {data_source} mean BLEU: {np.mean(bleus):.4f}")
+            # print(f"[VALIDATE] {data_source} mean BLEU: {np.mean(bleus):.4f}")
         
         # Stage 2 aggregation: Combine per-category metrics across ALL validation batches
         # Each batch returns sum and count (not averages), so we just accumulate them
-        print(f"\n[VALIDATE] Aggregating per-category metrics across {len(reward_tensor_dict_lst)} batches...")
+        # print(f"\n[VALIDATE] Aggregating per-category metrics across {len(reward_tensor_dict_lst)} batches...")
         if len(reward_tensor_dict_lst) > 0:
             category_names = ['multi_hop', 'single_hop', 'temporal', 'open_domain', 'adversarial']
             category_aggregates = {}
@@ -1062,18 +1053,18 @@ class RayReMATrainer(object):
             
             # Compute global averages (only once, at the end)
             if len(category_aggregates) > 0:
-                print(f"[VALIDATE] Found {len(category_aggregates)} categories with data")
+                # print(f"[VALIDATE] Found {len(category_aggregates)} categories with data")
                 for cat_name in sorted(category_aggregates.keys()):
                     agg = category_aggregates[cat_name]
                     if agg['count'] > 0:
                         metric_dict[f'val/{cat_name}_f1'] = agg['f1_sum'] / agg['count']
                         metric_dict[f'val/{cat_name}_bleu'] = agg['bleu_sum'] / agg['count']
                         metric_dict[f'val/{cat_name}_count'] = agg['count']
-                        print(f"[VALIDATE] {cat_name}: F1={metric_dict[f'val/{cat_name}_f1']:.4f}, BLEU={metric_dict[f'val/{cat_name}_bleu']:.4f}, count={metric_dict[f'val/{cat_name}_count']:.0f}")
-            else:
-                print(f"[VALIDATE] Warning: No category data found in any batch")
-        else:
-            print(f"[VALIDATE] No batches with category data")
+                        # print(f"[VALIDATE] {cat_name}: F1={metric_dict[f'val/{cat_name}_f1']:.4f}, BLEU={metric_dict[f'val/{cat_name}_bleu']:.4f}, count={metric_dict[f'val/{cat_name}_count']:.0f}")
+            # else:
+                # print(f"[VALIDATE] Warning: No category data found in any batch")
+        # else:
+            # print(f"[VALIDATE] No batches with category data")
         
         # Add num_turns and completion_tokens metrics
         if num_turns_lst:
@@ -1081,29 +1072,24 @@ class RayReMATrainer(object):
             metric_dict['val/num_turns/mean'] = num_turns_tensor.float().mean().item()
             metric_dict['val/num_turns/max'] = num_turns_tensor.max().item()
             metric_dict['val/num_turns/min'] = num_turns_tensor.min().item()
-            print(f"[VALIDATE] num_turns: mean={metric_dict['val/num_turns/mean']:.2f}, max={metric_dict['val/num_turns/max']}, min={metric_dict['val/num_turns/min']}")
+            # print(f"[VALIDATE] num_turns: mean={metric_dict['val/num_turns/mean']:.2f}, max={metric_dict['val/num_turns/max']}, min={metric_dict['val/num_turns/min']}")
         
         if completion_tokens_lst:
             completion_tokens_tensor = torch.cat(completion_tokens_lst, dim=0)
             metric_dict['val/completion_tokens/mean'] = completion_tokens_tensor.float().mean().item()
             metric_dict['val/completion_tokens/max'] = completion_tokens_tensor.max().item()
             metric_dict['val/completion_tokens/min'] = completion_tokens_tensor.min().item()
-            print(f"[VALIDATE] completion_tokens: mean={metric_dict['val/completion_tokens/mean']:.2f}, max={metric_dict['val/completion_tokens/max']}, min={metric_dict['val/completion_tokens/min']}")
+            # print(f"[VALIDATE] completion_tokens: mean={metric_dict['val/completion_tokens/mean']:.2f}, max={metric_dict['val/completion_tokens/max']}, min={metric_dict['val/completion_tokens/min']}")
 
         # Save generation results to a JSON file
         if self.config.trainer.get('save_val_generations', False):
-            print(f"\n[VALIDATE] Saving validation generations...")
+            # print(f"\n[VALIDATE] Saving validation generations...")
             output_dir = Path(self.config.trainer.default_local_dir) / 'eval_records'
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / f'val_step_{self.global_steps}.jsonl'
             
-            # Concatenate history lists from different batches
-            all_histories = []
-            for history_batch in history_lst:
-                all_histories.extend(history_batch)
-            
             results_to_save = []
-            for inp, outp, gt, hist, score in zip(sample_inputs, sample_outputs, sample_groundtruths, all_histories, sample_scores):
+            for inp, outp, gt, hist, score in zip(sample_inputs, sample_outputs, sample_groundtruths, history_lst, sample_scores):
                 unpad_history = [x for x in hist if x['role'] != 'padding']
                 results_to_save.append({
                     'question': inp,
@@ -1115,17 +1101,17 @@ class RayReMATrainer(object):
             
             with jsonlines.open(output_file, 'w') as writer:
                 writer.write_all(results_to_save)
-            print(f"[VALIDATE] Saved {len(results_to_save)} validation results to {output_file}")
+            # print(f"[VALIDATE] Saved {len(results_to_save)} validation results to {output_file}")
 
-        print(f"\n[VALIDATE] Validation complete. Final metrics: {metric_dict}")
-        print("="*80 + "\n")
+        # print(f"\n[VALIDATE] Validation complete. Final metrics: {metric_dict}")
+        # print("="*80 + "\n")
         return metric_dict
 
     def _test(self):
         """Test pipeline - runs multi-turn generation on all batches and evaluates QA only for finished conversations (non-empty qa_pairs_json)"""
-        print("\n" + "="*80)
-        print("STARTING TEST")
-        print("="*80)
+        # print("\n" + "="*80)
+        # print("STARTING TEST")
+        # print("="*80)
         
         sample_groundtruths = []
         sample_inputs = []
@@ -1143,7 +1129,7 @@ class RayReMATrainer(object):
         sample_scores = []
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
-        print(f"\n[TEST] Configuring rollout meta_info with max_num_turns={max_num_turns}")
+        # print(f"\n[TEST] Configuring rollout meta_info with max_num_turns={max_num_turns}")
         if max_num_turns > 1:
             from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             from prompt import FINISH_FLAG
@@ -1156,9 +1142,9 @@ class RayReMATrainer(object):
                 },
                 'max_num_turns': max_num_turns
             }
-            print(f"[TEST] Multi-turn mode enabled")
-            print(f"[TEST] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
-            print(f"[TEST] agent_roles: {rollout_meta_info['agent_roles']}")
+            # print(f"[TEST] Multi-turn mode enabled")
+            # print(f"[TEST] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            # print(f"[TEST] agent_roles: {rollout_meta_info['agent_roles']}")
         else:
             from prompt.math.single_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             rollout_meta_info = {
@@ -1170,22 +1156,22 @@ class RayReMATrainer(object):
                 },
                 'max_num_turns': max_num_turns
             }
-            print(f"[TEST] Single-turn mode enabled")
-            print(f"[TEST] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
-            print(f"[TEST] agent_roles: {rollout_meta_info['agent_roles']}")
+            # print(f"[TEST] Single-turn mode enabled")
+            # print(f"[TEST] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            # print(f"[TEST] agent_roles: {rollout_meta_info['agent_roles']}")
 
-        print(f"\n[TEST] Starting test loop: {len(self.test_dataloader)} batches")
+        # print(f"\n[TEST] Starting test loop: {len(self.test_dataloader)} batches")
 
-        print(f"[TEST] Strategy: Check qa_pairs_json for each sample - if non-empty, conversation has ended and will be evaluated")
+        # print(f"[TEST] Strategy: Check qa_pairs_json for each sample - if non-empty, conversation has ended and will be evaluated")
         total_batches = len(self.test_dataloader)
         
         for batch_idx, test_data in enumerate(self.test_dataloader):
-            print(f"\n{'*'*80}")
-            print(f"TEST BATCH {batch_idx + 1}/{total_batches}")
-            print(f"{'*'*80}")
-            print(f"\n[TEST BATCH {batch_idx + 1}] Creating batch from dataloader...")
-            print(f"[TEST BATCH {batch_idx + 1}] Batch size: {len(test_data['question'])}")
-            print(f"[TEST BATCH {batch_idx + 1}] test_data keys: {list(test_data.keys())}")
+            # print(f"\n{'*'*80}")
+            # print(f"TEST BATCH {batch_idx + 1}/{total_batches}")
+            # print(f"{'*'*80}")
+            # print(f"\n[TEST BATCH {batch_idx + 1}] Creating batch from dataloader...")
+            # print(f"[TEST BATCH {batch_idx + 1}] Batch size: {len(test_data['question'])}")
+            # print(f"[TEST BATCH {batch_idx + 1}] test_data keys: {list(test_data.keys())}")
             
             dummy_tensor = torch.arange(0, len(test_data['question']))
             test_data['batch_idx'] = dummy_tensor
@@ -1196,29 +1182,21 @@ class RayReMATrainer(object):
             rollout_meta_info['split'] = 'test'
             
             test_batch: DataProto = DataProto.from_single_dict(test_data, meta_info=rollout_meta_info)
-            print(f"[TEST BATCH {batch_idx + 1}] test_batch.batch keys: {list(test_batch.batch.keys())}")
-            print(f"[TEST BATCH {batch_idx + 1}] test_batch.non_tensor_batch keys: {list(test_batch.non_tensor_batch.keys())}")
+            # print(f"[TEST BATCH {batch_idx + 1}] test_batch.batch keys: {list(test_batch.batch.keys())}")
+            # print(f"[TEST BATCH {batch_idx + 1}] test_batch.non_tensor_batch keys: {list(test_batch.non_tensor_batch.keys())}")
 
             # Check which samples have finished (non-zero num_questions) BEFORE repeating
             num_questions_list = test_batch.non_tensor_batch['num_qas']
             finished_mask = [num_questions > 0 for num_questions in num_questions_list]
             num_finished = sum(finished_mask)
-            print(f"[TEST BATCH {batch_idx + 1}] Found {num_finished}/{len(finished_mask)} finished conversations (with non-empty qa_pairs_json)")
+            # print(f"[TEST BATCH {batch_idx + 1}] Found {num_finished}/{len(finished_mask)} finished conversations (with non-empty qa_pairs_json)")
 
-            # Store original inputs and ground truths BEFORE repeating
-            input_texts = test_batch.non_tensor_batch['question']
-            sample_inputs.extend(input_texts)
-            print(f"[TEST BATCH {batch_idx + 1}] Collected {len(input_texts)} input texts")
-
-            # Store original ground truth if available
-            ground_truths = [json.loads(x)[0]["answer"] if json.loads(x) else "N/A" for x in test_batch.non_tensor_batch['qa_pairs_json']]
-            sample_groundtruths.extend(ground_truths)
-            print(f"[TEST BATCH {batch_idx + 1}] Collected {len(ground_truths)} ground truths")
+            # (Generation inputs and ground truths will be collected only for finished conversations)
 
             # repeat test batch
             test_batch = test_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n,
                                            interleave=True)
-            print(f"[TEST BATCH {batch_idx + 1}] Repeated batch {self.config.actor_rollout_ref.rollout.val_kwargs.n} times. New size: {len(test_batch.batch)}")
+            # print(f"[TEST BATCH {batch_idx + 1}] Repeated batch {self.config.actor_rollout_ref.rollout.val_kwargs.n} times. New size: {len(test_batch.batch)}")
             
             # save rollout idx to use it in memory management (AFTER repeating to get unique indices for each rollout)
             n_rollouts_test = self.config.actor_rollout_ref.rollout.val_kwargs.n
@@ -1227,10 +1205,10 @@ class RayReMATrainer(object):
             
             # we only do test on rule-based rm
             if self.config.reward_model.enable and test_batch[0].non_tensor_batch['reward_model']['style'] == 'model':
-                print(f"[TEST BATCH {batch_idx + 1}] Skipping model-based reward model test")
+                # print(f"[TEST BATCH {batch_idx + 1}] Skipping model-based reward model test")
                 return {}
 
-            print(f"\n[TEST BATCH {batch_idx + 1}] Preparing generation batch...")
+            # print(f"\n[TEST BATCH {batch_idx + 1}] Preparing generation batch...")
             if 'multi_modal_inputs' in test_batch.non_tensor_batch.keys():
                 raise NotImplementedError('multi_modal_inputs test not implemented yet')
             else:
@@ -1241,7 +1219,7 @@ class RayReMATrainer(object):
                         deepcopy=True
                     )
             
-            print(f"[TEST BATCH {batch_idx + 1}] Generation batch prepared with {len(test_gen_batch.batch)} samples")
+            # print(f"[TEST BATCH {batch_idx + 1}] Generation batch prepared with {len(test_gen_batch.batch)} samples")
             
             test_gen_batch.meta_info.update({
                 'eos_token_id': self.tokenizer.eos_token_id,
@@ -1250,30 +1228,23 @@ class RayReMATrainer(object):
                 'do_sample': self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
                 'validate': True,
             })
-            print(f'[TEST BATCH {batch_idx + 1}] test_gen_batch meta_info: {test_gen_batch.meta_info}')
+            # print(f'[TEST BATCH {batch_idx + 1}] test_gen_batch meta_info: {test_gen_batch.meta_info}')
 
             # pad to be divisible by dp_size
-            print(f"\n[TEST BATCH {batch_idx + 1}] Padding to be divisible by world_size={self.actor_rollout_wg.world_size}...")
+            # print(f"\n[TEST BATCH {batch_idx + 1}] Padding to be divisible by world_size={self.actor_rollout_wg.world_size}...")
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
-            print(f"[TEST BATCH {batch_idx + 1}] Padded batch size: {len(test_gen_batch_padded.batch)}, pad_size: {pad_size}")
+            # print(f"[TEST BATCH {batch_idx + 1}] Padded batch size: {len(test_gen_batch_padded.batch)}, pad_size: {pad_size}")
             
-            print(f"[TEST BATCH {batch_idx + 1}] >>> Calling multi_turn_generate_sequences...")
+            # print(f"[TEST BATCH {batch_idx + 1}] >>> Calling multi_turn_generate_sequences...")
             test_output_gen_batch_padded = self.actor_rollout_wg.multi_turn_generate_sequences(test_gen_batch_padded)
-            print(f"[TEST BATCH {batch_idx + 1}] <<< Generation complete")
+            # print(f"[TEST BATCH {batch_idx + 1}] <<< Generation complete")
 
             # unpad
-            print(f"[TEST BATCH {batch_idx + 1}] Unpadding batch...")
+            # print(f"[TEST BATCH {batch_idx + 1}] Unpadding batch...")
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
-            print(f'[TEST BATCH {batch_idx + 1}] Test generation end. Output batch size: {len(test_output_gen_batch.batch)}')
+            # print(f'[TEST BATCH {batch_idx + 1}] Test generation end. Output batch size: {len(test_output_gen_batch.batch)}')
 
-            # Store generated outputs
-            print(f"\n[TEST BATCH {batch_idx + 1}] Processing outputs...")
-            output_texts = test_output_gen_batch.non_tensor_batch['response']
-            sample_outputs.extend(output_texts)
-            print(f"[TEST BATCH {batch_idx + 1}] Collected {len(output_texts)} output texts")
-            print(f"[TEST BATCH {batch_idx + 1}] Sample output[0]: {output_texts[0][:100] if isinstance(output_texts[0], str) else output_texts[0]}...")
-
-            history_lst.append(test_output_gen_batch.non_tensor_batch['history'].tolist())
+            # (Generated outputs and history will be collected only for finished conversations)
             
             # Collect generation metrics (num_turns, completion_tokens) from ALL batches
             num_turns = torch.tensor(test_output_gen_batch.non_tensor_batch['num_turns'].tolist(), dtype=torch.float32, device="cpu")
@@ -1284,12 +1255,12 @@ class RayReMATrainer(object):
                 test_output_gen_batch.batch['reasoning_num_gen_tokens'].cpu()
             completion_tokens = turn_level_completion_tokens.sum(dim=-1)
             completion_tokens_lst.append(completion_tokens)
-            print(f"[TEST BATCH {batch_idx + 1}] completion_tokens (all samples): min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
+            # print(f"[TEST BATCH {batch_idx + 1}] completion_tokens (all samples): min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
             
             # Check if any conversations finished in this batch and evaluate them
             if num_finished > 0:
-                print(f"[TEST BATCH {batch_idx + 1}] Evaluating {num_finished} finished conversations...")
-                print(f"[TEST BATCH {batch_idx + 1}] Merging generation output with test batch...")
+                # print(f"[TEST BATCH {batch_idx + 1}] Evaluating {num_finished} finished conversations...")
+                # print(f"[TEST BATCH {batch_idx + 1}] Merging generation output with test batch...")
                 test_batch_with_gen = test_batch.union(test_output_gen_batch)
                 test_batch_with_gen.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
                 test_batch_with_gen.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
@@ -1302,56 +1273,63 @@ class RayReMATrainer(object):
                         # Add all repeated versions of this finished sample
                         finished_indices.extend([i * repeat_times + j for j in range(repeat_times)])
                 
-                print(f"[TEST BATCH {batch_idx + 1}] Filtering to {len(finished_indices)} samples (finished conversations after repeating)")
+                # print(f"[TEST BATCH {batch_idx + 1}] Filtering to {len(finished_indices)} samples (finished conversations after repeating)")
                 
                 # Select only finished samples
                 finished_test_batch = test_batch_with_gen[finished_indices]
                 
+                # Safely collect inputs, outputs, ground truths and history for ONLY finished conversations
+                sample_inputs.extend(finished_test_batch.non_tensor_batch['question'])
+                sample_outputs.extend(finished_test_batch.non_tensor_batch['response'])
+                history_lst.extend(finished_test_batch.non_tensor_batch['history'].tolist())
+                gts = [json.loads(x)[0]["answer"] if (isinstance(x, str) and json.loads(x)) else "N/A" for x in finished_test_batch.non_tensor_batch['qa_pairs_json']]
+                sample_groundtruths.extend(gts)
+                
                 # Compute rewards for finished conversations
-                print(f"[TEST BATCH {batch_idx + 1}] Computing rewards for finished conversations...")
-                reward_tensor = self.val_reward_fn(finished_test_batch)
-                print(f"[TEST BATCH {batch_idx + 1}] Reward tensor keys: {list(reward_tensor.keys())}")
+                # print(f"[TEST BATCH {batch_idx + 1}] Computing rewards for finished conversations...")
+                reward_tensor = self.val_reward_fn(finished_test_batch, compression_penalty=self.config.trainer.compression_penalty)
+                # print(f"[TEST BATCH {batch_idx + 1}] Reward tensor keys: {list(reward_tensor.keys())}")
                 
                 reward_tensor_lst.append(reward_tensor['reasoning_turn_level_reward'])
                 reward_tensor_dict_lst.append(reward_tensor)  # Store full dict
                 acc_tensor_lst.append(reward_tensor['acc'])
                 bleu_tensor_lst.append(reward_tensor['bleu'])
-                print(f"[TEST BATCH {batch_idx + 1}] reasoning_turn_level_reward shape: {reward_tensor['reasoning_turn_level_reward'].shape}")
-                print(f"[TEST BATCH {batch_idx + 1}] acc shape: {reward_tensor['acc'].shape}")
-                print(f"[TEST BATCH {batch_idx + 1}] bleu shape: {reward_tensor['bleu'].shape}")
+                # print(f"[TEST BATCH {batch_idx + 1}] reasoning_turn_level_reward shape: {reward_tensor['reasoning_turn_level_reward'].shape}")
+                # print(f"[TEST BATCH {batch_idx + 1}] acc shape: {reward_tensor['acc'].shape}")
+                # print(f"[TEST BATCH {batch_idx + 1}] bleu shape: {reward_tensor['bleu'].shape}")
                 
                 # Store scores
                 scores = reward_tensor['reasoning_turn_level_reward'].sum(-1).cpu().tolist()
                 sample_scores.extend(scores)
-                print(f"[TEST BATCH {batch_idx + 1}] Sample scores[0]: {scores[0]}")
+                # print(f"[TEST BATCH {batch_idx + 1}] Sample scores[0]: {scores[0]}")
                 
                 # Get data sources from finished samples
                 data_source_lst.append(finished_test_batch.non_tensor_batch.get('subset', ['locomo'] * reward_tensor['reasoning_turn_level_reward'].shape[0]))
-            else:
-                print(f"[TEST BATCH {batch_idx + 1}] No finished conversations in this batch, skipping reward computation")
+            # else:
+                # print(f"[TEST BATCH {batch_idx + 1}] No finished conversations in this batch, skipping reward computation")
             
-            print(f"[TEST BATCH {batch_idx + 1}] Batch processing complete\n")
+            # print(f"[TEST BATCH {batch_idx + 1}] Batch processing complete\n")
 
         # Now compute final metrics from all finished conversations across all batches
-        print(f"\n[TEST] All batches processed. Computing final metrics...")
+        # print(f"\n[TEST] All batches processed. Computing final metrics...")
         
         if len(reward_tensor_lst) == 0:
-            print("[TEST] WARNING: No finished conversations found across all batches!")
+            # print("[TEST] WARNING: No finished conversations found across all batches!")
             return {}
         
         # Log generations
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores, groundtruths=sample_groundtruths, histories=history_lst)
 
         # Concatenate all accumulated tensors
-        print(f"[TEST] Concatenating reward tensors from {len(reward_tensor_lst)} batches with finished conversations...")
+        # print(f"[TEST] Concatenating reward tensors from {len(reward_tensor_lst)} batches with finished conversations...")
         reward_tensor = torch.cat(reward_tensor_lst, dim=0).sum(-1).cpu()  # (total_finished_samples,)
         acc_tensor = torch.cat(acc_tensor_lst, dim=0).cpu()  # (total_finished_samples,)
         bleu_tensor = torch.cat(bleu_tensor_lst, dim=0).cpu()  # (total_finished_samples,)
         data_sources = np.concatenate(data_source_lst, axis=0)
-        print(f"[TEST] Total finished samples evaluated: {reward_tensor.shape[0]}")
-        print(f"[TEST] Mean reward: {reward_tensor.mean().item():.4f}")
-        print(f"[TEST] Mean accuracy: {acc_tensor.mean().item():.4f}")
-        print(f"[TEST] Mean BLEU: {bleu_tensor.mean().item():.4f}")
+        # print(f"[TEST] Total finished samples evaluated: {reward_tensor.shape[0]}")
+        # print(f"[TEST] Mean reward: {reward_tensor.mean().item():.4f}")
+        # print(f"[TEST] Mean accuracy: {acc_tensor.mean().item():.4f}")
+        # print(f"[TEST] Mean BLEU: {bleu_tensor.mean().item():.4f}")
 
         # Compute metrics for all finished conversations
         data_source_reward = {}
@@ -1372,17 +1350,17 @@ class RayReMATrainer(object):
         metric_dict = {}
         for data_source, rewards in data_source_reward.items():
             metric_dict[f'test/test_score/{data_source}'] = np.mean(rewards)
-            print(f"[TEST] {data_source} mean reward: {np.mean(rewards):.4f}")
+            # print(f"[TEST] {data_source} mean reward: {np.mean(rewards):.4f}")
         for data_source, accs in data_source_acc.items():
             metric_dict[f'test/acc/{data_source}'] = np.mean(accs)
-            print(f"[TEST] {data_source} mean accuracy: {np.mean(accs):.4f}")
+            # print(f"[TEST] {data_source} mean accuracy: {np.mean(accs):.4f}")
         for data_source, bleus in data_source_bleu.items():
             metric_dict[f'test/bleu/{data_source}'] = np.mean(bleus)
-            print(f"[TEST] {data_source} mean BLEU: {np.mean(bleus):.4f}")
+            # print(f"[TEST] {data_source} mean BLEU: {np.mean(bleus):.4f}")
         
         # Stage 2 aggregation: Combine per-category metrics across ALL test batches
         # Each batch returns sum and count (not averages), so we just accumulate them
-        print(f"\n[TEST] Aggregating per-category metrics across {len(reward_tensor_dict_lst)} batches...")
+        # print(f"\n[TEST] Aggregating per-category metrics across {len(reward_tensor_dict_lst)} batches...")
         if len(reward_tensor_dict_lst) > 0:
             category_names = ['multi_hop', 'single_hop', 'temporal', 'open_domain', 'adversarial']
             category_aggregates = {}
@@ -1402,18 +1380,18 @@ class RayReMATrainer(object):
             
             # Compute global averages (only once, at the end)
             if len(category_aggregates) > 0:
-                print(f"[TEST] Found {len(category_aggregates)} categories with data")
+                # print(f"[TEST] Found {len(category_aggregates)} categories with data")
                 for cat_name in sorted(category_aggregates.keys()):
                     agg = category_aggregates[cat_name]
                     if agg['count'] > 0:
                         metric_dict[f'test/{cat_name}_f1'] = agg['f1_sum'] / agg['count']
                         metric_dict[f'test/{cat_name}_bleu'] = agg['bleu_sum'] / agg['count']
                         metric_dict[f'test/{cat_name}_count'] = agg['count']
-                        print(f"[TEST] {cat_name}: F1={metric_dict[f'test/{cat_name}_f1']:.4f}, BLEU={metric_dict[f'test/{cat_name}_bleu']:.4f}, count={metric_dict[f'test/{cat_name}_count']:.0f}")
-            else:
-                print(f"[TEST] Warning: No category data found in any batch")
-        else:
-            print(f"[TEST] No batches with category data")
+                        # print(f"[TEST] {cat_name}: F1={metric_dict[f'test/{cat_name}_f1']:.4f}, BLEU={metric_dict[f'test/{cat_name}_bleu']:.4f}, count={metric_dict[f'test/{cat_name}_count']:.0f}")
+            # else:
+                # print(f"[TEST] Warning: No category data found in any batch")
+        # else:
+            # print(f"[TEST] No batches with category data")
         
         # Add num_turns and completion_tokens metrics
         if num_turns_lst:
@@ -1421,29 +1399,24 @@ class RayReMATrainer(object):
             metric_dict['test/num_turns/mean'] = num_turns_tensor.float().mean().item()
             metric_dict['test/num_turns/max'] = num_turns_tensor.max().item()
             metric_dict['test/num_turns/min'] = num_turns_tensor.min().item()
-            print(f"[TEST] num_turns: mean={metric_dict['test/num_turns/mean']:.2f}, max={metric_dict['test/num_turns/max']}, min={metric_dict['test/num_turns/min']}")
+            # print(f"[TEST] num_turns: mean={metric_dict['test/num_turns/mean']:.2f}, max={metric_dict['test/num_turns/max']}, min={metric_dict['test/num_turns/min']}")
         
         if completion_tokens_lst:
             completion_tokens_tensor = torch.cat(completion_tokens_lst, dim=0)
             metric_dict['test/completion_tokens/mean'] = completion_tokens_tensor.float().mean().item()
             metric_dict['test/completion_tokens/max'] = completion_tokens_tensor.max().item()
             metric_dict['test/completion_tokens/min'] = completion_tokens_tensor.min().item()
-            print(f"[TEST] completion_tokens: mean={metric_dict['test/completion_tokens/mean']:.2f}, max={metric_dict['test/completion_tokens/max']}, min={metric_dict['test/completion_tokens/min']}")
+            # print(f"[TEST] completion_tokens: mean={metric_dict['test/completion_tokens/mean']:.2f}, max={metric_dict['test/completion_tokens/max']}, min={metric_dict['test/completion_tokens/min']}")
 
         # Save generation results to a JSON file
         if self.config.trainer.get('save_val_generations', False):
-            print(f"\n[TEST] Saving test generations...")
+            # print(f"\n[TEST] Saving test generations...")
             output_dir = Path(self.config.trainer.default_local_dir) / 'eval_records'
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / f'test_step_{self.global_steps}.jsonl'
             
-            # Concatenate history lists from different batches
-            all_histories = []
-            for history_batch in history_lst:
-                all_histories.extend(history_batch)
-            
             results_to_save = []
-            for inp, outp, gt, hist, score in zip(sample_inputs, sample_outputs, sample_groundtruths, all_histories, sample_scores):
+            for inp, outp, gt, hist, score in zip(sample_inputs, sample_outputs, sample_groundtruths, history_lst, sample_scores):
                 unpad_history = [x for x in hist if x['role'] != 'padding']
                 results_to_save.append({
                     'question': inp,
@@ -1455,10 +1428,10 @@ class RayReMATrainer(object):
             
             with jsonlines.open(output_file, 'w') as writer:
                 writer.write_all(results_to_save)
-            print(f"[TEST] Saved {len(results_to_save)} test results to {output_file}")
+            # print(f"[TEST] Saved {len(results_to_save)} test results to {output_file}")
 
-        print(f"\n[TEST] Test complete. Final metrics: {metric_dict}")
-        print("="*80 + "\n")
+        # print(f"\n[TEST] Test complete. Final metrics: {metric_dict}")
+        # print("="*80 + "\n")
         return metric_dict
 
     def init_workers(self):
@@ -1644,33 +1617,34 @@ class RayReMATrainer(object):
         from verl.utils.tracking import Tracking
         from omegaconf import OmegaConf
 
-        print("\n" + "="*80)
-        print("STARTING PPO TRAINING LOOP (fit method)")
-        print("="*80)
+        # print("\n" + "="*80)
+        # print("STARTING PPO TRAINING LOOP (fit method)")
+        # print("="*80)
 
         self.global_steps = 0
         
         # Best validation tracking
         self.best_val_acc = -1.0
         self.best_global_step = -1
+        self.patience_counter = 0
 
         # load checkpoint before doing anything
-        print("\n[FIT] Loading checkpoint...")
+        # print("\n[FIT] Loading checkpoint...")
         self._load_checkpoint()
-        print(f"[FIT] Checkpoint loaded. Starting from global_steps={self.global_steps}")
+        # print(f"[FIT] Checkpoint loaded. Starting from global_steps={self.global_steps}")
 
         if self.config.trainer.get('fork_wandb_id', None) is not None:
             fork_wandb_id = self.config.trainer.fork_wandb_id
             # wandb_kwargs = {'resume': 'must', 'id': fork_wandb_id}
-            print(f'**[WANDB]: will fork run from wandb id: `{fork_wandb_id}` at step {self.global_steps} **')
+            # print(f'**[WANDB]: will fork run from wandb id: `{fork_wandb_id}` at step {self.global_steps} **')
             
             # e.g. fork_from="6yaq69uw?_step=200"
             wandb_kwargs = {'fork_from': f"{fork_wandb_id}?_step={self.global_steps}"}
         else:
             wandb_kwargs = {}
         
-        print(f"\n[FIT] Initializing logger: {self.config.trainer.logger}")
-        print(f"[FIT] Project: {self.config.trainer.project_name}, Experiment: {self.config.trainer.experiment_name}")
+        # print(f"\n[FIT] Initializing logger: {self.config.trainer.logger}")
+        # print(f"[FIT] Project: {self.config.trainer.project_name}, Experiment: {self.config.trainer.experiment_name}")
         logger = Tracking(project_name=self.config.trainer.project_name,
                           experiment_name=self.config.trainer.experiment_name,
                           default_backend=self.config.trainer.logger,
@@ -1680,22 +1654,22 @@ class RayReMATrainer(object):
 
         # perform test if test_only mode is enabled
         if self.val_reward_fn is not None and self.config.trainer.get('test_only', False):
-            print("\n[FIT] Test-only mode enabled. Running test and exiting...")
+            # print("\n[FIT] Test-only mode enabled. Running test and exiting...")
             test_metrics = self._test()
             pprint(f'Test metrics: {test_metrics}')
             logger.log(data=test_metrics, step=self.global_steps)
-            print("[FIT] Test-only mode complete. Exiting.")
+            # print("[FIT] Test-only mode complete. Exiting.")
             return
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
         if self.val_reward_fn is not None and self.config.trainer.get('val_before_train', True):
-            print("\n[FIT] Running initial validation before training...")
+            # print("\n[FIT] Running initial validation before training...")
             val_metrics = self._validate()
             pprint(f'Initial validation metrics: {val_metrics}')
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get('val_only', False):
-                print("[FIT] Val-only mode enabled. Exiting after validation.")
+                # print("[FIT] Val-only mode enabled. Exiting after validation.")
                 return
 
         # we start from step 1
@@ -1703,7 +1677,7 @@ class RayReMATrainer(object):
         last_val_metrics = None
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
-        print(f"\n[FIT] Configuring rollout meta_info with max_num_turns={max_num_turns}")
+        # print(f"\n[FIT] Configuring rollout meta_info with max_num_turns={max_num_turns}")
         if max_num_turns > 1:
             from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             from prompt import FINISH_FLAG
@@ -1716,10 +1690,10 @@ class RayReMATrainer(object):
                 },
                 'max_num_turns': max_num_turns
             }
-            print(f"[FIT] Multi-turn mode enabled with FINISH_FLAG")
-            print(f"[FIT] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
-            print(f"[FIT] agent_roles: {rollout_meta_info['agent_roles']}")
-            print(f"[FIT] finish_flag: {rollout_meta_info['finish_flag'][:50] if rollout_meta_info['finish_flag'] else None}...")
+            # print(f"[FIT] Multi-turn mode enabled with FINISH_FLAG")
+            # print(f"[FIT] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            # print(f"[FIT] agent_roles: {rollout_meta_info['agent_roles']}")
+            # print(f"[FIT] finish_flag: {rollout_meta_info['finish_flag'][:50] if rollout_meta_info['finish_flag'] else None}...")
         else:
             from prompt.math.single_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             from prompt import FINISH_FLAG
@@ -1732,9 +1706,9 @@ class RayReMATrainer(object):
                 },
                 'max_num_turns': max_num_turns
             }
-            print(f"[FIT] Single-turn mode enabled (no FINISH_FLAG)")
-            print(f"[FIT] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
-            print(f"[FIT] agent_roles: {rollout_meta_info['agent_roles']}")
+            # print(f"[FIT] Single-turn mode enabled (no FINISH_FLAG)")
+            # print(f"[FIT] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
+            # print(f"[FIT] agent_roles: {rollout_meta_info['agent_roles']}")
         
         batch = None
         num_prompt_in_batch = 0
@@ -1744,27 +1718,27 @@ class RayReMATrainer(object):
         all_positive_cnt = 0
         kept_prompt_cnt = 0
 
-        print(f"\n[FIT] Starting training loop: {self.config.trainer.total_epochs} epochs, {len(self.train_dataloader)} batches per epoch")
-        print(f"[FIT] Total training steps: {self.total_training_steps}")
+        # print(f"\n[FIT] Starting training loop: {self.config.trainer.total_epochs} epochs, {len(self.train_dataloader)} batches per epoch")
+        # print(f"[FIT] Total training steps: {self.total_training_steps}")
 
         for epoch in range(self.config.trainer.total_epochs):
-            print(f"\n{'='*80}")
-            print(f"EPOCH {epoch + 1}/{self.config.trainer.total_epochs}")
-            print(f"{'='*80}")
+            # print(f"\n{'='*80}")
+            # print(f"EPOCH {epoch + 1}/{self.config.trainer.total_epochs}")
+            # print(f"{'='*80}")
             for batch_dict in self.train_dataloader:
-                print(f"\n{'*'*80}")
-                print(f"TRAINING STEP {self.global_steps}/{self.total_training_steps}")
-                print(f"{'*'*80}")
+                # print(f"\n{'*'*80}")
+                # print(f"TRAINING STEP {self.global_steps}/{self.total_training_steps}")
+                # print(f"{'*'*80}")
                 metrics = {}
                 timing_raw = {}
 
-                print("batch_dict[chunk_id]: ", batch_dict['chunk_id'] if 'chunk_id' in batch_dict else 'N/A')
-                print("batch_dict[sample_id]: ", batch_dict['sample_id'] if 'sample_id' in batch_dict else 'N/A')
+                # print("batch_dict[chunk_id]: ", batch_dict['chunk_id'] if 'chunk_id' in batch_dict else 'N/A')
+                # print("batch_dict[sample_id]: ", batch_dict['sample_id'] if 'sample_id' in batch_dict else 'N/A')
 
                 # create a dummy tensor for the construction function
-                print(f"\n[STEP {self.global_steps}] Creating batch from dataloader...")
-                print(f"[STEP {self.global_steps}] Batch size: {len(batch_dict['question'])}")
-                print(f"[STEP {self.global_steps}] batch_dict keys: {list(batch_dict.keys())}")
+                # print(f"\n[STEP {self.global_steps}] Creating batch from dataloader...")
+                # print(f"[STEP {self.global_steps}] Batch size: {len(batch_dict['question'])}")
+                # print(f"[STEP {self.global_steps}] batch_dict keys: {list(batch_dict.keys())}")
                 
                 dummy_tensor = torch.arange(0, len(batch_dict['question']))
                 batch_dict['batch_idx'] = dummy_tensor
@@ -1780,8 +1754,8 @@ class RayReMATrainer(object):
                 if 'index' in batch_dict:
                     try:
                         idxs = batch_dict['index'].tolist() if isinstance(batch_dict['index'], np.ndarray) else list(batch_dict['index'])
-                        print(f"[STEP {self.global_steps}] Adding {len(idxs)} indices to replay buffer (step={self.global_steps})")
-                        print(f"[STEP {self.global_steps}] idxs: {idxs}")
+                        # print(f"[STEP {self.global_steps}] Adding {len(idxs)} indices to replay buffer (step={self.global_steps})")
+                        # print(f"[STEP {self.global_steps}] idxs: {idxs}")
                         self.replay_buffer.add_indices(idxs, epoch=epoch)
                     except Exception:
                         pass
@@ -1791,12 +1765,12 @@ class RayReMATrainer(object):
                 n_replay = int(len(batch_dict['question']) * replay_ratio)
                 if n_replay > 0 and getattr(self, 'replay_buffer', None) and len(self.replay_buffer.buffer) > 0:
                     sampled = self.replay_buffer.sample(n_replay, strategy=self.config.trainer.get('replay_strategy', 'uniform'))
-                    print(f"[STEP {self.global_steps}] Sampling {len(sampled)} entries from replay buffer to merge into current batch")
+                    # print(f"[STEP {self.global_steps}] Sampling {len(sampled)} entries from replay buffer to merge into current batch")
                     if len(sampled) > 0:
                         # sampled contains tuples (index, orig_epoch)
                         sample_indices = [s[0] for s in sampled]
                         sample_epochs = [s[1] for s in sampled]
-                        print(f"[STEP {self.global_steps}] sample_indices: {sample_indices}, sample_epochs: {sample_epochs}")
+                        # print(f"[STEP {self.global_steps}] sample_indices: {sample_indices}, sample_epochs: {sample_epochs}")
                         # get raw items and collate using project's collate_fn
                         replay_items = [self.train_dataset[int(i)] for i in sample_indices]
                         try:
@@ -1836,11 +1810,11 @@ class RayReMATrainer(object):
                 rollout_meta_info['split'] = 'train'
 
                 new_batch: DataProto = DataProto.from_single_dict(batch_dict, meta_info=rollout_meta_info)
-                print(f"[STEP {self.global_steps}] new_batch.batch keys: {list(new_batch.batch.keys())}")
-                print(f"[STEP {self.global_steps}] new_batch.non_tensor_batch keys: {list(new_batch.non_tensor_batch.keys())}")
-                print(f"[STEP {self.global_steps}] new_batch.meta_info keys: {list(new_batch.meta_info.keys())}")
-                if 'batch_idx' in new_batch.batch:
-                    print(f"[STEP {self.global_steps}] batch_idx shape: {new_batch.batch['batch_idx'].shape}")
+                # print(f"[STEP {self.global_steps}] new_batch.batch keys: {list(new_batch.batch.keys())}")
+                # print(f"[STEP {self.global_steps}] new_batch.non_tensor_batch keys: {list(new_batch.non_tensor_batch.keys())}")
+                # print(f"[STEP {self.global_steps}] new_batch.meta_info keys: {list(new_batch.meta_info.keys())}")
+                # if 'batch_idx' in new_batch.batch:
+                    # print(f"[STEP {self.global_steps}] batch_idx shape: {new_batch.batch['batch_idx'].shape}")
                 new_batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(new_batch.batch))],
                                                              dtype=object)
                 new_batch = new_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
@@ -1857,7 +1831,7 @@ class RayReMATrainer(object):
                 num_gen_batches += 1
 
                 # pop those keys for generation
-                print(f"\n[STEP {self.global_steps}] Preparing generation batch...")
+                # print(f"\n[STEP {self.global_steps}] Preparing generation batch...")
                 if 'multi_modal_inputs' in new_batch.non_tensor_batch.keys():
                     raise NotImplementedError('multi_modal_inputs is not implemented yet')
                     gen_batch = new_batch.pop(
@@ -1872,27 +1846,27 @@ class RayReMATrainer(object):
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'],
                         deepcopy=True
                     )
-                print(f"[STEP {self.global_steps}] Generation batch prepared with {len(gen_batch.batch)} samples")
-                print(f"[STEP {self.global_steps}] gen_batch.batch keys: {list(gen_batch.batch.keys())}")
-                print(f"[STEP {self.global_steps}] gen_batch.non_tensor_batch keys: {list(gen_batch.non_tensor_batch.keys())}")
-                print(f"[STEP {self.global_steps}] gen_batch.meta_info keys: {list(gen_batch.meta_info.keys())}")
+                # print(f"[STEP {self.global_steps}] Generation batch prepared with {len(gen_batch.batch)} samples")
+                # print(f"[STEP {self.global_steps}] gen_batch.batch keys: {list(gen_batch.batch.keys())}")
+                # print(f"[STEP {self.global_steps}] gen_batch.non_tensor_batch keys: {list(gen_batch.non_tensor_batch.keys())}")
+                # print(f"[STEP {self.global_steps}] gen_batch.meta_info keys: {list(gen_batch.meta_info.keys())}")
 
                 is_last_step = self.global_steps >= self.total_training_steps
 
                 with _timer('step', timing_raw):
                     # generate a batch
-                    print(f"\n[STEP {self.global_steps}] >>> Calling multi_turn_generate_sequences...")
+                    # print(f"\n[STEP {self.global_steps}] >>> Calling multi_turn_generate_sequences...")
                     with _timer('gen', timing_raw):
                         gen_batch_output = self.actor_rollout_wg.multi_turn_generate_sequences(gen_batch)
-                    print(f"[STEP {self.global_steps}] <<< Generation complete. Output batch size: {len(gen_batch_output.batch)}")
-                    print(f"[STEP {self.global_steps}] gen_batch_output.batch keys: {list(gen_batch_output.batch.keys())}")
-                    print(f"[STEP {self.global_steps}] gen_batch_output.non_tensor_batch keys: {list(gen_batch_output.non_tensor_batch.keys())}")
-                    if 'meta_thinking_attention_mask' in gen_batch_output.batch:
-                        print(f"[STEP {self.global_steps}] meta_thinking_attention_mask shape: {gen_batch_output.batch['meta_thinking_attention_mask'].shape}")
-                    if 'reasoning_attention_mask' in gen_batch_output.batch:
-                        print(f"[STEP {self.global_steps}] reasoning_attention_mask shape: {gen_batch_output.batch['reasoning_attention_mask'].shape}")
-                    if 'response' in gen_batch_output.non_tensor_batch:
-                        print(f"[STEP {self.global_steps}] Sample response[0]: {gen_batch_output.non_tensor_batch['response'][0][:100] if isinstance(gen_batch_output.non_tensor_batch['response'][0], str) else gen_batch_output.non_tensor_batch['response'][0]}...")
+                    # print(f"[STEP {self.global_steps}] <<< Generation complete. Output batch size: {len(gen_batch_output.batch)}")
+                    # print(f"[STEP {self.global_steps}] gen_batch_output.batch keys: {list(gen_batch_output.batch.keys())}")
+                    # print(f"[STEP {self.global_steps}] gen_batch_output.non_tensor_batch keys: {list(gen_batch_output.non_tensor_batch.keys())}")
+                    # if 'meta_thinking_attention_mask' in gen_batch_output.batch:
+                        # print(f"[STEP {self.global_steps}] meta_thinking_attention_mask shape: {gen_batch_output.batch['meta_thinking_attention_mask'].shape}")
+                    # if 'reasoning_attention_mask' in gen_batch_output.batch:
+                        # print(f"[STEP {self.global_steps}] reasoning_attention_mask shape: {gen_batch_output.batch['reasoning_attention_mask'].shape}")
+                    # if 'response' in gen_batch_output.non_tensor_batch:
+                        # print(f"[STEP {self.global_steps}] Sample response[0]: {gen_batch_output.non_tensor_batch['response'][0][:100] if isinstance(gen_batch_output.non_tensor_batch['response'][0], str) else gen_batch_output.non_tensor_batch['response'][0]}...")
                         
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
                         raise NotImplementedError('REMAX is not implemented yet')
@@ -1902,7 +1876,7 @@ class RayReMATrainer(object):
                             gen_baseline_output = self.actor_rollout_wg.generate_sequences(gen_baseline_batch)
 
                             batch = batch.union(gen_baseline_output)
-                            reward_baseline_tensor = self.reward_fn(batch)
+                            reward_baseline_tensor = self.reward_fn(batch, compression_penalty=self.config.trainer.compression_penalty)
                             reward_baseline_tensor = reward_baseline_tensor.sum(dim=-1)
 
                             batch.pop(batch_keys=list(gen_baseline_output.batch.keys()))
@@ -1913,20 +1887,20 @@ class RayReMATrainer(object):
 
                     # # repeat to align with repeated responses in rollout
                     # batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
-                    print(f"\n[STEP {self.global_steps}] Merging generation output with original batch...")
-                    print(f"[STEP {self.global_steps}] BEFORE union - gen_batch_output.batch keys: {list(gen_batch_output.batch.keys())}")
+                    # print(f"\n[STEP {self.global_steps}] Merging generation output with original batch...")
+                    # print(f"[STEP {self.global_steps}] BEFORE union - gen_batch_output.batch keys: {list(gen_batch_output.batch.keys())}")
                     new_batch = new_batch.union(gen_batch_output)
-                    print(f"[STEP {self.global_steps}] AFTER union - Merged batch size: {len(new_batch.batch)}")
-                    print(f"[STEP {self.global_steps}] AFTER union - Merged new_batch.batch keys: {list(new_batch.batch.keys())}")
-                    print(f"[STEP {self.global_steps}] Merged new_batch.non_tensor_batch keys: {list(new_batch.non_tensor_batch.keys())}")
-                    if 'num_turns' in new_batch.non_tensor_batch:
-                        print(f"[STEP {self.global_steps}] Sample num_turns[0]: {new_batch.non_tensor_batch['num_turns'][0]}")
+                    # print(f"[STEP {self.global_steps}] AFTER union - Merged batch size: {len(new_batch.batch)}")
+                    # print(f"[STEP {self.global_steps}] AFTER union - Merged new_batch.batch keys: {list(new_batch.batch.keys())}")
+                    # print(f"[STEP {self.global_steps}] Merged new_batch.non_tensor_batch keys: {list(new_batch.non_tensor_batch.keys())}")
+                    # if 'num_turns' in new_batch.non_tensor_batch:
+                        # print(f"[STEP {self.global_steps}] Sample num_turns[0]: {new_batch.non_tensor_batch['num_turns'][0]}")
 
                     # balance the number of valid tokens on each dp rank.
                     # Note that this breaks the order of data inside the batch.
                     # Please take care when you implement group based adv computation such as GRPO and rloo
                     if self.config.trainer.balance_batch:
-                        print(f"[STEP {self.global_steps}] Balancing batch across DP ranks...")
+                        # print(f"[STEP {self.global_steps}] Balancing batch across DP ranks...")
                         self._balance_batch(new_batch, metrics=metrics)
 
                     # compute global_valid tokens
@@ -1952,15 +1926,15 @@ class RayReMATrainer(object):
                     if isinstance(current_chunk_id, torch.Tensor):
                         current_chunk_id = current_chunk_id.item()
                     
-                    print(f"[STEP {self.global_steps}] chunk_id={current_chunk_id}")
+                    # print(f"[STEP {self.global_steps}] chunk_id={current_chunk_id}")
 
                     # so if max session is set to infinity to match all convs without setting manually,
                     # It will work and accumulate till the last conv !
                     total_chunks = len(self.train_dataloader)
                     if current_chunk_id < total_chunks:
-                        print(f"[STEP {self.global_steps}] Accumulating batch (session {current_chunk_id}, total_chunks={total_chunks})...")
+                        # print(f"[STEP {self.global_steps}] Accumulating batch (session {current_chunk_id}, total_chunks={total_chunks})...")
                         self.accumulated_batches.append(batch)
-                        print(f"[STEP {self.global_steps}] Accumulated batches count: {len(self.accumulated_batches)}")
+                        # print(f"[STEP {self.global_steps}] Accumulated batches count: {len(self.accumulated_batches)}")
                         # Skip update, continue to next batch (which should be next session)
                         # But we must ensure global_steps is handled correctly. 
                         # If we continue here, global_steps increments at end of loop. 
@@ -1972,12 +1946,12 @@ class RayReMATrainer(object):
                     
                     # If we are here, it matches the final session 
                     # print(f"[STEP {self.global_steps}] Final session ({current_chunk_id}) reached. Proceeding to update.")
-                    print(f"[STEP {self.global_steps}] Final available session ({current_chunk_id}) reached. Proceeding to update.")
+                    # print(f"[STEP {self.global_steps}] Final available session ({current_chunk_id}) reached. Proceeding to update.")
 
                     # --- 1. Construct Terminal Batch ---
                     # Combine all batches to find the terminal state of every conversation
                     all_batches = self.accumulated_batches + [batch]
-                    print(f"[STEP {self.global_steps}] Constructing terminal_batch from {len(all_batches)} batches...")
+                    # print(f"[STEP {self.global_steps}] Constructing terminal_batch from {len(all_batches)} batches...")
                     
                     # Track the latest occurrence of each (sample_id, rollout_idx)
                     # key: (sample_id, rollout_idx) -> value: (batch_index_in_all_batches, row_index_in_batch)
@@ -2002,7 +1976,7 @@ class RayReMATrainer(object):
                             key = (sample_ids[r_idx], int(rollout_idxs[r_idx]))
                             latest_seen[key] = (b_idx, r_idx)
                             
-                    print(f"[STEP {self.global_steps}] Found {len(latest_seen)} unique conversations (terminal states).")
+                    # print(f"[STEP {self.global_steps}] Found {len(latest_seen)} unique conversations (terminal states).")
                     
                     # 1.2 Group and Extract Terminal States
                     # We need to construct `terminal_batch` containing these final states.
@@ -2037,12 +2011,12 @@ class RayReMATrainer(object):
                         terminal_keys_ordered.extend(keys)
                         
                     terminal_batch = DataProto.concat(terminal_sub_batches)
-                    print(f"[STEP {self.global_steps}] Terminal batch constructed with size {len(terminal_batch.batch)}")
+                    # print(f"[STEP {self.global_steps}] Terminal batch constructed with size {len(terminal_batch.batch)}")
 
 
                     # --- 2. Compute Rewards on Terminal Batch ---
                     with _timer('reward', timing_raw):
-                        print(f"\n[STEP {self.global_steps}] Computing rewards for Terminal Batch...")
+                        # print(f"\n[STEP {self.global_steps}] Computing rewards for Terminal Batch...")
                         
                         if self.use_rm:
                              raise NotImplementedError('RM is not implemented for delayed feedback yet')
@@ -2050,8 +2024,8 @@ class RayReMATrainer(object):
                         terminal_batch.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
                         terminal_batch.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
                         
-                        reward_tensor_map = self.reward_fn(terminal_batch)
-                        print(f"[STEP {self.global_steps}] Reward computed. Keys: {list(reward_tensor_map.keys())}")
+                        reward_tensor_map = self.reward_fn(terminal_batch, compression_penalty=self.config.trainer.compression_penalty)
+                        # print(f"[STEP {self.global_steps}] Reward computed. Keys: {list(reward_tensor_map.keys())}")
                         
                         # Process metrics (logging only)
                         category_names = ['multi_hop', 'single_hop', 'temporal', 'open_domain', 'adversarial']
@@ -2100,41 +2074,41 @@ class RayReMATrainer(object):
                             for i, key in enumerate(terminal_keys_ordered):
                                 global_reward_map[key] = outcome_rewards_all[i].item()
                                 
-                            print(f"[STEP {self.global_steps}] Global reward map built with {len(global_reward_map)} entries.")
-                        else:
-                            print(f"[WARNING] '{main_reward_key}' not found in reward_tensor_map.")
+                            # print(f"[STEP {self.global_steps}] Global reward map built with {len(global_reward_map)} entries.")
+                        # else:
+                            # print(f"[WARNING] '{main_reward_key}' not found in reward_tensor_map.")
 
 
                         reward_type = self.config.trainer.get('rewardtype', 'global')
-                        print(f"[STEP {self.global_steps}] Reward type from config: {reward_type}")
+                        # print(f"[STEP {self.global_steps}] Reward type from config: {reward_type}")
 
                         if reward_type == 'cumulative' or reward_type == 'cumulative_per_session_f1':
                             if 'cumulative_per_session_f1' in reward_tensor_map:
-                                print(f"[STEP {self.global_steps}] Using cumulative per-session F1 for global session map.")
+                                # print(f"[STEP {self.global_steps}] Using cumulative per-session F1 for global session map.")
                                 per_session_f1_all = reward_tensor_map['cumulative_per_session_f1'] # (B_term, MaxSessions)
                                 for i, key in enumerate(terminal_keys_ordered):
                                     global_per_session_map[key] = per_session_f1_all[i]
-                                print(f"[STEP {self.global_steps}] Global per-session reward map built (cumulative).")
-                            else:
-                                print(f"[WARNING] Cumulative reward requested (rewardtype={reward_type}) but 'cumulative_per_session_f1' not found in map!")
+                                # print(f"[STEP {self.global_steps}] Global per-session reward map built (cumulative).")
+                            # else:
+                                # print(f"[WARNING] Cumulative reward requested (rewardtype={reward_type}) but 'cumulative_per_session_f1' not found in map!")
                         
                         elif reward_type == 'persession' or reward_type == 'per_session_f1':
                             if 'per_session_f1' in reward_tensor_map:
                                 per_session_f1_all = reward_tensor_map['per_session_f1'] # (B_term, MaxSessions)
                                 for i, key in enumerate(terminal_keys_ordered):
                                     global_per_session_map[key] = per_session_f1_all[i]
-                                print(f"[STEP {self.global_steps}] Global per-session reward map built.")
-                            else:
-                                print(f"[WARNING] Per-session reward requested (rewardtype={reward_type}) but 'per_session_f1' not found in map!")
+                                # print(f"[STEP {self.global_steps}] Global per-session reward map built.")
+                            # else:
+                                # print(f"[WARNING] Per-session reward requested (rewardtype={reward_type}) but 'per_session_f1' not found in map!")
                                 
-                        elif reward_type == 'global':
-                            print(f"[STEP {self.global_steps}] Using global outcome reward. Bypassing per-session map.")
-                        else:
-                            print(f"[STEP {self.global_steps}] Unrecognized reward_type '{reward_type}'. Defaulting to global outcome reward.")
+                        # elif reward_type == 'global':
+                            # print(f"[STEP {self.global_steps}] Using global outcome reward. Bypassing per-session map.")
+                        # else:
+                            # print(f"[STEP {self.global_steps}] Unrecognized reward_type '{reward_type}'. Defaulting to global outcome reward.")
 
 
                         # --- 4. Propagate Rewards to All Batches ---
-                        print(f"[STEP {self.global_steps}] Propagating rewards to all {len(all_batches)} batches...")
+                        # print(f"[STEP {self.global_steps}] Propagating rewards to all {len(all_batches)} batches...")
                         
                         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
                         max_turns = self.config.actor_rollout_ref.rollout.max_num_turns
@@ -2204,30 +2178,30 @@ class RayReMATrainer(object):
                                     propagated_reward, turn_mask, self.config.algorithm.gamma_turn_level)
 
                         # Concatenate everything for PPO update
-                        print(f"[STEP {self.global_steps}] Concatenating {len(all_batches)} batches for update...")
+                        # print(f"[STEP {self.global_steps}] Concatenating {len(all_batches)} batches for update...")
                         batch = DataProto.concat(all_batches)
                         self.accumulated_batches = [] # Clear accumulation
-                        print(f"[STEP {self.global_steps}] Mega-batch size: {len(batch.batch)}")
+                        # print(f"[STEP {self.global_steps}] Mega-batch size: {len(batch.batch)}")
 
                     with _timer('adv', timing_raw):
-                        print(f"\n[STEP {self.global_steps}] Computing advantages (Trajectory Aggregated)...")
+                        # print(f"\n[STEP {self.global_steps}] Computing advantages (Trajectory Aggregated)...")
                         # Merge different role data into a single DataProto
                         merged_batch = merge_roles_data(batch)
 
                         # recompute old_log_probs (on merged data)
                         with _timer('old_log_prob', timing_raw):
-                            print(f"\n[STEP {self.global_steps}] Computing old log probabilities (merged)...")
+                            # print(f"\n[STEP {self.global_steps}] Computing old log probabilities (merged)...")
                             old_log_prob = self.actor_rollout_wg.compute_log_prob(merged_batch)
                             merged_batch = merged_batch.union(old_log_prob)
-                            print(f"[STEP {self.global_steps}] Old log probs computed.")
+                            # print(f"[STEP {self.global_steps}] Old log probs computed.")
 
                         if self.use_reference_policy:
                             # compute reference log_prob
                             with _timer('ref', timing_raw):
-                                print(f"[STEP {self.global_steps}] Computing reference log probabilities (merged)...")
+                                # print(f"[STEP {self.global_steps}] Computing reference log probabilities (merged)...")
                                 ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(merged_batch)
                                 merged_batch = merged_batch.union(ref_log_prob)
-                                print(f"[STEP {self.global_steps}] Reference log probs computed.")
+                                # print(f"[STEP {self.global_steps}] Reference log probs computed.")
                         
                         # assign turn_level scores to the last token of each turn
                         token_level_scores = compute_token_level_scores(merged_batch)
@@ -2257,67 +2231,75 @@ class RayReMATrainer(object):
                                                   gamma=self.config.algorithm.gamma_token_level,
                                                   lam=self.config.algorithm.lam_token_level,
                                                   num_repeat=self.config.actor_rollout_ref.rollout.n)
-                        print(f"[STEP {self.global_steps}] Advantages computed.")
+                        # print(f"[STEP {self.global_steps}] Advantages computed.")
 
 
                     # update critic
                     if self.use_critic:
                         with _timer('update_critic', timing_raw):
-                            print(f"\n[STEP {self.global_steps}] Updating critic...")
+                            # print(f"\n[STEP {self.global_steps}] Updating critic...")
                             critic_output = self.critic_wg.update_critic(batch)
                         critic_output_metrics = reduce_metrics(critic_output.meta_info['metrics'])
                         metrics.update(critic_output_metrics)
-                        print(f"[STEP {self.global_steps}] Critic updated.")
+                        # print(f"[STEP {self.global_steps}] Critic updated.")
 
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
                         with _timer('update_actor', timing_raw):
-                            print(f"\n[STEP {self.global_steps}] Updating actor...")
+                            # print(f"\n[STEP {self.global_steps}] Updating actor...")
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info['metrics'])
                         metrics.update(actor_output_metrics)
-                        print(f"[STEP {self.global_steps}] Actor updated.")
-                    else:
-                        print(f"\n[STEP {self.global_steps}] Skipping actor update (warmup: {self.global_steps}/{self.config.trainer.critic_warmup})")
+                        # print(f"[STEP {self.global_steps}] Actor updated.")
+                    # else:
+                        # print(f"\n[STEP {self.global_steps}] Skipping actor update (warmup: {self.global_steps}/{self.config.trainer.critic_warmup})")
 
                     # validate
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and \
                         (is_last_step or  self.global_steps % self.config.trainer.test_freq == 0):
                         with _timer('testing', timing_raw):
-                            print(f"\n[STEP {self.global_steps}] Running validation...")
+                            # print(f"\n[STEP {self.global_steps}] Running validation...")
                             val_metrics: dict = self._validate()
                             if is_last_step:
                                 last_val_metrics = val_metrics
-                            print(f"[STEP {self.global_steps}] Validation complete.")
+                            # print(f"[STEP {self.global_steps}] Validation complete.")
                         
                         # --- Update Best Checkpoint Info ---
                         current_val_acc = val_metrics.get('val/acc/locomo', -1.0)
                         if current_val_acc > self.best_val_acc:
-                            print(f"[STEP {self.global_steps}] New best validation accuracy: {current_val_acc:.4f} (was {self.best_val_acc:.4f})")
+                            # print(f"[STEP {self.global_steps}] New best validation accuracy: {current_val_acc:.4f} (was {self.best_val_acc:.4f})")
                             self.best_val_acc = current_val_acc
                             self.best_global_step = self.global_steps
+                            self.patience_counter = 0
                             
                             # Save best info to file
                             best_info_path = os.path.join(self.config.trainer.default_local_dir, 'best_checkpoint_info.txt')
                             try:
                                 with open(best_info_path, 'w') as f:
                                     f.write(f"{self.best_global_step}")
-                                print(f"[STEP {self.global_steps}] Saved best checkpoint info to {best_info_path}")
+                                # print(f"[STEP {self.global_steps}] Saved best checkpoint info to {best_info_path}")
                             except Exception as e:
                                 print(f"[WARN] Failed to save best checkpoint info: {e}")
+                        else:
+                            self.patience_counter += 1
                                 
                         metrics.update(val_metrics)
+
+                        max_patience = self.config.trainer.get('early_stop_patience', 0)
+                        if max_patience > 0 and self.patience_counter >= max_patience:
+                            print(f"\n[STEP {self.global_steps}] Early stopping triggered! Validation accuracy hasn't improved for {self.patience_counter} evaluations. Best acc: {self.best_val_acc:.4f} at step {self.best_global_step}.")
+                            is_last_step = True
 
                     if self.config.trainer.save_freq > 0 and ( is_last_step or \
                             self.global_steps % self.config.trainer.save_freq == 0):
                         with _timer('save_checkpoint', timing_raw):
-                            print(f"\n[STEP {self.global_steps}] Saving checkpoint...")
+                            # print(f"\n[STEP {self.global_steps}] Saving checkpoint...")
                             self._save_checkpoint()
-                            print(f"[STEP {self.global_steps}] Checkpoint saved.")
+                            # print(f"[STEP {self.global_steps}] Checkpoint saved.")
 
                 # collect metrics
-                print(f"\n[STEP {self.global_steps}] Computing and logging metrics...")
+                # print(f"\n[STEP {self.global_steps}] Computing and logging metrics...")
                 metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
                 metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
                 # TODO: implement actual tflpo and theoretical tflpo
@@ -2326,7 +2308,7 @@ class RayReMATrainer(object):
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
-                print(f"[STEP {self.global_steps}] Metrics logged. Step complete.\n")
+                # print(f"[STEP {self.global_steps}] Metrics logged. Step complete.\n")
 
                 batch = None
                 num_prompt_in_batch = 0
@@ -2337,14 +2319,22 @@ class RayReMATrainer(object):
                 total_prompt_cnt = 0
 
                 if is_last_step:
-                    print(f"\n{'='*80}")
-                    print(f"TRAINING COMPLETE")
-                    print(f"{'='*80}")
-                    pprint(f'Final validation metrics: {last_val_metrics}')
+                    # print(f"\n{'='*80}")
+                    # print(f"TRAINING COMPLETE")
+                    # print(f"{'='*80}")
+                    # pprint(f'Final validation metrics: {last_val_metrics}')
+                    del logger
+                    try:
+                        # flush wandb pending logs
+                        import wandb
+                        if wandb.run is not None:
+                            wandb.finish()
+                    except ImportError:
+                        pass
                     return
 
                 self.global_steps += 1
-                print(f"[FIT] Incrementing global_steps to {self.global_steps}")
+                # print(f"[FIT] Incrementing global_steps to {self.global_steps}")
 
     def _save_train_generations(self, batch: DataProto):
         # save train generations

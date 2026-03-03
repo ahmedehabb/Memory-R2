@@ -372,10 +372,10 @@ class vLLMRollout(BaseRollout):
                     # No more turns to process - this can happen if max_turns > total_turns
                     # In this case, use empty turns_data (no new dialogue turns to consider)
                     turns_data = []
-                    print(f"No turns to process for iteration {current_turn+1}/{max_turns} (all {total_turns} turns already processed)")
+                    # print(f"No turns to process for iteration {current_turn+1}/{max_turns} (all {total_turns} turns already processed)")
                 else:
                     turns_data = turns_data[start_idx:end_idx]
-                    print(f"Generating fact prompt for iteration {current_turn+1}/{max_turns}, processing turns {start_idx}-{end_idx-1} ({len(turns_data)} turns)")
+                    # print(f"Generating fact prompt for iteration {current_turn+1}/{max_turns}, processing turns {start_idx}-{end_idx-1} ({len(turns_data)} turns)")
 
             prompt = "Analyze the new conversation turns below and generate the new facts.\n```{turns}```"
             formatted_turns = format_turns_for_prompt(turns_data)
@@ -384,7 +384,7 @@ class vLLMRollout(BaseRollout):
 
         return prompts
     
-    def generate_memory_prompts(self, sample_ids, chunk_ids, facts_responses, epochs, split, conv_memories=None) -> Tuple[List[str], List[Memory], MemoryManager]:
+    def generate_memory_prompts(self, sample_ids, chunk_ids, facts_responses, epochs, split, conv_memories=None, rollout_batch_indices=None) -> Tuple[List[str], List[Memory], MemoryManager]:
         """Load memory snapshots before multi-turn generation and generate memory-augmented prompts for each sample.
         
         Args:
@@ -408,15 +408,16 @@ class vLLMRollout(BaseRollout):
                 conv_id = sample_ids[i]
                 chunk_id = chunk_ids[i]
                 epoch = epochs[i]
+                index_in_batch = rollout_batch_indices[i]
                 
                 # Load memory from previous chunk if it exists
                 if chunk_id > 1:  # chunk_id starts from 1
                     prev_chunk_id = chunk_id - 1
                     # Load the memory snapshot that the previous chunk_id had saved as our starting memory state
-                    loaded_memory = shared_manager.get_snapshot(conv_id, prev_chunk_id, epoch, split)
+                    loaded_memory = shared_manager.get_snapshot(conv_id, prev_chunk_id, epoch, split, index_in_batch)
                     if loaded_memory is not None:
                         conv_memories.append(loaded_memory)
-                        print(f"Loaded memory for conv {conv_id} from chunk {prev_chunk_id}")
+                        # print(f"Loaded memory for conv {conv_id} from chunk {prev_chunk_id}")
                     else:
                         raise Exception(f"No cached memory for conv {conv_id}, chunk {prev_chunk_id}. Required for processing.")
                 else:
@@ -424,7 +425,8 @@ class vLLMRollout(BaseRollout):
                     # print(f"Starting fresh memory for conv {conv_id}, chunk {chunk_id}")
                     conv_memories.append(Memory())
         else:
-            print(f"Using {len(conv_memories)} pre-loaded memories")
+            # print(f"Using {len(conv_memories)} pre-loaded memories")
+            pass
         
         # Store prompts for each sample
         prompts = []
@@ -438,7 +440,7 @@ class vLLMRollout(BaseRollout):
                 # remove the _parse_success key from facts_data
                 facts_data.pop("_parse_success", None)
 
-            print(f"idx: {i} - Generating memory prompt for conv {sample_ids[i]}, with {len(conv_memories)} pre-loaded memories, with {len(facts_data.get('facts', []))} facts")
+            # print(f"idx: {i} - Generating memory prompt for conv {sample_ids[i]}, with {len(conv_memories)} pre-loaded memories, with {len(facts_data.get('facts', []))} facts")
             prompt = generate_memory_prompt_using_facts(
                 conv_memories[i],
                 facts_data,
@@ -465,14 +467,14 @@ class vLLMRollout(BaseRollout):
         """Main function responsible for coordinating multi-turn dialogue generation"""
         # Use the parameters directly, assuming they are correctly defined
         # add extra code for multi-turn generation
-        print(f"\n{'='*80}")
-        print(f"MULTI_TURN_GENERATE_SEQUENCES CALLED")
-        print(f"Max num turns: {max_num_turns}")
-        print(f"Agent roles: {agent_roles}")
-        print(f"Finish flag: {finish_flag}")
-        print(f"System prompts keys: {list(system_prompts.keys())}")
-        print(f"rollout indices we got : {prompts.batch['rollout_idx']}...")
-        print(f"{'='*80}\n")
+        # print(f"\n{'='*80}")
+        # print(f"MULTI_TURN_GENERATE_SEQUENCES CALLED")
+        # print(f"Max num turns: {max_num_turns}")
+        # print(f"Agent roles: {agent_roles}")
+        # print(f"Finish flag: {finish_flag}")
+        # print(f"System prompts keys: {list(system_prompts.keys())}")
+        # print(f"rollout indices we got : {prompts.batch['rollout_idx']}...")
+        # print(f"{'='*80}\n")
         
         tokenizer.padding_side = "left"
         if tokenizer.pad_token is None:
@@ -484,16 +486,16 @@ class vLLMRollout(BaseRollout):
 
         sample_ids = prompts.non_tensor_batch["sample_id"]
         batch_size = len(sample_ids)
-        print(f"Sample question [0]: {sample_ids[0][:100]}..." if len(sample_ids) > 0 else "No sample IDs")
-        print(f"Batch size: {batch_size}")
+        # print(f"Sample question [0]: {sample_ids[0][:100]}..." if len(sample_ids) > 0 else "No sample IDs")
+        # print(f"Batch size: {batch_size}")
         # Initialize state variables
         history, finish_flags, finish_reason = self._initialize_conversation_state(
             batch_size)
-        print(f"Initialized conversation state: {len(history)} histories, {len(finish_flags)} flags")
+        # print(f"Initialized conversation state: {len(history)} histories, {len(finish_flags)} flags")
 
         # Multi-turn dialogue generation
         # this will change the history, finish_flags, finish_reason
-        print(f"\nStarting multi-turn conversation...\n")
+        # print(f"\nStarting multi-turn conversation...\n")
         latest_outputs, conversation_history, conv_memories, shared_manager, mem_op_stats = self._run_multi_turn_conversation(
             prompts,
             tokenizer=tokenizer,
@@ -519,7 +521,7 @@ class vLLMRollout(BaseRollout):
             chunk_id = prompts.non_tensor_batch["chunk_id"][i]
             global_idx = rollout_batch_indices[i]
 
-            print(f"Will save memory snapshot for conv {conv_id}, chunk {chunk_id} at rollout index {global_idx}")
+            # print(f"Will save memory snapshot for conv {conv_id}, chunk {chunk_id} at rollout index {global_idx}")
             
             # Save the memory snapshot after all turns for this conversation-chunk pair
             # Use global_idx to ensure unique filenames across all sharded processes
@@ -531,15 +533,15 @@ class vLLMRollout(BaseRollout):
                 prompts.meta_info["split"],
                 index_in_batch=global_idx
             )
-            print(f"Saved memory snapshot for conv {conv_id}, chunk {chunk_id} at global index {global_idx}")
+            # print(f"Saved memory snapshot for conv {conv_id}, chunk {chunk_id} at global index {global_idx}")
 
         # Mark completion reasons
         # this will change the finish_reason
-        print(f"\nMulti-turn conversation completed")
-        print(f"Latest outputs count: {len(latest_outputs)}")
-        print(f"Sample latest output [0]: {latest_outputs[0][:100]}..." if latest_outputs else "No outputs")
-        print(f"Conversation history keys: {list(conversation_history.keys())}")
-        print(f"Finish flags sum: {finish_flags.sum()}/{len(finish_flags)} finished\n")
+        # print(f"\nMulti-turn conversation completed")
+        # print(f"Latest outputs count: {len(latest_outputs)}")
+        # print(f"Sample latest output [0]: {latest_outputs[0][:100]}..." if latest_outputs else "No outputs")
+        # print(f"Conversation history keys: {list(conversation_history.keys())}")
+        # print(f"Finish flags sum: {finish_flags.sum()}/{len(finish_flags)} finished\n")
         
         if max_num_turns > 1:
             self._mark_unfinished_as_max_turns(finish_flags, finish_reason)
@@ -562,11 +564,11 @@ class vLLMRollout(BaseRollout):
                 num_gen_token_lst[role].append(_num_gen_tokens[role])
                 stop_reason_lst[role].append(_stop_reasons[role])
 
-        print(f"Building tensor dict...")
-        print(f"Last round responses count: {len(last_round_responses)}")
-        print(f"Num gen token list keys: {list(num_gen_token_lst.keys())}")
-        print(f"_stop_reasons : {stop_reason_lst}")
-        print(f"Stop reason list keys: {list(stop_reason_lst.keys())}")
+        # print(f"Building tensor dict...")
+        # print(f"Last round responses count: {len(last_round_responses)}")
+        # print(f"Num gen token list keys: {list(num_gen_token_lst.keys())}")
+        # print(f"_stop_reasons : {stop_reason_lst}")
+        # print(f"Stop reason list keys: {list(stop_reason_lst.keys())}")
         
         tensor_dict = self._build_tensor_dict(last_round_responses,
                                               conversation_history, 
@@ -575,7 +577,7 @@ class vLLMRollout(BaseRollout):
                                               stop_reason_lst,
                                               max_num_turns,
                                               finish_reason)
-        print(f"Tensor dict built with keys: {list(tensor_dict.keys())}")
+        # print(f"Tensor dict built with keys: {list(tensor_dict.keys())}")
 
         # Prepare return results
         final_output = self._prepare_final_output(
@@ -814,8 +816,8 @@ class vLLMRollout(BaseRollout):
         **kwargs,
     ):
         """Execute multi-turn dialogue generation"""
-        print(f"\n_run_multi_turn_conversation called")
-        print(f"len of prompts.non_tensor_batch['turns_json']: {len(prompts.non_tensor_batch['turns_json'])}")
+        # print(f"\n_run_multi_turn_conversation called")
+        # print(f"len of prompts.non_tensor_batch['turns_json']: {len(prompts.non_tensor_batch['turns_json'])}")
         
         # Initialize arrays - fact_prompts will be generated inside the turn loop
         batch_size = len(prompts.non_tensor_batch['turns_json'])
@@ -842,19 +844,19 @@ class vLLMRollout(BaseRollout):
             role: [None for _ in range(len(fact_prompts))]
             for role in agent_roles
         }
-        print(f"Initialized conversation_history for roles: {list(conversation_history.keys())}")
+        # print(f"Initialized conversation_history for roles: {list(conversation_history.keys())}")
 
         for i_turn in range(max_num_turns):
             # Get indices of unfinished samples
             unfinished_indices = np.where(~finish_flags)[0]
-            print(f"\n{'='*60}")
-            print(
-                f"TURN {i_turn+1}/{max_num_turns}: {len(unfinished_indices)}/{len(fact_prompts)} unfinished"
-            )
-            print(f"{'='*60}")
+            # print(f"\n{'='*60}")
+            # print(
+            #     f"TURN {i_turn+1}/{max_num_turns}: {len(unfinished_indices)}/{len(fact_prompts)} unfinished"
+            # )
+            # print(f"{'='*60}")
 
             if len(unfinished_indices) == 0:
-                print("All samples finished, breaking out of turn loop.")
+                # print("All samples finished, breaking out of turn loop.")
                 break
             
             # Regenerate fact prompts for the current turn chunk
@@ -864,13 +866,13 @@ class vLLMRollout(BaseRollout):
                 max_turns=max_num_turns
             )
             fact_prompts = np.array(fact_prompts, dtype=object)
-            print(f"Generated fact extraction prompts for turn {i_turn+1}/{max_num_turns}")
+            # print(f"Generated fact extraction prompts for turn {i_turn+1}/{max_num_turns}")
             
             # Each role takes turns generating in every round
             for i_role, role in enumerate(agent_roles):
-                print(f"\n  >>> Generating for role: {role} (role index: {i_role})")
+                # print(f"\n  >>> Generating for role: {role} (role index: {i_role})")
                 # Prepare prompts for current role
-                print(f"  Preparing prompts for {len(unfinished_indices)} unfinished samples...")
+                # print(f"  Preparing prompts for {len(unfinished_indices)} unfinished samples...")
                 
                 # Choose questions based on role
                 if role == agent_roles[0]:
@@ -902,10 +904,10 @@ class vLLMRollout(BaseRollout):
                 )
                 # state length
                 seq_lens = non_trunc_input["attention_mask"].sum(dim=1).tolist()
-                print(f"  Sequence lengths: min={min(seq_lens)}, max={max(seq_lens)}, prompt_length={self.config.prompt_length}")
+                # print(f"  Sequence lengths: min={min(seq_lens)}, max={max(seq_lens)}, prompt_length={self.config.prompt_length}")
                 # if state length is larger than prompt length, the trajectory is terminated 
                 if not all([l <= self.config.prompt_length for l in seq_lens]):
-                    print(f"  WARNING: Some sequences exceed prompt_length!")
+                    # print(f"  WARNING: Some sequences exceed prompt_length!")
                     # drop the terminated trajectories
                     new_seq_lens = []
                     new_unfinished_indices = []
@@ -921,7 +923,7 @@ class vLLMRollout(BaseRollout):
                             # set finish flag and finish reason 
                             finish_flags[idx] = True
                             finish_reason[idx] = "completion_token_exceeded"
-                            print(f'idx={idx}, completion_token_exceeded')
+                            # print(f'idx={idx}, completion_token_exceeded')
                             # if the next gen is for reasoning agent, we need to add a dummy response in history
                             if role == agent_roles[1]:
                                 history[idx].append(
@@ -950,23 +952,24 @@ class vLLMRollout(BaseRollout):
                 prompt_proto.meta_info.update(prompts.meta_info)
 
                 # Generate responses for current role
-                print(f"  Generating responses...")
+                # print(f"  Generating responses...")
                 current_outputs, num_gen_tokens, stop_reasons, resp_lens = self._generate_role_responses(
                     prompt_proto, tokenizer, response_length, **kwargs)
-                print(f"  Generated {len(current_outputs)} responses")
-                print(f"  Sample output [0]: {current_outputs[0]}..." if current_outputs else "  No outputs")
-                print(f"  Sample num_gen_tokens [0]: {num_gen_tokens[0]}" if num_gen_tokens else "  No tokens")
-                print(f"  Sample stop_reason [0]: {stop_reasons[0]}" if stop_reasons else "  No stop reasons")
+                # print(f"  Generated {len(current_outputs)} responses")
+                # print(f"  Sample output [0]: {current_outputs[0]}..." if current_outputs else "  No outputs")
+                # print(f"  Sample num_gen_tokens [0]: {num_gen_tokens[0]}" if num_gen_tokens else "  No tokens")
+                # print(f"  Sample stop_reason [0]: {stop_reasons[0]}" if stop_reasons else "  No stop reasons")
 
                 if role == agent_roles[0]:
                     # Update executor questions for next role
-                    print(f"  Updating executor questions for next role...")
+                    # print(f"  Updating executor questions for next role...")
                     extracted_facts = [current_outputs[i] for i in range(len(current_outputs))]
-                    print(f"  Extracted facts for {len(extracted_facts)} samples, \nfacts:: {extracted_facts}")
+                    # print(f"  Extracted facts for {len(extracted_facts)} samples, \nfacts:: {extracted_facts}")
                     
                     # Filter ALL inputs to unfinished samples
                     unfinished_sample_ids = [prompts.non_tensor_batch["sample_id"][idx] for idx in unfinished_indices]
                     unfinished_chunk_ids = [prompts.non_tensor_batch["chunk_id"][idx] for idx in unfinished_indices]
+                    unfinished_rollout_batch_indices = [prompts.batch["rollout_idx"][idx] for idx in unfinished_indices]
                     unfinished_epochs = [prompts.batch["epoch"][idx] for idx in unfinished_indices]
                     unfinished_conv_memories = None
                     if conv_memories is not None:
@@ -980,6 +983,7 @@ class vLLMRollout(BaseRollout):
                         epochs=unfinished_epochs,
                         split=prompts.meta_info["split"],
                         conv_memories=unfinished_conv_memories,
+                        rollout_batch_indices=unfinished_rollout_batch_indices,
                     )
                     
                     # Rebuild full arrays for next iteration
@@ -999,7 +1003,7 @@ class vLLMRollout(BaseRollout):
 
                 elif role == agent_roles[1]:
                     # Execute memory operations after the first agent's turn
-                    print(f"  Executing memory operations for {len(current_outputs)} samples...")
+                    # print(f"  Executing memory operations for {len(current_outputs)} samples...")
                     rewards, ops_per_sample, batch_op_stats = self._execute_memory_operations(
                         prompts, conv_memories, shared_manager, current_outputs, unfinished_indices, i_turn
                     )
@@ -1027,7 +1031,7 @@ class vLLMRollout(BaseRollout):
                     conversation_history[role][idx] = chat_lst[i]
 
                 # XXX(ziyu): side effect on `history`
-                print(f"  Updating history and checking finish conditions...")
+                # print(f"  Updating history and checking finish conditions...")
                 self._update_history_and_check_finish(
                     role,
                     current_outputs,
@@ -1046,9 +1050,9 @@ class vLLMRollout(BaseRollout):
                     tokenizer,
                 )
                 unfinished_indices = np.where(~finish_flags)[0]
-                print(f"  After update: {len(unfinished_indices)} still unfinished, {finish_flags.sum()} finished")
+                # print(f"  After update: {len(unfinished_indices)} still unfinished, {finish_flags.sum()} finished")
                 if len(unfinished_indices) == 0:
-                    print(f"  All samples finished, breaking from role loop")
+                    # print(f"  All samples finished, breaking from role loop")
                     break
             
         # use the last output of each agent as latest output response
@@ -1125,8 +1129,8 @@ class vLLMRollout(BaseRollout):
             # If JSON parsing failed, reward is 0
             if not json_parse_success:
                 rewards.append(0.0)
-                print(f"Conv {sample_ids[idx]}, chunk {chunk_ids[idx]}: "
-                      f"JSON parsing FAILED - Reward=0.0")
+                # print(f"Conv {sample_ids[idx]}, chunk {chunk_ids[idx]}: "
+                #       f"JSON parsing FAILED - Reward=0.0")
                 continue
             
             # Attach turn metadata
@@ -1170,7 +1174,7 @@ class vLLMRollout(BaseRollout):
                 {'turn_id': turn_id, 'dia_ids': list(dia_ids)}
                 for turn_id, dia_ids in sorted(dia_ids_per_turn.items())
             ]
-            print(f"[_execute_memory_operations] Conv {sample_ids[idx]}: Stored dia_ids_affected_per_turn = {operation_stats['dia_ids_affected_per_turn'][idx]}")
+            # print(f"[_execute_memory_operations] Conv {sample_ids[idx]}: Stored dia_ids_affected_per_turn = {operation_stats['dia_ids_affected_per_turn'][idx]}")
             
             # Calculate operation success rate
             if total_ops == 0:
@@ -1183,8 +1187,8 @@ class vLLMRollout(BaseRollout):
             final_reward = 1.0 * ops_reward
             rewards.append(final_reward)
             
-            print(f"Conv {sample_ids[idx]}, chunk {chunk_ids[idx]}: "
-                  f"JSON=OK, Ops={successful_ops}/{total_ops}, Format Reward={final_reward:.3f}")
+            # print(f"Conv {sample_ids[idx]}, chunk {chunk_ids[idx]}: "
+            #       f"JSON=OK, Ops={successful_ops}/{total_ops}, Format Reward={final_reward:.3f}")
             
             if result["status"] not in ["success", "partial"]:
                 print(f"Warning: Memory operations had issues: {result}")
@@ -1204,17 +1208,17 @@ class vLLMRollout(BaseRollout):
         conversation_history: Dict[str, List[List[Dict[str, str]]]],
     ) -> Tuple[DataProto, List[List[Dict[str, str]]]]:
         """Prepare prompts for a specific role"""
-        print(f"    _prepare_role_prompts called for role={role}")
-        print(f"      Unfinished indices count: {len(unfinished_indices)}")
-        print(f"      Unfinished indices: {unfinished_indices.tolist() if hasattr(unfinished_indices, 'tolist') else unfinished_indices}")
+        # print(f"    _prepare_role_prompts called for role={role}")
+        # print(f"      Unfinished indices count: {len(unfinished_indices)}")
+        # print(f"      Unfinished indices: {unfinished_indices.tolist() if hasattr(unfinished_indices, 'tolist') else unfinished_indices}")
 
         # Prepare history and questions for currently unfinished samples
         current_history = [history[idx] for idx in unfinished_indices]
         current_questions = [questions[idx] for idx in unfinished_indices]
-        print(f"      Current history lengths: {[len(h) for h in current_history]}")
+        # print(f"      Current history lengths: {[len(h) for h in current_history]}")
 
         # Build chat list
-        print(f"      Building chat list for role...")
+        # print(f"      Building chat list for role...")
         # Get existing conversations for unfinished samples
         existing_convs = [conversation_history[role][idx] for idx in unfinished_indices]
         chat_lst = self._build_chat_list_for_role(
@@ -1225,15 +1229,15 @@ class vLLMRollout(BaseRollout):
             agent_roles,
             existing_convs,
         )
-        print(f"      Chat list built, count: {len(chat_lst)}")
+        # print(f"      Chat list built, count: {len(chat_lst)}")
 
         # Apply chat template and encode
-        print(f"      Applying chat template...")
+        # print(f"      Applying chat template...")
         inputs = self._apply_chat_template(chat_lst, tokenizer)
         input_ids = inputs["input_ids"]
         attention_mask = inputs["attention_mask"]
-        print(f"      Input IDs shape: {input_ids.shape}")
-        print(f"      Attention mask shape: {attention_mask.shape}")
+        # print(f"      Input IDs shape: {input_ids.shape}")
+        # print(f"      Attention mask shape: {attention_mask.shape}")
 
         position_ids = compute_position_id_with_mask(attention_mask)
 
@@ -1243,7 +1247,7 @@ class vLLMRollout(BaseRollout):
             "position_ids": position_ids,
         }
         data = DataProto.from_dict(batch_dict)
-        print(f"      DataProto created successfully")
+        # print(f"      DataProto created successfully")
         return data, chat_lst
 
     def _build_chat_list_for_role(
@@ -1256,9 +1260,9 @@ class vLLMRollout(BaseRollout):
         existing_conversations: List[List[Dict[str, str]]] = None,
     ):
         """Build chat list for a specific role by extending existing conversation with new question"""
-        print(f"        _build_chat_list_for_role called for role={role}")
-        print(f"          History list length: {len(history_list)}")
-        print(f"          Questions count: {len(questions)}")
+        # print(f"        _build_chat_list_for_role called for role={role}")
+        # print(f"          History list length: {len(history_list)}")
+        # print(f"          Questions count: {len(questions)}")
 
         chat_lst = []
         
@@ -1268,7 +1272,7 @@ class vLLMRollout(BaseRollout):
             if existing_conversations and existing_conversations[i] is not None:
                 # Copy existing conversation and append new question
                 chat = existing_conversations[i].copy()
-                print(f"          Sample {i}: Extending existing conversation with {len(chat)} messages")
+                # print(f"          Sample {i}: Extending existing conversation with {len(chat)} messages")
             else:
                 # First turn - start with system prompt only
                 first_turn = True
@@ -1276,7 +1280,7 @@ class vLLMRollout(BaseRollout):
                     "role": "system",
                     "content": system_prompts[role]
                 }]
-                print(f"          Sample {i}: Starting fresh conversation")
+                # print(f"          Sample {i}: Starting fresh conversation")
             
             # Append the new question
             if first_turn:
@@ -1302,16 +1306,16 @@ class vLLMRollout(BaseRollout):
                         )
                     })
 
-            if role == agent_roles[0]:
-                print(f"meta-thinking agent:: {chat[-1]}...\n")
-            else:
-                print(f"reasoning agent:: {chat[-1]}...\n")
+            # if role == agent_roles[0]:
+            #     print(f"meta-thinking agent:: {chat[-1]}...\n")
+            # else:
+            #     print(f"reasoning agent:: {chat[-1]}...\n")
             
             chat_lst.append(chat)
         
-        print(f"          Built {len(chat_lst)} chat sequences")
-        if len(chat_lst) > 0:
-            print(f"          Sample chat [0] length: {len(chat_lst[0])} messages")
+        # print(f"          Built {len(chat_lst)} chat sequences")
+        # if len(chat_lst) > 0:
+            # print(f"          Sample chat [0] length: {len(chat_lst[0])} messages")
             # print(f"          Sample chat [0]: {chat_lst[0]}")
 
         return chat_lst
@@ -1319,9 +1323,9 @@ class vLLMRollout(BaseRollout):
     def _apply_chat_template(self, chat_lst: List[List[Dict[str, str]]],
                              tokenizer):
         """Apply chat template and encode"""
-        print(f"        _apply_chat_template called")
-        print(f"          Processing {len(chat_lst)} chat sequences")
-        print(f"          Max length: {self.config.prompt_length}")
+        # print(f"        _apply_chat_template called")
+        # print(f"          Processing {len(chat_lst)} chat sequences")
+        # print(f"          Max length: {self.config.prompt_length}")
         
         result = tokenizer.apply_chat_template(
             chat_lst,
@@ -1333,22 +1337,22 @@ class vLLMRollout(BaseRollout):
             return_dict=True,
             tokenize=True,
         )
-        print(f"          Template applied, result keys: {list(result.keys())}")
+        # print(f"          Template applied, result keys: {list(result.keys())}")
         return result
 
     def _generate_role_responses(self, prompt_proto: DataProto, tokenizer,
                                  response_length: int, **kwargs):
         """Generate responses for the current role"""
-        print(f"    _generate_role_responses called")
-        print(f"      Response length: {response_length}")
-        print(f"      Prompt proto batch keys: {list(prompt_proto.batch.keys())}")
+        # print(f"    _generate_role_responses called")
+        # print(f"      Response length: {response_length}")
+        # print(f"      Prompt proto batch keys: {list(prompt_proto.batch.keys())}")
         
         output = self.generate_sequences(prompt_proto, **kwargs)
-        print(f"      Generation completed")
+        # print(f"      Generation completed")
         
         resp_lens = output.batch['attention_mask'][:, -response_length:].sum(dim=1).tolist()
         vllm_output_text = output.non_tensor_batch['text'].tolist()
-        print(f"      Response lengths: {resp_lens}")
+        # print(f"      Response lengths: {resp_lens}")
         # output_text = tokenizer.batch_decode(
         #     output.batch["input_ids"][:, -response_length:],
         #     skip_special_tokens=False,
@@ -1368,9 +1372,9 @@ class vLLMRollout(BaseRollout):
         
         num_gen_tokens = output.non_tensor_batch['gen_response_lengths'].tolist()
         stop_reasons = output.non_tensor_batch['stop_reasons'].tolist()
-        print(f"      Num gen tokens: {num_gen_tokens}")
-        print(f"      Stop reasons: {stop_reasons}")
-        print(f"      Returning {len(vllm_output_text)} outputs")
+        # print(f"      Num gen tokens: {num_gen_tokens}")
+        # print(f"      Stop reasons: {stop_reasons}")
+        # print(f"      Returning {len(vllm_output_text)} outputs")
 
         # return output_text_clean, num_gen_tokens, stop_reasons, resp_lens
         return vllm_output_text, num_gen_tokens, stop_reasons, resp_lens
@@ -1394,10 +1398,10 @@ class vLLMRollout(BaseRollout):
         tokenizer: PreTrainedTokenizer,
     ):
         """Update conversation history and check completion flags"""
-        print(f"    _update_history_and_check_finish called for role={role}")
-        print(f"      Current outputs count: {len(current_outputs)}")
-        print(f"      Unfinished indices: {unfinished_indices.tolist() if hasattr(unfinished_indices, 'tolist') else unfinished_indices}")
-        print(f"      Finish flag: '{finish_flag}'")
+        # print(f"    _update_history_and_check_finish called for role={role}")
+        # print(f"      Current outputs count: {len(current_outputs)}")
+        # print(f"      Unfinished indices: {unfinished_indices.tolist() if hasattr(unfinished_indices, 'tolist') else unfinished_indices}")
+        # print(f"      Finish flag: '{finish_flag}'")
         
         # Update history
         assert len(current_outputs) == len(unfinished_indices), \
@@ -1406,31 +1410,31 @@ class vLLMRollout(BaseRollout):
             history[idx].append({"role": role, "content": current_outputs[i], 
                                  "num_gen_tokens": num_gen_tokens[i], 
                                  "stop_reason": stop_reasons[i]})
-        print(f"      History updated for all unfinished samples")
+        # print(f"      History updated for all unfinished samples")
 
         # Update finish flags
         # Check completion flags
-        print(f"      Checking finish flags...")
+        # print(f"      Checking finish flags...")
         if role == agent_roles[1]:
-            print(f"        Role is {agent_roles[1]}, checking for finish flag in previous outputs")
+            # print(f"        Role is {agent_roles[1]}, checking for finish flag in previous outputs")
             for i, idx in enumerate(unfinished_indices):
                 last_output = history[idx][-2]
                 assert last_output["role"] == agent_roles[0]
                 response = last_output['content']
                 if finish_flag and finish_flag in response:
-                    print(f"          Sample {idx}: Found finish flag, marking as finished")
+                    # print(f"          Sample {idx}: Found finish flag, marking as finished")
                     finish_flags[idx] = True
                     finish_reason[idx] = None
         
         if self.config.stop_when_truncated:
-            print(f"        Checking for truncation...")
+            # print(f"        Checking for truncation...")
             for i, stop_reason in enumerate(stop_reasons):
                 # if stop_reason == "length" and not finish_flags[unfinished_indices[i]]:
                 # XXX: even if stop by finish_flag, if current output is truncated, we need
                 #  mark this trajectory as terminated
                 if stop_reason == "length":
                     idx = unfinished_indices[i]
-                    print(f'idx={idx}, stop_when_truncated')
+                    # print(f'idx={idx}, stop_when_truncated')
                     finish_flags[idx] = True
                     finish_reason[idx] = "stop_when_truncated"
                     if role == agent_roles[0]:
@@ -1457,21 +1461,21 @@ class vLLMRollout(BaseRollout):
                              "stop_reason": "stop_when_truncated"}
                         )
         
-        print(f"      Finish checking completed")
-        print(f"      Total finished samples now: {finish_flags.sum()}")
+        # print(f"      Finish checking completed")
+        # print(f"      Total finished samples now: {finish_flags.sum()}")
 
     def _mark_unfinished_as_max_turns(self, finish_flags: np.ndarray,
                                       finish_reason: List[Optional[str]]):
         """Mark unfinished samples as reaching maximum turns"""
-        print(f"\n_mark_unfinished_as_max_turns called")
+        # print(f"\n_mark_unfinished_as_max_turns called")
         unfinished_count = (~finish_flags).sum()
-        print(f"  Marking {unfinished_count} unfinished samples as 'reach_max_turn'")
+        # print(f"  Marking {unfinished_count} unfinished samples as 'reach_max_turn'")
         
         for i in range(len(finish_flags)):
             if not finish_flags[i]:
                 finish_reason[i] = "reach_max_turn"
         
-        print(f"  All samples now have finish reasons")
+        # print(f"  All samples now have finish reasons")
 
     def _prepare_final_output(
         self,
@@ -1485,10 +1489,10 @@ class vLLMRollout(BaseRollout):
         mem_op_stats: Optional[Dict[str, List[int]]] = None,
     ):
         """Prepare final output"""
-        print(f"\n_prepare_final_output called")
-        print(f"  Latest outputs count: {len(latest_outputs)}")
-        print(f"  History count: {len(history)}")
-        print(f"  Agent roles: {agent_roles}")
+        # print(f"\n_prepare_final_output called")
+        # print(f"  Latest outputs count: {len(latest_outputs)}")
+        # print(f"  History count: {len(history)}")
+        # print(f"  Agent roles: {agent_roles}")
 
         non_tensor_batch = prompts.non_tensor_batch
         non_tensor_batch["finish_reason"] = finish_reason
@@ -1513,7 +1517,7 @@ class vLLMRollout(BaseRollout):
             for i, dia_ids_list in enumerate(mem_op_stats['dia_ids_affected_per_turn']):
                 dia_ids_array[i] = dia_ids_list
             non_tensor_batch["dia_ids_affected_per_turn"] = dia_ids_array            
-        print(f"  Non-tensor batch updated with finish_reason, num_turns, response")
+        # print(f"  Non-tensor batch updated with finish_reason, num_turns, response")
 
         padded_history = _pad_history(history, 2 * self.config.max_num_turns)
         padded_conversation_history = {
@@ -1535,15 +1539,15 @@ class vLLMRollout(BaseRollout):
             for key in tensor_dict[role].keys():
                 flat_tensor_dict[f"{role}_{key}"] = tensor_dict[role][key]
         
-        print(f"  Flattened tensor dict with {len(flat_tensor_dict)} keys: {list(flat_tensor_dict.keys())}")
-        print(f"  Creating final DataProto...")
+        # print(f"  Flattened tensor dict with {len(flat_tensor_dict)} keys: {list(flat_tensor_dict.keys())}")
+        # print(f"  Creating final DataProto...")
 
         final_output = DataProto.from_dict(
             tensors=flat_tensor_dict,
             non_tensors=non_tensor_batch,
             meta_info=prompts.meta_info,
         )
-        print(f"  Final output prepared successfully")
+        # print(f"  Final output prepared successfully")
         return final_output
 
 
