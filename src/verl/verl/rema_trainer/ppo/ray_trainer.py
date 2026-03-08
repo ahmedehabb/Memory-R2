@@ -39,6 +39,7 @@ from verl.single_controller.base import Worker
 from verl.single_controller.ray import RayResourcePool, RayWorkerGroup, RayClassWithInitArgs
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.rema_trainer.ppo import core_algos
+from verl.rema_trainer.ppo.tree_rollout import RolloutTree, compute_intermediate_signal, fork_memory_snapshots
 from verl.rema_trainer.ppo.metric_utils import compute_data_metrics, compute_throughout_metrics, compute_timing_metrics, reduce_metrics
 from verl.rema_trainer.memory.teacher_model import TeacherModel
 from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
@@ -71,6 +72,7 @@ class AdvantageEstimator(str, Enum):
     """
     GAE = 'gae'
     GRPO = 'grpo'
+    TREE_GRPO = 'tree_grpo'
     REINFORCE_PLUS_PLUS = 'reinforce_plus_plus'
     REMAX = 'remax'
     RLOO = 'rloo'
@@ -190,6 +192,101 @@ def apply_kl_penalty(data: DataProto, kl_ctrl, kl_penalty='kl'):
     return data, metrics
 
 
+def compute_bootstrap_values(data: DataProto, gamma_session: float = 1.0) -> torch.Tensor:
+    """Compute bootstrap values for cross-session value propagation.
+    
+    For each row in the batch, finds the next session in the same 
+    trajectory chain and extracts the first turn's critic value 
+    from that next session. This enables the GAE computation to bootstrap
+    from the next session's value instead of treating session boundaries as terminal.
+    
+    After merge_roles_data, the batch has 2x rows (role-A rows then role-B rows).
+    We use uid prefix (role name) + sample_id + rollout_idx to build chains,
+    ensuring each role's trajectory is separate.
+    
+    Args:
+        data: DataProto with 'values', 'step_ids', 'rollout_idx' in batch,
+              and 'uid', 'sample_id', 'session_id' in non_tensor_batch.
+        gamma_session: Cross-session discount factor. Bootstrap values are
+                       multiplied by gamma_session to dampen future session signal.
+    
+    Returns:
+        bootstrap_values: (bs,) tensor. Zero for terminal sessions (last in chain).
+    """
+    values = data.batch['values']
+    step_ids = data.batch['step_ids']
+    rollout_idxs = data.batch['rollout_idx']
+    if isinstance(rollout_idxs, torch.Tensor):
+        rollout_idxs = rollout_idxs.cpu().tolist()
+    
+    sample_ids = data.non_tensor_batch.get('sample_id', None)
+    session_ids = data.non_tensor_batch.get('session_id', None)
+    uids = data.non_tensor_batch.get('uid', None)
+    
+    bs = values.shape[0]
+    bootstrap_values = torch.zeros(bs, device=values.device, dtype=values.dtype)
+    
+    if sample_ids is None or session_ids is None:
+        return bootstrap_values
+    
+    # Determine role prefix for each row to separate role chains after merge_roles_data
+    # After merge, uid format is "rolename_<uuid>" where rolename is from agent_roles
+    agent_roles = data.meta_info.get('agent_roles', [])
+    
+    from collections import defaultdict
+    chain_map = defaultdict(list)
+    for row_idx in range(bs):
+        # Extract role prefix from uid
+        role_prefix = ""
+        if uids is not None:
+            uid_str = str(uids[row_idx])
+            for role in agent_roles:
+                if uid_str.startswith(f"{role}_"):
+                    role_prefix = role
+                    break
+        
+        # Chain key: (role, sample_id, rollout_idx)
+        chain_key = (role_prefix, str(sample_ids[row_idx]), int(rollout_idxs[row_idx]))
+        sess_id = int(session_ids[row_idx])
+        chain_map[chain_key].append((sess_id, row_idx))
+    
+    # Sort each chain by session_id and link consecutive sessions
+    n_chains = len(chain_map)
+    chain_lengths = []
+    n_misses = 0  # Track how many links fail to find valid tokens
+    for key, sessions in chain_map.items():
+        sessions.sort(key=lambda x: x[0])  # Sort by session_id
+        chain_lengths.append(len(sessions))
+        for i in range(len(sessions) - 1):
+            current_row_idx = sessions[i][1]
+            next_row_idx = sessions[i + 1][1]
+            
+            # Extract the value at the first token of turn 0 of the next session
+            # This represents V(s_boundary) = expected return BEFORE any next-session actions
+            next_step_ids = step_ids[next_row_idx]  # (seq_len,)
+            next_values = values[next_row_idx]  # (seq_len,)
+            
+            turn0_mask = (next_step_ids == 0)
+            if turn0_mask.any():
+                first_pos = turn0_mask.nonzero(as_tuple=True)[0][0]
+                # Discount by gamma_session for the cross-session hop
+                bootstrap_values[current_row_idx] = gamma_session * next_values[first_pos].detach()
+            else:
+                n_misses += 1
+        # Last session in chain: bootstrap_values stays 0 (terminal)
+    
+    # Debug: show chain info
+    from collections import Counter
+    len_counts = Counter(chain_lengths)
+    expected_bootstraps = sum(l - 1 for l in chain_lengths)
+    print(f"[Bootstrap Debug] {n_chains} chains, length distribution: {dict(len_counts)}, "
+          f"expected bootstraps: {expected_bootstraps}, misses: {n_misses}, "
+          f"unique roles: {set(k[0] for k in chain_map.keys())}, "
+          f"unique rollout_idxs: {set(k[2] for k in chain_map.keys())}")
+    
+    return bootstrap_values
+
+
 def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1):
     # prepare response group
     # TODO: add other ways to estimate advantages
@@ -197,6 +294,9 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         values = data.batch['values']
         step_ids = data.batch['step_ids']
         step_mask = (step_ids != -100).float()
+        
+        # Get bootstrap values for cross-session propagation
+        bootstrap_value = data.batch.get('bootstrap_value', None)
         
         if data.meta_info.get('use_bilevel_gae', False):
             max_num_turns = data.meta_info['max_num_turns']
@@ -227,6 +327,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
                 lam=lam,
                 high_level_gamma=high_level_gamma,
                 max_num_turns=max_num_turns,
+                bootstrap_value=bootstrap_value,
             )
         else:
             token_level_rewards = data.batch['token_level_rewards']
@@ -234,7 +335,8 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
                                                                           values=values,
                                                                           eos_mask=step_mask,
                                                                           gamma=gamma,
-                                                                          lam=lam)
+                                                                          lam=lam,
+                                                                          bootstrap_value=bootstrap_value)
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
     elif adv_estimator == AdvantageEstimator.GRPO:
@@ -290,6 +392,18 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         advantages, returns = core_algos.compute_rloo_outcome_advantage(token_level_rewards=token_level_rewards,
                                                                         eos_mask=response_mask,
                                                                         index=index)
+        data.batch['advantages'] = advantages
+        data.batch['returns'] = returns
+    elif adv_estimator == AdvantageEstimator.TREE_GRPO:
+        grpo_sparse_rewards = torch.zeros_like(data.batch['token_level_rewards'])
+        grpo_sparse_rewards[:, -1] = data.batch['turn_level_reward'].sum(-1)
+        parent_id = data.non_tensor_batch['parent_id']  # set by tree rollout logic
+        step_mask = data.batch['step_ids'] != -100
+        advantages, returns = core_algos.compute_tree_grpo_outcome_advantage(
+            token_level_rewards=grpo_sparse_rewards,
+            eos_mask=step_mask,
+            parent_id=torch.tensor(list(parent_id), dtype=torch.long),
+        )
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
     else:
@@ -360,6 +474,16 @@ def merge_roles_data(data: DataProto) -> DataProto:
         named_uid_list = [f'{role}_{uid}' for uid in uid_list]
         new_uid_list.extend(named_uid_list)
     new_non_tensor_batch['uid'] = np.array(new_uid_list, dtype=object)
+    
+    # Preserve session metadata for cross-session value bootstrapping
+    for meta_key in ['sample_id', 'session_id', 'parent_id']:
+        if meta_key in data.non_tensor_batch:
+            original_values = data.non_tensor_batch[meta_key].tolist()
+            # Duplicate for each role (same session info applies to both roles)
+            repeated_values = []
+            for role in agent_roles:
+                repeated_values.extend(original_values)
+            new_non_tensor_batch[meta_key] = np.array(repeated_values, dtype=object)
     
     merged_data = DataProto.from_dict(new_tensor_batch, non_tensors=new_non_tensor_batch, meta_info=data.meta_info)
     return merged_data
@@ -495,7 +619,8 @@ class RayReMATrainer(object):
         if self.config.algorithm.adv_estimator == AdvantageEstimator.GAE:
             self.use_critic = True
         elif self.config.algorithm.adv_estimator in [
-                AdvantageEstimator.GRPO, AdvantageEstimator.REINFORCE_PLUS_PLUS, AdvantageEstimator.REMAX,
+                AdvantageEstimator.GRPO, AdvantageEstimator.TREE_GRPO,
+                AdvantageEstimator.REINFORCE_PLUS_PLUS, AdvantageEstimator.REMAX,
                 AdvantageEstimator.RLOO
         ]:
             self.use_critic = False
@@ -1817,16 +1942,104 @@ class RayReMATrainer(object):
                     # print(f"[STEP {self.global_steps}] batch_idx shape: {new_batch.batch['batch_idx'].shape}")
                 new_batch.non_tensor_batch['uid'] = np.array([str(uuid.uuid4()) for _ in range(len(new_batch.batch))],
                                                              dtype=object)
-                new_batch = new_batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+
+                # --- Determine repeat count (how many rollouts per sample this session) ---
+                use_tree_grpo = (self.config.algorithm.adv_estimator == AdvantageEstimator.TREE_GRPO)
+                n_rollouts = self.config.actor_rollout_ref.rollout.n  # max rollouts from config
+
+                if use_tree_grpo and hasattr(self, '_rollout_tree') and len(self.accumulated_batches) > 0:
+                    # Growth phase: use the tree's current leaf count (may be > initial_rollouts)
+                    leaves_per_sample = self._rollout_tree.get_leaves_per_sample()
+                    n_for_repeat = list(leaves_per_sample.values())[0] if leaves_per_sample else n_rollouts
+                else:
+                    if use_tree_grpo:
+                        # First session: use initial_rollouts (smaller starting point)
+                        tree_cfg = self.config.algorithm.get('tree_rollout', {})
+                        branch_factor = tree_cfg.get('branch_factor', 2)
+                        
+                        if tree_cfg.get('pruning_strategy') in ['anchor', 'anchor_intra']:
+                            self._anchor_stride = int(tree_cfg.get('anchor_stride', 4))
+                            is_random = tree_cfg.get('anchor_randomize', False)
+                            total_sess = len(self.train_dataloader)
+                            if is_random and total_sess > 1 and self._anchor_stride > 0:
+                                num_anchors = max(1, total_sess // self._anchor_stride)
+                                import random
+                                self._anchor_sessions = set(random.sample(range(1, total_sess + 1), num_anchors))
+                                print(f"[TreeGRPO] Randomized Anchor Sessions for this batch: {sorted(list(self._anchor_sessions))}")
+                            else:
+                                self._anchor_sessions = set(i for i in range(1, total_sess + 1) if self._anchor_stride > 0 and i % self._anchor_stride == 0)
+                                
+                            is_session_1_anchor = (1 in self._anchor_sessions)
+                            trunks = tree_cfg.get('anchor_trunks', 1)
+                            n_for_repeat = branch_factor * trunks if is_session_1_anchor else trunks
+                        else:
+                            default_initial = max(1, n_rollouts // branch_factor)
+                            n_for_repeat = tree_cfg.get('initial_rollouts', default_initial)
+                    else:
+                        n_for_repeat = n_rollouts
+
+                new_batch = new_batch.repeat(repeat_times=n_for_repeat, interleave=True)
 
                 # save rollout idx to use it in memory management (AFTER repeating to get unique indices for each rollout)
                 # Ensure rollout_idx is consistent per conversation (0..n-1) specifically for memory caching
                 # This ensures that even if batch order changes, the i-th rollout of a conversation always uses the same index.
-                n_rollouts = self.config.actor_rollout_ref.rollout.n
                 # If interleave=True: [A0, A1... An-1, B0, B1... Bn-1]
                 # We want indices: [0, 1... n-1, 0, 1... n-1]
-                rollout_idx = torch.arange(0, n_rollouts).repeat(len(new_batch.batch) // n_rollouts)
+                rollout_idx = torch.arange(0, n_for_repeat).repeat(len(new_batch.batch) // n_for_repeat)
                 new_batch.batch['rollout_idx'] = rollout_idx.numpy()
+
+                # --- Tree GRPO: Initialise tree on first session ---
+                if use_tree_grpo and (
+                    not hasattr(self, '_rollout_tree') or len(self.accumulated_batches) == 0
+                ):
+                    tree_cfg = self.config.algorithm.get('tree_rollout', {})
+                    unique_sample_ids = list(dict.fromkeys(new_batch.non_tensor_batch['sample_id']))
+                    n_samples = len(unique_sample_ids)
+                    branch_factor = tree_cfg.get('branch_factor', 2)
+                    
+                    if tree_cfg.get('pruning_strategy') in ['anchor', 'anchor_intra']:
+                        is_session_1_anchor = (1 in getattr(self, '_anchor_sessions', set()))
+                        trunks = tree_cfg.get('anchor_trunks', 1)
+                        initial_rollouts = branch_factor * trunks if is_session_1_anchor else trunks
+                    else:
+                        default_initial = max(1, n_rollouts // branch_factor)
+                        initial_rollouts = tree_cfg.get('initial_rollouts', default_initial)
+                        
+                    # max_active_leaves controls how large the tree can grow.
+                    # n_rollouts (from config) = the max rollouts per sample = max_active_leaves / n_samples.
+                    # The tree grows from initial_rollouts → n_rollouts via branching.
+                    max_leaves = tree_cfg.get('max_active_leaves', n_rollouts * n_samples)
+                    self._rollout_tree = RolloutTree(
+                        initial_rollouts=initial_rollouts,
+                        branch_factor=tree_cfg.get('branch_factor', 2),
+                        max_active_leaves=max_leaves,
+                        pruning_strategy=tree_cfg.get('pruning_strategy', 'variance'),
+                        alpha1=tree_cfg.get('pruning_alpha1', 0.0),
+                        alpha2=tree_cfg.get('pruning_alpha2', 1.0),
+                    )
+                    roots = self._rollout_tree.create_roots(unique_sample_ids)
+                    # Map (sample_id, rollout_idx) -> node_id for the current leaves
+                    self._leaf_map = {
+                        (node.sample_id, node.rollout_idx): node.node_id
+                        for node in roots
+                    }
+                    # Tag batch rows with parent_id (roots have None -> use -1 sentinel)
+                    parent_ids = np.full(len(new_batch.batch), -1, dtype=object)
+                    # For session 0, group all rollouts of same sample under one pseudo-parent
+                    sid_to_group = {}
+                    for i, sid in enumerate(unique_sample_ids):
+                        sid_to_group[sid] = -(i + 1)  # negative pseudo-parent ids
+                    for r_idx in range(len(new_batch.batch)):
+                        sid = new_batch.non_tensor_batch['sample_id'][r_idx]
+                        parent_ids[r_idx] = sid_to_group[sid]
+                    new_batch.non_tensor_batch['parent_id'] = parent_ids
+                    per_sample_budget = max_leaves // max(n_samples, 1)
+                    print(f"[TreeGRPO] Initialized tree with {len(roots)} roots "
+                          f"({n_samples} samples × {initial_rollouts} initial rollouts). "
+                          f"Growth: {initial_rollouts} → {per_sample_budget} per sample. "
+                          f"Config: branch_factor={self._rollout_tree.branch_factor}, "
+                          f"max_leaves={max_leaves}, "
+                          f"strategy={self._rollout_tree.pruning_strategy}")
 
                 num_gen_batches += 1
 
@@ -1933,15 +2146,142 @@ class RayReMATrainer(object):
                     total_chunks = len(self.train_dataloader)
                     if current_chunk_id < total_chunks:
                         # print(f"[STEP {self.global_steps}] Accumulating batch (session {current_chunk_id}, total_chunks={total_chunks})...")
+
+                        # --- Tree GRPO: Prune & Fork at Session Boundary ---
+                        if use_tree_grpo and hasattr(self, '_rollout_tree'):
+                            tree = self._rollout_tree
+                            sample_ids = batch.non_tensor_batch['sample_id']
+                            rollout_idxs = batch.batch['rollout_idx']
+                            if isinstance(rollout_idxs, torch.Tensor):
+                                rollout_idxs = rollout_idxs.cpu().tolist()
+
+                            # Compute intermediate signals (or true QA reward if anchor)
+                            if hasattr(self, '_anchor_sessions'):
+                                is_current_anchor = current_chunk_id in self._anchor_sessions
+                            else:
+                                is_current_anchor = getattr(self, '_anchor_stride', 4) > 0 and (current_chunk_id % getattr(self, '_anchor_stride', 4) == 0)
+                            
+                            from verl.rema_trainer.memory.memory_core.memory_manager import MemoryManager
+                            mm = MemoryManager()
+                            signals = {}
+                            
+                            if tree.pruning_strategy in ['anchor', 'anchor_intra'] and is_current_anchor:
+                                print(f"[TreeGRPO] Computing true QA rewards for Anchor pruning at Session {current_chunk_id}...")
+                                # We need to run the reward_fn on the current batch to get the QA score
+                                # Mask out format rewards for intermediate steps if desired, but we want the F1
+                                batch.meta_info['mask_unfinished_reward'] = False 
+                                batch.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
+                                
+                                anchor_reward_tensor_map = self.reward_fn(batch, compression_penalty=self.config.trainer.compression_penalty)
+                                
+                                # Process the main reasoning reward (B, max_turns)
+                                main_reward_key = 'reasoning_turn_level_reward'
+                                if main_reward_key in anchor_reward_tensor_map:
+                                    # Sum over turns to get the session-level outcome reward for each rollout
+                                    anchor_rewards_all = anchor_reward_tensor_map[main_reward_key].sum(dim=-1) # (B,)
+                                    
+                                    # Map back to tree nodes
+                                    for r_idx in range(len(batch.batch)):
+                                        sid = sample_ids[r_idx]
+                                        ridx = int(rollout_idxs[r_idx])
+                                        key = (sid, ridx)
+                                        if key in self._leaf_map:
+                                            node_id = self._leaf_map[key]
+                                            # Using true QA reward as the intermediate signal for pruning!
+                                            qa_score = anchor_rewards_all[r_idx].item()
+                                            signals[node_id] = qa_score
+                                            tree.nodes[node_id].reward = qa_score # Store it so we can use it for PPO directly
+                            else:
+                                # Normal intermediate signal (memory stats)
+                                for r_idx in range(len(batch.batch)):
+                                    sid = sample_ids[r_idx]
+                                    ridx = int(rollout_idxs[r_idx])
+                                    key = (sid, ridx)
+                                    if key in self._leaf_map:
+                                        node_id = self._leaf_map[key]
+                                        chunk_id = int(batch.non_tensor_batch['chunk_id'][r_idx])
+                                        memory = mm.get_snapshot(
+                                            sample_id=sid,
+                                            chunk_id=chunk_id,
+                                            epoch=epoch,
+                                            split='train',
+                                            index_in_batch=ridx,
+                                        )
+                                        session_evidences = []
+                                        if 'session_evidences_json' in batch.non_tensor_batch:
+                                            import json as _json
+                                            session_evidences = _json.loads(
+                                                batch.non_tensor_batch.get('session_evidences_json', '[]')[r_idx]
+                                            )
+                                        total_tokens = int(batch.non_tensor_batch.get('total_sessions_tokens', [0])[r_idx])
+                                        sig = compute_intermediate_signal(
+                                            memory, session_evidences, total_tokens,
+                                        )
+                                        signals[node_id] = sig
+
+                            tree.set_intermediate_signals(signals)
+                            
+                            unique_sigs = set(float(s) for s in signals.values()) if signals else set()
+                            print(f"[TreeGRPO] Session {current_chunk_id} pruning. Evaluated {len(signals)} candidates. Unique signals: {sorted(list(unique_sigs))}")
+                            if len(unique_sigs) == 1:
+                                print(f"[TreeGRPO] WARNING: All {len(signals)} candidates scored exactly {list(unique_sigs)[0]}! Pruning will just pick the first ones arbitrarily.")
+
+                            n_before = tree.get_total_alive_leaves()
+                            # 2. Prune current leaves to budget (scores the ones that just ran)
+                            if tree.pruning_strategy in ['anchor', 'anchor_intra']:
+                                trunks = self.config.algorithm.tree_rollout.get('anchor_trunks', 1)
+                                pruned = tree.prune_to_budget(budget=trunks)
+                            else:
+                                pruned = tree.prune_to_budget()
+                            n_after = tree.get_total_alive_leaves()
+
+                            # 3. Branch from surviving leaves for the next session
+                            next_session_idx = current_chunk_id  # chunk_id is 1-based, next is current
+                            next_session_1based = current_chunk_id + 1
+                            
+                            if tree.pruning_strategy in ['anchor', 'anchor_intra']:
+                                if hasattr(self, '_anchor_sessions'):
+                                    is_next_anchor = next_session_1based in self._anchor_sessions
+                                else:
+                                    is_next_anchor = (next_session_1based % getattr(self, '_anchor_stride', 4) == 0)
+                                anchor_bf = self.config.algorithm.tree_rollout.get('branch_factor', 4)
+                                tree.branch_factor = anchor_bf if is_next_anchor else 1
+
+                            new_children = tree.branch(session_idx=next_session_idx)
+
+                            # 4. Fork memory snapshots: copy parent memory to children's locations
+                            # Group children by parent for efficient forking
+                            parent_to_children = defaultdict(list)
+                            for child in tree.get_active_leaves():
+                                if child.parent_id is not None:
+                                    parent = tree.nodes[child.parent_id]
+                                    parent_to_children[(child.sample_id, parent.rollout_idx)].append(
+                                        child.rollout_idx
+                                    )
+
+                            chunk_id_for_fork = int(batch.non_tensor_batch['chunk_id'][0])
+                            for (sid, parent_ridx), child_ridxs in parent_to_children.items():
+                                fork_memory_snapshots(
+                                    parent_rollout_idx=parent_ridx,
+                                    child_rollout_indices=child_ridxs,
+                                    sample_id=sid,
+                                    chunk_id=chunk_id_for_fork,
+                                    epoch=epoch,
+                                    split='train',
+                                )
+
+                            # 5. Update leaf map for next session
+                            self._leaf_map = {
+                                (node.sample_id, node.rollout_idx): node.node_id
+                                for node in tree.get_active_leaves()
+                            }
+                            print(
+                                f"[TreeGRPO] Session {current_chunk_id} → {next_session_idx}: "
+                                f"pruned {n_before}→{n_after}, branched {n_after}→{len(tree.get_active_leaves())}, "
+                                f"forked {len(parent_to_children)} parents"
+                            )
                         self.accumulated_batches.append(batch)
                         # print(f"[STEP {self.global_steps}] Accumulated batches count: {len(self.accumulated_batches)}")
-                        # Skip update, continue to next batch (which should be next session)
-                        # But we must ensure global_steps is handled correctly. 
-                        # If we continue here, global_steps increments at end of loop. 
-                        # Maybe we should NOT increment global_steps for accumulated steps? 
-                        # Or increment it but don't log/save?
-                        # The user wants "epoch level update". Usually 1 update per 5 sessions.
-                        # So we can let global_steps increment, but only do update on the 5th step.
                         continue
                     
                     # If we are here, it matches the final session 
@@ -2112,6 +2452,23 @@ class RayReMATrainer(object):
                         
                         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
                         max_turns = self.config.actor_rollout_ref.rollout.max_num_turns
+
+                        # --- Tree GRPO: Build tree-aware reward propagation maps ---
+                        # When tree GRPO is active, rollout_idx changes between sessions
+                        # due to pruning+reassignment. Direct (sample_id, rollout_idx) lookup
+                        # would fail. Instead, we use the tree's ancestor chains to resolve
+                        # each intermediate node's reward from its terminal descendants.
+                        tree_reward_map = None       # {(sample_id, session_idx, rollout_idx): reward}
+                        tree_per_session_map = None  # {(sample_id, session_idx, rollout_idx): tensor}
+                        if use_tree_grpo and hasattr(self, '_rollout_tree'):
+                            tree = self._rollout_tree
+                            tree_reward_map = tree.build_reward_propagation_map(global_reward_map)
+                            if global_per_session_map:
+                                tree_per_session_map = tree.build_per_session_reward_propagation_map(
+                                    global_per_session_map
+                                )
+                            print(f"[TreeGRPO] Built reward propagation map: "
+                                  f"{len(tree_reward_map)} entries across all sessions")
                         
                         for b_idx, target_batch in enumerate(all_batches):
                             # info for this batch
@@ -2136,33 +2493,32 @@ class RayReMATrainer(object):
                                 propagated_reward = torch.zeros((bsz, max_turns), device=device)
                                 
                                 for r_idx in range(bsz):
-                                    key = (curr_sample_ids[r_idx], int(curr_rollout_idxs[r_idx]))
+                                    flat_key = (curr_sample_ids[r_idx], int(curr_rollout_idxs[r_idx]))
                                     
                                     reward_val = 0.0
                                     
-                                    # Strategy A: Use per-session F1 if available (Dense Reward)
-                                    if key in global_per_session_map:
-                                        per_session_row = global_per_session_map[key]
-                                        # Use the value corresponding to *this batch's* session index
-                                        # Check bounds just in case
-                                        if sess_idx_0based < per_session_row.shape[0]:
-                                            reward_val = per_session_row[sess_idx_0based].item()
-                                    
-                                    # Strategy B: Fallback to outcome reward (Sparse/Global Reward)
-                                    elif key in global_reward_map:
-                                        # If we don't have per-session breakdown, we assign the FINAL outcome reward
-                                        # to the LAST turn of the session? Or should we only assign it at the very end?
-                                        # Usually for PPO with sparse reward, we assign it at the end of trajectory.
-                                        # But here we are doing multi-session.
-                                        # If we are in the terminal batch for this key, assigns it.
-                                        # But wait, 'target_batch' might NOT be the terminal batch for this key 
-                                        # (e.g. if conversation continued).
-                                        # If this conversation ENDED at this batch, we can assign reward.
-                                        # REVISION: Since sessions are treated as independent samples in the PPO buffer
-                                        # (compute_advantage processes each row independently), we MUST assign the 
-                                        # final outcome reward to ALL sessions if we want the signal to reach earlier sessions.
-                                        # Otherwise, Session 1 gets 0 reward and learns nothing about the outcome.
-                                        reward_val = global_reward_map[key]
+                                    if tree_reward_map is not None:
+                                        # --- Tree GRPO path ---
+                                        # Use (sample_id, session_idx, rollout_idx) for lookup
+                                        tree_key = (curr_sample_ids[r_idx], sess_idx_0based, int(curr_rollout_idxs[r_idx]))
+                                        
+                                        if tree_per_session_map and tree_key in tree_per_session_map:
+                                            per_session_row = tree_per_session_map[tree_key]
+                                            if sess_idx_0based < per_session_row.shape[0]:
+                                                reward_val = per_session_row[sess_idx_0based].item()
+                                        elif tree_key in tree_reward_map:
+                                            reward_val = tree_reward_map[tree_key]
+                                    else:
+                                        # --- Original flat path (unchanged) ---
+                                        # Strategy A: Use per-session F1 if available (Dense Reward)
+                                        if flat_key in global_per_session_map:
+                                            per_session_row = global_per_session_map[flat_key]
+                                            if sess_idx_0based < per_session_row.shape[0]:
+                                                reward_val = per_session_row[sess_idx_0based].item()
+                                        
+                                        # Strategy B: Fallback to outcome reward (Sparse/Global Reward)
+                                        elif flat_key in global_reward_map:
+                                            reward_val = global_reward_map[flat_key]
                                             
                                     # Assign to the last turn of this session
                                     last_turn_idx = curr_num_turns[r_idx] - 1
@@ -2177,8 +2533,46 @@ class RayReMATrainer(object):
                                 target_batch.batch[key_return] = core_algos.compute_turn_level_return(
                                     propagated_reward, turn_mask, self.config.algorithm.gamma_turn_level)
 
-                        # Concatenate everything for PPO update
-                        # print(f"[STEP {self.global_steps}] Concatenating {len(all_batches)} batches for update...")
+                        # --- Tree GRPO: Tag parent_id on ALL session batches ---
+                        if use_tree_grpo and hasattr(self, '_rollout_tree'):
+                            tree = self._rollout_tree
+                            for b_idx, target_batch in enumerate(all_batches):
+                                bsz = len(target_batch.batch)
+                                parent_ids = np.full(bsz, -1, dtype=object)
+                                t_sample_ids = target_batch.non_tensor_batch['sample_id']
+                                t_rollout_idxs = target_batch.batch['rollout_idx']
+                                if isinstance(t_rollout_idxs, torch.Tensor):
+                                    t_rollout_idxs = t_rollout_idxs.cpu().tolist()
+
+                                # Determine session index for this batch
+                                sess_chunk = target_batch.non_tensor_batch['chunk_id'][0]
+                                if isinstance(sess_chunk, torch.Tensor):
+                                    sess_chunk = sess_chunk.item()
+                                sess_idx = int(sess_chunk) - 1  # 0-based
+
+                                # Find all nodes at this session level and map rollout_idx -> parent_id
+                                for node in tree.nodes.values():
+                                    if node.session_idx == sess_idx:
+                                        for r_idx_b in range(bsz):
+                                            if (t_sample_ids[r_idx_b] == node.sample_id and
+                                                    int(t_rollout_idxs[r_idx_b]) == node.rollout_idx):
+                                                pid = node.parent_id if node.parent_id is not None else -1
+                                                # For roots (session 0), group by sample_id
+                                                if pid == -1:
+                                                    # Use a stable negative id per sample
+                                                    unique_sids = list(dict.fromkeys(t_sample_ids))
+                                                    pid = -(unique_sids.index(node.sample_id) + 1)
+                                                parent_ids[r_idx_b] = pid
+                                target_batch.non_tensor_batch['parent_id'] = parent_ids
+
+                            print(f"[TreeGRPO] Tagged parent_id on {len(all_batches)} session batches. "
+                                  f"Tree state: {tree.summary()}")
+                            # Clean up tree for next step
+                            if hasattr(self, '_rollout_tree'):
+                                del self._rollout_tree
+                            if hasattr(self, '_leaf_map'):
+                                del self._leaf_map
+
                         batch = DataProto.concat(all_batches)
                         self.accumulated_batches = [] # Clear accumulation
                         # print(f"[STEP {self.global_steps}] Mega-batch size: {len(batch.batch)}")
@@ -2222,6 +2616,18 @@ class RayReMATrainer(object):
                             with _timer('values', timing_raw):
                                 values = self.critic_wg.compute_values(batch)
                                 batch = batch.union(values)
+                            
+                            # Compute cross-session bootstrap values
+                            # For each non-terminal session, bootstrap from the next session's
+                            # first turn critic value instead of treating the boundary as terminal
+                            gamma_session = self.config.algorithm.get('gamma_session_level', 1.0)
+                            bootstrap_vals = compute_bootstrap_values(batch, gamma_session=gamma_session)
+                            batch.batch['bootstrap_value'] = bootstrap_vals
+                            n_nonzero = (bootstrap_vals != 0).sum().item()
+                            print(f"[STEP {self.global_steps}] Cross-session bootstrap (gamma_session={gamma_session}): "
+                                  f"{n_nonzero} non-zero / {len(bootstrap_vals)} total rows "
+                                  f"(mean of non-zero={bootstrap_vals[bootstrap_vals != 0].mean():.4f})" if n_nonzero > 0 
+                                  else f"[STEP {self.global_steps}] Cross-session bootstrap: no bootstrapping (single session or no critic)")
 
                         # print(f"[STEP {self.global_steps}] Computing advantages with {self.config.algorithm.adv_estimator}...")
                         batch.meta_info['gamma_turn_level'] = self.config.algorithm.gamma_turn_level
@@ -2286,7 +2692,7 @@ class RayReMATrainer(object):
                                 
                         metrics.update(val_metrics)
 
-                        max_patience = self.config.trainer.get('early_stop_patience', 0)
+                        max_patience = self.config.trainer.get('early_stop_patience', 5)
                         if max_patience > 0 and self.patience_counter >= max_patience:
                             print(f"\n[STEP {self.global_steps}] Early stopping triggered! Validation accuracy hasn't improved for {self.patience_counter} evaluations. Best acc: {self.best_val_acc:.4f} at step {self.best_global_step}.")
                             is_last_step = True

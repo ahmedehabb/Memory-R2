@@ -83,7 +83,7 @@ def compute_turn_level_return(turn_level_rewards: torch.Tensor, turn_mask: torch
         return returns
 
 def compute_gae_advantage_return(token_level_rewards: torch.Tensor, values: torch.Tensor, eos_mask: torch.Tensor,
-                                 gamma: torch.Tensor, lam: torch.Tensor):
+                                 gamma: torch.Tensor, lam: torch.Tensor, bootstrap_value: torch.Tensor = None):
     """Adapted from https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py
 
     Args:
@@ -97,6 +97,9 @@ def compute_gae_advantage_return(token_level_rewards: torch.Tensor, values: torc
             discounted factor used in RL
         lam: `(float)`
             lambda value when computing Generalized Advantage Estimation (https://arxiv.org/abs/1506.02438)
+        bootstrap_value: `(torch.Tensor)` optional
+            shape: (bs,). Value to bootstrap from at the end of the sequence (next session's first token value).
+            If None, defaults to 0 (terminal).
 
     Returns:
         advantages: `(torch.Tensor)`
@@ -106,7 +109,11 @@ def compute_gae_advantage_return(token_level_rewards: torch.Tensor, values: torc
 
     """
     with torch.no_grad():
-        nextvalues = 0
+        # Bootstrap from next session's value instead of treating as terminal
+        if bootstrap_value is not None:
+            nextvalues = bootstrap_value
+        else:
+            nextvalues = 0
         lastgaelam = 0
         advantages_reversed = []
         gen_len = token_level_rewards.shape[-1]
@@ -138,6 +145,7 @@ def compute_bi_level_gae_advantage_return(
     lam: float,
     high_level_gamma: float,
     max_num_turns: int,
+    bootstrap_value: torch.Tensor = None,
 ):
     """Bi-level GAE adapted from "RAGEN" (vectorized). 
 
@@ -196,7 +204,11 @@ def compute_bi_level_gae_advantage_return(
 
         for t in reversed(range(max_num_turns)):
             if t == max_num_turns - 1:
-                nextvalue = torch.zeros(bs, device=device, dtype=values.dtype)
+                # Bootstrap from next session's value instead of treating as terminal
+                if bootstrap_value is not None:
+                    nextvalue = bootstrap_value
+                else:
+                    nextvalue = torch.zeros(bs, device=device, dtype=values.dtype)
             else:
                 nextvalue = eos_values[:, t + 1] * turn_valid[:, t + 1]
 
@@ -292,6 +304,66 @@ def compute_grpo_outcome_advantage(token_level_rewards: torch.Tensor,
             scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
             # try MaxRL
             # scores[i] = (scores[i] - id2mean[index[i]]) / (id2mean[index[i]] + epsilon)
+        scores = scores.unsqueeze(-1).tile([1, response_length]) * eos_mask
+
+    return scores, scores
+
+
+def compute_tree_grpo_outcome_advantage(
+    token_level_rewards: torch.Tensor,
+    eos_mask: torch.Tensor,
+    parent_id: torch.Tensor,
+    epsilon: float = 1e-6,
+):
+    """Compute GRPO advantage for tree-based rollouts.
+
+    Groups are defined by ``parent_id`` (siblings sharing the same parent node,
+    i.e. the same initial memory state). This is the MURPHY-style GRPO where
+    each parent's children form a valid comparison group.
+
+    Single-child groups (parent has only one surviving child) get zero advantage
+    since there is no sibling to compare against.
+
+    Args:
+        token_level_rewards: (bs, response_length)
+        eos_mask: (bs, response_length)
+        parent_id: (bs,) integer parent node IDs. Siblings share the same value.
+        epsilon: small float for numerical stability.
+
+    Returns:
+        advantages: (bs, response_length)
+        returns: (bs, response_length)
+    """
+    response_length = token_level_rewards.shape[-1]
+    scores = token_level_rewards.sum(dim=-1)  # (bs,)
+
+    pid2scores = defaultdict(list)
+    pid2mean = {}
+    pid2std = {}
+
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            pid = parent_id[i].item() if isinstance(parent_id[i], torch.Tensor) else parent_id[i]
+            pid2scores[pid].append(scores[i])
+
+        for pid in pid2scores:
+            group = pid2scores[pid]
+            if len(group) == 1:
+                # Single child – no comparison possible → zero advantage
+                pid2mean[pid] = torch.tensor(0.0)
+                pid2std[pid] = torch.tensor(1.0)
+            else:
+                pid2mean[pid] = torch.mean(torch.stack(group))
+                pid2std[pid] = torch.std(torch.stack(group))
+
+        for i in range(bsz):
+            pid = parent_id[i].item() if isinstance(parent_id[i], torch.Tensor) else parent_id[i]
+            if len(pid2scores[pid]) == 1:
+                scores[i] = 0.0  # No sibling → no signal
+            else:
+                scores[i] = (scores[i] - pid2mean[pid]) / (pid2std[pid] + epsilon)
+
         scores = scores.unsqueeze(-1).tile([1, response_length]) * eos_mask
 
     return scores, scores
