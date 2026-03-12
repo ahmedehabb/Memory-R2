@@ -3,17 +3,29 @@ import os
 import json
 import hashlib
 import threading
-# from openai import OpenAI
 import google.generativeai as genai
 from together import Together
 from filelock import FileLock
 from typing import List
 
+try:
+    from openai import OpenAI
+except ImportError:
+    OpenAI = None
+
 # --------------------------
 # Configuration
 # --------------------------
-# API Selection: Set USE_GEMINI=false to use Together AI, otherwise uses Gemini (default)
-USE_GEMINI = os.getenv("USE_GEMINI", "True") == "True"
+# API selection: set JUDGE_PROVIDER to one of {gemini, together, openai}
+JUDGE_PROVIDER = os.getenv("JUDGE_PROVIDER", "").strip().lower()
+if JUDGE_PROVIDER not in {"gemini", "together", "openai"}:
+    raise ValueError(
+        "JUDGE_PROVIDER must be set to one of: gemini, together, openai"
+    )
+
+GEMINI_JUDGE_MODEL = os.getenv("GEMINI_JUDGE_MODEL", "gemini-2.5-flash-lite")
+TOGETHER_JUDGE_MODEL = os.getenv("TOGETHER_JUDGE_MODEL", "ServiceNow-AI/Apriel-1.6-15b-Thinker")
+OPENAI_JUDGE_MODEL = os.getenv("OPENAI_JUDGE_MODEL", "gpt-4o-mini")
 
 CACHE_DIR = os.getenv("OPENAI_CACHE_DIR", ".")  # Keep same cache dir for compatibility
 MAIN_CACHE_FILE = os.path.join(CACHE_DIR, "judge_cache.json")
@@ -33,13 +45,14 @@ else:
 # OpenAI client (commented out)
 # client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
-# Initialize clients based on flag
-if USE_GEMINI:
+# Initialize clients based on selected provider
+if JUDGE_PROVIDER == "gemini":
     print("[judge_llm] Using Gemini API")
     genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    gemini_model = genai.GenerativeModel('gemini-2.5-flash-lite')
-    together_client = None
-else:
+    gemini_model = genai.GenerativeModel(GEMINI_JUDGE_MODEL)
+    together_clients = None
+    openai_client = None
+elif JUDGE_PROVIDER == "together":
     print("[judge_llm] Using Together AI API")
     _together_keys = [k.strip() for k in os.environ.get("TOGETHER_API_KEY", "").split(",") if k.strip()]
     if not _together_keys:
@@ -47,6 +60,67 @@ else:
     else:
         together_clients = [Together(api_key=k) for k in _together_keys]
     gemini_model = None
+    openai_client = None
+elif JUDGE_PROVIDER == "openai":
+    print("[judge_llm] Using OpenAI API")
+    if OpenAI is None:
+        raise ImportError("OpenAI provider selected but openai package is not installed. Install with: pip install openai>=1.5.0")
+    openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    gemini_model = None
+    together_clients = None
+else:
+    raise ValueError(f"Unsupported JUDGE_PROVIDER='{JUDGE_PROVIDER}'. Expected one of: gemini, together, openai")
+
+
+def _call_judge_api(prompt: str, attempt: int = 0) -> str:
+    """Call selected provider with deterministic generation settings."""
+    if JUDGE_PROVIDER == "gemini":
+        generation_config = genai.types.GenerationConfig(
+            temperature=0.0,
+            top_p=1.0,
+        )
+        response = gemini_model.generate_content(
+            prompt,
+            generation_config=generation_config
+        )
+        return (response.text or "").strip()
+
+    if JUDGE_PROVIDER == "together":
+        client_idx = attempt % len(together_clients)
+        response = together_clients[client_idx].chat.completions.create(
+            model=TOGETHER_JUDGE_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            top_p=1.0,
+        )
+        return (response.choices[0].message.content or "").strip()
+
+    if JUDGE_PROVIDER == "openai":
+        response = openai_client.chat.completions.create(
+            model=OPENAI_JUDGE_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+            top_p=1.0,
+        )
+        return (response.choices[0].message.content or "").strip()
+
+    raise ValueError(f"Unsupported JUDGE_PROVIDER='{JUDGE_PROVIDER}'")
+
+
+def _get_max_workers() -> int:
+    """Provider-aware default concurrency with env override."""
+    env_workers = os.getenv("JUDGE_LLM_MAX_WORKERS")
+    if env_workers:
+        try:
+            return max(1, int(env_workers))
+        except ValueError:
+            pass
+
+    if JUDGE_PROVIDER == "gemini":
+        return 10
+    if JUDGE_PROVIDER == "together":
+        return max(1, len(together_clients))
+    return 8
 
 # --------------------------
 # Utility functions
@@ -161,7 +235,7 @@ MERGE_EVERY_N = 100  # merge after every 20 new entries (reduce lock contention)
 
 def judge_with_llm(prompt: str) -> str:
     """
-    Call LLM API (Gemini or Together AI based on USE_GEMINI flag) deterministically and cache the output.
+    Call selected LLM provider deterministically and cache the output.
     Merges per-process cache to main cache every N new entries.
     """
     global _NEW_ENTRIES_COUNT
@@ -179,25 +253,7 @@ def judge_with_llm(prompt: str) -> str:
     result = ""
     for attempt in range(max_retries):
         try:
-            if USE_GEMINI:
-                generation_config = genai.types.GenerationConfig(
-                    temperature=0.0,
-                    top_p=1.0,
-                )
-                response = gemini_model.generate_content(
-                    prompt,
-                    generation_config=generation_config
-                )
-                result = response.text.strip()
-            else:
-                client_idx = attempt % len(together_clients)
-                response = together_clients[client_idx].chat.completions.create(
-                    model="ServiceNow-AI/Apriel-1.6-15b-Thinker",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0,
-                    top_p=1.0,
-                )
-                result = response.choices[0].message.content.strip()
+            result = _call_judge_api(prompt, attempt=attempt)
             break
         except Exception as e:
             print(f"[judge error] Attempt {attempt+1}/{max_retries} failed: {e}")
@@ -221,7 +277,7 @@ def judge_with_llm(prompt: str) -> str:
 
 def judge_with_llm_batch(prompts: List[str]) -> List[str]:
     """
-    Call LLM API (Gemini or Together AI based on USE_GEMINI flag) for multiple prompts with concurrent processing.
+    Call the selected LLM provider for multiple prompts with concurrent processing.
     Uses caching and concurrent API calls for efficiency.
     
     Args:
@@ -239,14 +295,15 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
     results = [None] * len(prompts)
     uncached_indices = []
     uncached_prompts = []
-    
-    for idx, prompt in enumerate(prompts):
-        key = _hash_prompt(prompt)
-        if key in JUDGE_CACHE:
-            results[idx] = JUDGE_CACHE[key]
-        else:
-            uncached_indices.append(idx)
-            uncached_prompts.append(prompt)
+
+    with _CACHE_LOCK:
+        for idx, prompt in enumerate(prompts):
+            key = _hash_prompt(prompt)
+            if key in JUDGE_CACHE:
+                results[idx] = JUDGE_CACHE[key]
+            else:
+                uncached_indices.append(idx)
+                uncached_prompts.append(prompt)
     
     # Process uncached prompts concurrently
     if uncached_prompts:
@@ -261,22 +318,7 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
             max_retries = 10
             for attempt in range(max_retries):
                 try:
-                    if USE_GEMINI:
-                        generation_config = genai.types.GenerationConfig(
-                            temperature=0.0,
-                            top_p=1.0,
-                        )
-                        response = gemini_model.generate_content(prompt, generation_config=generation_config)
-                        response_text = response.text.strip()
-                    else:
-                        client_idx = attempt % len(together_clients)
-                        response = together_clients[client_idx].chat.completions.create(
-                            model="ServiceNow-AI/Apriel-1.6-15b-Thinker",
-                            messages=[{"role": "user", "content": prompt}],
-                            temperature=0.0,
-                            top_p=1.0,
-                        )
-                        response_text = response.choices[0].message.content.strip()
+                    response_text = _call_judge_api(prompt, attempt=attempt)
                     return orig_idx, prompt, response_text, None
                 except Exception as e:
                     print(f"[judge_with_llm_batch] Attempt {attempt+1}/{max_retries} failed for idx {orig_idx}: {e}")
@@ -287,7 +329,7 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
         
         # Use ThreadPoolExecutor for concurrent API calls
         new_entries = 0
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=_get_max_workers()) as executor:
             futures = {executor.submit(call_api, (orig_idx, prompt)): orig_idx 
                       for orig_idx, prompt in zip(uncached_indices, uncached_prompts)}
             
@@ -300,7 +342,8 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
                 else:
                     # Cache the response
                     key = _hash_prompt(prompt)
-                    JUDGE_CACHE[key] = response_text
+                    with _CACHE_LOCK:
+                        JUDGE_CACHE[key] = response_text
                     results[orig_idx] = response_text
                     new_entries += 1
         
@@ -323,7 +366,7 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
 # OpenAI implementation (commented out for reference)
 # def judge_with_llm_openai(prompt: str) -> str:
 #     """
-#     Call GPT-4.1-mini deterministically and cache the output.
+#     Call gpt-4o-mini deterministically and cache the output.
 #     """
 #     global _NEW_ENTRIES_COUNT
 #     key = _hash_prompt(prompt)
@@ -332,7 +375,7 @@ def judge_with_llm_batch(prompts: List[str]) -> List[str]:
 #     
 #     try:
 #         response = client.chat.completions.create(
-#             model="gpt-4.1-mini",
+#             model="gpt-4o-mini",
 #             messages=[{"role": "user", "content": prompt}],
 #             temperature=0.0,
 #             top_p=1.0,
