@@ -9,3 +9,5 @@ outputs/
 wandb/
 data/locomo/processed
 *.log
+memory/
+logs/
