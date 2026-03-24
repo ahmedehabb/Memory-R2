@@ -8,7 +8,7 @@ from glob import glob
 from collections import defaultdict
 
 
-def main(fsdp_checkpoint_path, huggingface_model_path, output_path, world_size=4):
+def main(fsdp_checkpoint_path, huggingface_model_path, output_path, world_size=4, attn_implementation="flash_attention_2"):
     state_dict = defaultdict(list)
 
     for rank in range(world_size):
@@ -22,7 +22,15 @@ def main(fsdp_checkpoint_path, huggingface_model_path, output_path, world_size=4
         state_dict[key] = torch.cat(state_dict[key], dim=0)
 
     config = AutoConfig.from_pretrained(huggingface_model_path)
-    model = AutoModelForCausalLM.from_config(config)
+
+    # Prefer non-eager attention for Qwen sliding-window configs to avoid warning/no-op behavior.
+    try:
+        model = AutoModelForCausalLM.from_config(config, attn_implementation=attn_implementation)
+    except Exception as e:
+        print(f"[convert warning] Failed to init with attn_implementation={attn_implementation}: {e}")
+        print("[convert warning] Falling back to default model construction.")
+        model = AutoModelForCausalLM.from_config(config)
+
     model.load_state_dict(state_dict)
 
     #for filepath in glob(f'{fsdp_checkpoint_path}/model_*.pt'):

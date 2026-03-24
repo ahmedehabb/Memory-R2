@@ -24,7 +24,7 @@ if JUDGE_PROVIDER not in {"gemini", "together", "openai"}:
     )
 
 GEMINI_JUDGE_MODEL = os.getenv("GEMINI_JUDGE_MODEL", "gemini-2.5-flash-lite")
-TOGETHER_JUDGE_MODEL = os.getenv("TOGETHER_JUDGE_MODEL", "ServiceNow-AI/Apriel-1.6-15b-Thinker")
+TOGETHER_JUDGE_MODEL = os.getenv("TOGETHER_JUDGE_MODEL", "openai/gpt-oss-120b")
 OPENAI_JUDGE_MODEL = os.getenv("OPENAI_JUDGE_MODEL", "gpt-4o-mini")
 
 CACHE_DIR = os.getenv("OPENAI_CACHE_DIR", ".")  # Keep same cache dir for compatibility
@@ -62,10 +62,15 @@ elif JUDGE_PROVIDER == "together":
     gemini_model = None
     openai_client = None
 elif JUDGE_PROVIDER == "openai":
-    print("[judge_llm] Using OpenAI API")
     if OpenAI is None:
         raise ImportError("OpenAI provider selected but openai package is not installed. Install with: pip install openai>=1.5.0")
-    openai_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    # JUDGE_BASE_URLS: comma-separated list of base URLs for round-robin across multiple servers
+    _judge_api_key = os.environ.get("JUDGE_API_KEY", "EMPTY")
+    _base_urls = [u.strip() for u in os.environ.get("JUDGE_BASE_URLS", "").split(",") if u.strip()]
+    if not _base_urls:
+        raise ValueError("JUDGE_PROVIDER='openai' requires JUDGE_BASE_URLS to be set to a non-empty comma-separated list of server URLs.")
+    openai_clients = [OpenAI(api_key=_judge_api_key, base_url=url) for url in _base_urls]
+    print(f"[judge_llm] Using OpenAI provider with {len(openai_clients)} server(s)")
     gemini_model = None
     together_clients = None
 else:
@@ -96,13 +101,16 @@ def _call_judge_api(prompt: str, attempt: int = 0) -> str:
         return (response.choices[0].message.content or "").strip()
 
     if JUDGE_PROVIDER == "openai":
-        response = openai_client.chat.completions.create(
+        client_idx = attempt % len(openai_clients)
+        response = openai_clients[client_idx].chat.completions.create(
             model=OPENAI_JUDGE_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.0,
             top_p=1.0,
         )
-        return (response.choices[0].message.content or "").strip()
+        msg = response.choices[0].message
+        content = msg.content or getattr(msg, "reasoning", None) or ""
+        return content.strip()
 
     raise ValueError(f"Unsupported JUDGE_PROVIDER='{JUDGE_PROVIDER}'")
 
@@ -120,6 +128,8 @@ def _get_max_workers() -> int:
         return 10
     if JUDGE_PROVIDER == "together":
         return max(1, len(together_clients))
+    if JUDGE_PROVIDER == "openai":
+        return max(1, len(openai_clients))
     return 8
 
 # --------------------------

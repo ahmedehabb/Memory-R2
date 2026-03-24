@@ -2111,8 +2111,8 @@ class RayReMATrainer(object):
                                         propagated_reward, turn_mask_prev, self.config.algorithm.gamma_turn_level)
                             
                             # 2. Update current batch (final session) to use its specific per-session reward
-                            final_sess_idx = max_sessions - 1
-                            print(f"[STEP {self.global_steps}] Updating current batch (session {max_sessions}) with dense rewards...")
+                            final_sess_idx = current_chunk_id - 1
+                            print(f"[STEP {self.global_steps}] Updating current batch (session {current_chunk_id}) with dense rewards...")
                             for role in agent_roles:
                                 role_reward_key = f'{role}_turn_level_reward'
                                 curr_propagated_reward = torch.zeros((len(new_batch.batch), max_turns), device=device)

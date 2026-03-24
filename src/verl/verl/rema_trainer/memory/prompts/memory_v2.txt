@@ -1,9 +1,10 @@
-New retrieved facts:
+New retrieved facts and related existing memories:
 ```
 {new_facts}
 ```
 
-Existing memory:
-```
-{existing_memory}
-```
+The JSON contains two sections:
+- "memories": existing memory entries (each appears exactly once, look up by memory_id)
+- "facts": new facts to process, each with "related_memory_ids" pointing into "memories"
+
+For each fact, look up its related_memory_ids in "memories" to find UPDATE/DELETE candidates.

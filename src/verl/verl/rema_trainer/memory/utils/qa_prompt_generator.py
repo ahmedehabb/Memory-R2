@@ -14,6 +14,13 @@ from verl.rema_trainer.memory.memory_core.memory import Memory
 _TEMPLATE_CACHE: Dict[str, str] = {}
 
 
+def _temporal_group_key(session_id: Any) -> Tuple[int, int]:
+    """Return a stable sort key where known integer session ids come first."""
+    if isinstance(session_id, int):
+        return (0, session_id)
+    return (1, 10**9)
+
+
 def format_memories_for_speaker(
     memory: Memory,
     speaker_name: str,
@@ -55,31 +62,43 @@ def format_memories_for_speaker(
             top_k=top_k,
             search_method="text-embedding"
         )
-        dia_ids_list = []  # Changed from set to list to preserve order
-        # Filter by similarity threshold, deduplicate by content, and format
-        seen_contents = set()
+        # Filter by similarity threshold and keep temporal variants separate.
+        seen_memory_keys = set()
+        candidates = []
         for memory_dict, similarity_score in search_results:
             if similarity_score >= similarity_threshold:
                 content = memory_dict.get("content")
                 session_time = memory_dict.get("session_time")
-                dia_ids = memory_dict.get("dia_ids", []) # dia_ids is a list of dia_id strings
-                if dia_ids:  # Only update if dia_ids is not None or empty
-                    # Preserve order: append dia_ids in the order they appear in similarity ranking
-                    for dia_id in dia_ids:
-                        if dia_id not in dia_ids_list:  # Avoid duplicates but keep order
-                            dia_ids_list.append(dia_id)
-                # Deduplicate by content
-                if content not in seen_contents:
-                    seen_contents.add(content)
-                    formatted_memories.append({
-                        # "memory_id": memory_dict.get("memory_id"), # Removed memory_id from output
+                session_id = memory_dict.get("session_id")
+                dia_ids = memory_dict.get("dia_ids", [])  # dia_ids is a list of dia_id strings
+                # Do not collapse same content across different times.
+                memory_key = (content, session_time)
+                if memory_key not in seen_memory_keys:
+                    seen_memory_keys.add(memory_key)
+                    candidates.append({
+                        "session_id": session_id,
                         "session_time": session_time,
-                        "content": content
+                        "content": content,
+                        "dia_ids": dia_ids,
+                        "similarity_score": similarity_score
                     })
+
+        # Group by session to avoid scattered chronology while keeping relevance inside each session.
+        candidates.sort(key=lambda c: (_temporal_group_key(c.get("session_id")), -c.get("similarity_score", 0.0)))
+        dia_ids_list = []
+        for candidate in candidates:
+            formatted_memories.append({
+                "session_time": candidate.get("session_time"),
+                "content": candidate.get("content")
+            })
+            for dia_id in candidate.get("dia_ids", []):
+                if dia_id not in dia_ids_list:
+                    dia_ids_list.append(dia_id)
     else:
         # Fallback: return all memories for this speaker (original behavior)
         all_memories = memory.get()
         speaker_memories = [mem for mem in all_memories if mem.get("speaker") == speaker_name]
+        speaker_memories.sort(key=lambda mem: _temporal_group_key(mem.get("session_id")))
         dia_ids_list = []  # Changed from set to list
         for mem in speaker_memories:
             dia_ids = mem.get("dia_ids", []) # dia_ids is a list of dia_id strings
@@ -104,7 +123,7 @@ def generate_qa_prompt(
     speaker_1: str,
     speaker_2: str,
     question: str,
-    session_time: str,
+    session_time: str = None,
     top_k_per_speaker: int = 5,
     similarity_threshold: float = 0.3,
     use_similarity: bool = True,

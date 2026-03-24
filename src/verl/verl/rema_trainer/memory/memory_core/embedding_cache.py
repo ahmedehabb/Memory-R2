@@ -145,6 +145,14 @@ class EmbeddingCache:
             # FileNotFoundError or other read errors (cache miss is expected during new rollouts)
             self.stats["misses"] += 1
             return None
+        except (EOFError, ValueError):
+            # Corrupted cache file (e.g. empty file from interrupted write) — delete and treat as miss
+            try:
+                cache_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            self.stats["misses"] += 1
+            return None
     
     def set(self, text: str, embedding: np.ndarray, method: str, model: str = None, cost: float = 0.0):
         """
