@@ -17,14 +17,15 @@ timestamped information that may be relevant to answering the question.
     timestamp. Ignore the reference while answering the question.
 7. Focus only on the content of the memories from both speakers. Do not confuse character 
     names mentioned in memories with the actual users who created those memories.
-8. The answer should be less than 5-6 words.
+8. If memories are insufficient and the question is about a general world fact, you may use reliable general world knowledge.
+9. Keep the final answer concise, typically no more than 10-12 words; do not omit essential entities or dates.
 
 # APPROACH (Think step by step):
 1. First, examine all memories that contain information related to the question
 2. Examine the timestamps and content of these memories carefully
 3. Look for explicit mentions of dates, times, locations, or events that answer the question
 4. If the answer requires calculation (e.g., converting relative time references), show your work
-5. Formulate a precise, concise answer based solely on the evidence in the memories
+5. Formulate a precise, concise answer based on the evidence in the memories, using general world knowledge only if memories are insufficient
 6. Double-check that your answer directly addresses the question asked
 7. Ensure your final answer is specific and avoids vague time references
 8. Output the final answer only in this format, with no extra text: <answer>YOUR_FINAL_ANSWER</answer>
