@@ -81,99 +81,131 @@ def format_turns_for_prompt(turns: List[Dict[str, Any]]) -> List[Dict[str, str]]
     return formatted_turns
 
 def format_memory_for_prompt_for_facts(
-    memory: Memory, 
+    memory: Memory,
     facts: Dict = None,
     top_k_memories_for_operations: int = 20,
     similarity_threshold: float = 0.3,
     use_similarity: bool = True
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
-    Format existing memory from Memory instance for the prompt.
-    
-    Retrieves relevant memories by searching turn-by-turn, which makes more sense than
-    concatenating all turns into one query. For each turn, we search for memories relevant
-    to that turn's speaker and content, then deduplicate across all turns.
-    
+    Format existing memory from Memory instance for the prompt using a normalized structure.
+
+    Retrieves memories per-fact (fixed top_k_per_fact=5, capped globally at
+    top_k_memories_for_operations after dedup). Each unique memory is stored once in
+    ``memories``; each fact carries only a list of ``related_memory_ids`` pointing into
+    that list. This avoids repeating the same memory content under multiple facts and
+    keeps the prompt token count bounded regardless of how many facts share a memory.
+
     Args:
         memory: Memory instance
         facts: Dict of facts to use for similarity search (optional)
-        top_k_memories_for_operations: Maximum total number of relevant memories to retrieve across all turns (default: 20)
+        top_k_memories_for_operations: Total memory budget cap after deduplication (default: 20)
         similarity_threshold: Minimum similarity score to include a memory (default: 0.3)
-        use_similarity: If True, use similarity search; if False, return all memories (default: True)
-        
+        use_similarity: If True, use similarity search; if False, return empty lists
+
     Returns:
-        List of simplified memory dicts (deduplicated across all turns)
-        
+        Dict with two keys:
+        - ``memories``: flat list of unique memory dicts (full content, sorted by best
+          similarity score across all facts)
+        - ``facts``: list of fact dicts, each with ``related_memory_ids`` (list of
+          memory_id strings pointing into ``memories``)
+
     Example output:
-        [
-            {
-                "memory_id": "a1b2c3d4",
-                "speaker": "John",
-                "content": "Enjoys outdoor activities",
-                "session_time": "5:00 pm",
-                "dia_ids": ["D1:3", "D2:5"]
-            }
-        ]
+        {
+            "memories": [
+                {"memory_id": "a1b2c3d4", "speaker": "John",
+                 "content": "John is a software engineer",
+                 "session_time": "5:00 pm", "dia_ids": ["D1:3"]}
+            ],
+            "facts": [
+                {"fact": "John changed jobs", "speaker": "John", "dia_id": "D3:5",
+                 "related_memory_ids": ["a1b2c3d4"]},
+                {"fact": "John got promoted", "speaker": "John", "dia_id": "D3:6",
+                 "related_memory_ids": ["a1b2c3d4"]}
+            ]
+        }
     """
-    formatted_memory = []
-    seen_memory_ids = set()  # Track unique memories to avoid duplicates
-    memory_scores = dict()  # Track similarity scores for debugging
     facts_list = facts.get("facts", []) if facts else []
-    
-    # If no facts provided or facts list is empty, return empty memory
+
     if not facts_list:
-        return formatted_memory
-    
+        return {"memories": [], "facts": []}
+
+    # Fixed per-fact budget: always retrieve up to 5 candidates per fact.
+    # After global dedup + sort we cap at top_k_memories_for_operations.
+    top_k_per_fact = min(5, top_k_memories_for_operations)
+
+    # Global dedup tracking
+    global_seen_ids: set = set()
+    global_scores: Dict[str, float] = {}
+    global_memory_entries: Dict[str, Dict] = {}  # memory_id → full entry
+
+    # Per-fact: list of memory_ids retrieved (before global cap)
+    per_fact_ids: List[List[str]] = []
+
     if use_similarity:
-        # Calculate top_k per fact to reach approximately top_k total memories
-        num_facts = len(facts_list)
-        top_k_per_fact = max(1, top_k_memories_for_operations // num_facts) if num_facts > 0 else top_k_memories_for_operations
-        
-        # Search turn-by-turn for relevant memories
         for fact in facts_list:
-            # Extract fact text and speaker
-            if isinstance(fact, dict):
-                fact_text = fact.get("fact", "")
-                fact_speaker = fact.get("speaker", None)
-            else:
-                continue  # Skip if fact is not a dict
-            
-            # Ensure fact_text is a string (defensive check)
-            if not fact_text or not isinstance(fact_text, str):
-                print(f"Warning: Invalid fact_text type: {type(fact_text)}, value: {fact_text}")
+            if not isinstance(fact, dict):
+                per_fact_ids.append([])
                 continue
-            
-            # Search for memories relevant to this specific turn
-            # Optionally filter by speaker to get memories ABOUT this speaker
+
+            fact_text = fact.get("fact", "")
+            fact_speaker = fact.get("speaker", None)
+
+            if not fact_text or not isinstance(fact_text, str):
+                per_fact_ids.append([])
+                continue
+
             search_results = memory.search(
                 query=fact_text,
-                speaker=fact_speaker,  # Get memories about this speaker
+                speaker=fact_speaker,
                 top_k=top_k_per_fact,
                 search_method="text-embedding"
             )
-            
-            # Filter by similarity threshold and format (deduplicate by memory_id)
+
+            fact_ids = []
             for memory_dict, similarity_score in search_results:
-                if similarity_score >= similarity_threshold:
-                    memory_id = memory_dict.get("memory_id")
-                    if memory_id not in seen_memory_ids:
-                        seen_memory_ids.add(memory_id)
-                        memory_scores[memory_id] = similarity_score
-                        formatted_memory.append({
-                            "memory_id": memory_id,
-                            "session_time": memory_dict.get("session_time"),
-                            "speaker": memory_dict.get("speaker"),
-                            "content": memory_dict.get("content"),
-                            "dia_ids": memory_dict.get("dia_ids", [])
-                        })
-                    elif memory_id in memory_scores:
-                        # Update to higher similarity score if found again
-                        if similarity_score > memory_scores[memory_id]:
-                            memory_scores[memory_id] = similarity_score
-    
-    # Sort formatted memory by descending similarity score for consistency
-    formatted_memory.sort(key=lambda mem: memory_scores.get(mem["memory_id"], 0), reverse=True)
-    return formatted_memory
+                if similarity_score < similarity_threshold:
+                    continue
+                memory_id = memory_dict.get("memory_id")
+                fact_ids.append(memory_id)
+                if memory_id not in global_seen_ids:
+                    global_seen_ids.add(memory_id)
+                    global_scores[memory_id] = similarity_score
+                    global_memory_entries[memory_id] = {
+                        "memory_id": memory_id,
+                        "session_time": memory_dict.get("session_time"),
+                        "speaker": memory_dict.get("speaker"),
+                        "content": memory_dict.get("content"),
+                        "dia_ids": memory_dict.get("dia_ids", [])
+                    }
+                elif similarity_score > global_scores.get(memory_id, 0):
+                    global_scores[memory_id] = similarity_score
+
+            per_fact_ids.append(fact_ids)
+    else:
+        per_fact_ids = [[] for _ in facts_list]
+
+    # Apply global cap: keep top_k_memories_for_operations by highest similarity score
+    if len(global_seen_ids) > top_k_memories_for_operations:
+        sorted_ids = sorted(global_seen_ids, key=lambda mid: global_scores.get(mid, 0), reverse=True)
+        allowed_ids = set(sorted_ids[:top_k_memories_for_operations])
+    else:
+        allowed_ids = global_seen_ids
+
+    # Build flat deduplicated memories list (sorted by best similarity, descending)
+    sorted_memory_ids = sorted(allowed_ids, key=lambda mid: global_scores.get(mid, 0), reverse=True)
+    memories_list = [global_memory_entries[mid] for mid in sorted_memory_ids]
+
+    # Build facts list with related_memory_ids (only ids in allowed set)
+    facts_out = []
+    for fact, fact_ids in zip(facts_list, per_fact_ids):
+        if not isinstance(fact, dict):
+            continue
+        entry = dict(fact)
+        entry["related_memory_ids"] = [mid for mid in fact_ids if mid in allowed_ids]
+        facts_out.append(entry)
+
+    return {"memories": memories_list, "facts": facts_out}
 
 def format_memory_for_prompt(
     memory: Memory, 
@@ -269,7 +301,7 @@ def format_memory_for_prompt(
 
 def generate_memory_prompt_using_facts(
     memory: Memory,  # Memory instance
-    facts: Dict, 
+    facts: Dict,
     prompt_template_path: str = None,
     top_k_memories_for_operations: int = 20,
     similarity_threshold: float = 0.1,
@@ -277,50 +309,48 @@ def generate_memory_prompt_using_facts(
 ) -> str:
     """
     Generate the complete prompt for memory operations.
-    
-    Uses turn-by-turn similarity search to retrieve relevant memories. Each turn is used
-    as a separate query to find memories about that turn's speaker and content, then results
-    are deduplicated. This is more focused than concatenating all turns into one query.
-    
+
+    Retrieves memories per-fact (fixed top_k_per_fact=5, capped globally at
+    top_k_memories_for_operations after dedup) and embeds them as
+    ``related_memories`` inside each fact entry. This pairwise format lets the
+    model see exactly which existing memories are candidates for UPDATE/DELETE
+    for each new fact, without having to cross-reference two flat lists.
+
     Args:
         memory: Memory instance with existing memories
-        turns: List of conversation turn dicts
-        prompt_template_path: Path to memory.txt template (optional, auto-detects if None)
-        top_k_memories: Maximum total number of relevant memories to retrieve (default: 20)
-        similarity_threshold: Minimum similarity score to include a memory (default: 0.3)
-        use_similarity: If True, use similarity search; if False, include all memories (default: True)
-        
+        facts: Dict with a ``facts`` list from the meta agent
+        prompt_template_path: Path to memory_v2.txt template (auto-detects if None)
+        top_k_memories_for_operations: Total memory budget after dedup (default: 20)
+        similarity_threshold: Minimum similarity score to include a memory (default: 0.1)
+        use_similarity: If True, use similarity search; if False, no memories shown (default: True)
+
     Returns:
         Complete prompt string ready to send to LLM
-        formatted_turns: List of formatted turns for debugging or further processing
-        formatted_memory: List of formatted memories for debugging or further processing
     """
     # Auto-detect template path if not provided
     if prompt_template_path is None:
-        # Look for memory_v2.txt in ../prompts/ relative to this file
         prompt_template_path = Path(__file__).parent.parent / "prompts" / "memory_v2.txt"
-    
+
     # Load the template
     with open(prompt_template_path, "r") as f:
         template = f.read()
-    
-    # Format facts and memory (with turn-by-turn similarity search)
-    formatted_memory = format_memory_for_prompt_for_facts(
-        memory, 
+
+    # Build normalized structure: flat deduplicated memories + facts with id refs
+    normalized = format_memory_for_prompt_for_facts(
+        memory,
         facts=facts,
         top_k_memories_for_operations=top_k_memories_for_operations,
         similarity_threshold=similarity_threshold,
         use_similarity=use_similarity
     )
-    
-    # Convert to JSON strings
-    facts_json = json.dumps(facts, indent=2)
-    memory_json = json.dumps(formatted_memory, indent=2)
-    
-    # Replace placeholders in template
-    prompt = template.replace("{existing_memory}", memory_json)
-    prompt = prompt.replace("{new_facts}", facts_json)
-    
+
+    # normalized = {"memories": [...], "facts": [...]}
+    # Each memory appears exactly once; facts reference them by id.
+    facts_json = json.dumps(normalized, indent=2)
+
+    # Replace placeholder
+    prompt = template.replace("{new_facts}", facts_json)
+
     return prompt
 
 

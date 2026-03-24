@@ -205,7 +205,43 @@ class Memory:
             if (existing_memory["sample_id"] == sample_id and
                 existing_memory["speaker"] == speaker and
                 existing_memory["content"] == content):
-                # Return existing memory instead of creating duplicate
+                # Keep evidence coverage and temporal freshness when content repeats.
+                if "dia_ids" not in existing_memory:
+                    existing_memory["dia_ids"] = []
+                if dia_id not in existing_memory["dia_ids"]:
+                    existing_memory["dia_ids"].append(dia_id)
+                    self.dia_ids_set.add(dia_id)
+
+                # Backfill temporal provenance for older snapshots.
+                existing_memory.setdefault("first_session_id", existing_memory.get("session_id", session_id))
+                existing_memory.setdefault("first_session_time", existing_memory.get("session_time", session_time))
+                existing_memory.setdefault("last_session_id", existing_memory.get("session_id", session_id))
+                existing_memory.setdefault("last_session_time", existing_memory.get("session_time", session_time))
+                if "mention_history" not in existing_memory:
+                    existing_memory["mention_history"] = []
+
+                existing_session_id = existing_memory.get("last_session_id")
+                if isinstance(existing_session_id, int) and session_id >= existing_session_id:
+                    existing_memory["last_session_id"] = session_id
+                    existing_memory["last_session_time"] = session_time
+
+                mention_key = (dia_id, session_id, session_time)
+                seen_mentions = {
+                    (m.get("dia_id"), m.get("session_id"), m.get("session_time"))
+                    for m in existing_memory["mention_history"]
+                    if isinstance(m, dict)
+                }
+                if mention_key not in seen_mentions:
+                    existing_memory["mention_history"].append({
+                        "dia_id": dia_id,
+                        "session_id": session_id,
+                        "session_time": session_time
+                    })
+                    # Keep bounded provenance to avoid prompt/cache bloat.
+                    if len(existing_memory["mention_history"]) > 20:
+                        existing_memory["mention_history"] = existing_memory["mention_history"][-20:]
+
+                # Return existing memory instead of creating a duplicate row.
                 return existing_memory
         
         memory_id = self._generate_memory_id()
@@ -213,11 +249,22 @@ class Memory:
         turn_data = {
             "memory_id": memory_id,
             "sample_id": sample_id,
+            # Keep original session fields for backward compatibility.
             "session_id": session_id,
             "session_time": session_time,
+            # Explicit temporal provenance to avoid lossy overwrite semantics.
+            "first_session_id": session_id,
+            "first_session_time": session_time,
+            "last_session_id": session_id,
+            "last_session_time": session_time,
             "speaker": speaker,
             "content": content,
-            "dia_ids": [dia_id]  # Store dia_id in array
+            "dia_ids": [dia_id],  # Store dia_id in array
+            "mention_history": [{
+                "dia_id": dia_id,
+                "session_id": session_id,
+                "session_time": session_time
+            }]
         }
         
         # Generate and store embedding for the content FIRST (atomic update)
@@ -394,7 +441,14 @@ class Memory:
         
         return results
     
-    def update(self, memory_id: str, content: str, dia_id: str) -> Dict[str, any]:
+    def update(
+        self,
+        memory_id: str,
+        content: str,
+        dia_id: str,
+        session_id: Optional[int] = None,
+        session_time: Optional[str] = None,
+    ) -> Dict[str, any]:
         """
         Update the content of a memory item by its memory ID.
         
@@ -402,6 +456,8 @@ class Memory:
             memory_id: The memory_id to update
             content: New content to replace the existing content
             dia_id: Dialogue ID (e.g., "D5:4") to append to dia_ids array
+            session_id: Optional session id where this update happened
+            session_time: Optional session timestamp where this update happened
             
         Returns:
             Updated turn dict if found, None if not found
@@ -421,6 +477,37 @@ class Memory:
                     turn["dia_ids"] = []
                 if dia_id not in turn["dia_ids"]:
                     turn["dia_ids"].append(dia_id)
+
+                # Ensure temporal provenance fields exist even for old rows.
+                turn.setdefault("first_session_id", turn.get("session_id"))
+                turn.setdefault("first_session_time", turn.get("session_time"))
+                turn.setdefault("last_session_id", turn.get("session_id"))
+                turn.setdefault("last_session_time", turn.get("session_time"))
+                if "mention_history" not in turn:
+                    turn["mention_history"] = []
+
+                # When current session metadata is available, record update provenance
+                # and advance last-seen temporal fields.
+                if session_id is not None and session_time is not None:
+                    last_sid = turn.get("last_session_id")
+                    if not isinstance(last_sid, int) or session_id >= last_sid:
+                        turn["last_session_id"] = session_id
+                        turn["last_session_time"] = session_time
+
+                    mention_key = (dia_id, session_id, session_time)
+                    seen_mentions = {
+                        (m.get("dia_id"), m.get("session_id"), m.get("session_time"))
+                        for m in turn["mention_history"]
+                        if isinstance(m, dict)
+                    }
+                    if mention_key not in seen_mentions:
+                        turn["mention_history"].append({
+                            "dia_id": dia_id,
+                            "session_id": session_id,
+                            "session_time": session_time,
+                        })
+                        if len(turn["mention_history"]) > 20:
+                            turn["mention_history"] = turn["mention_history"][-20:]
                 
                 # Track dia_id in the set for easy evaluation
                 self.dia_ids_set.add(dia_id)
@@ -525,6 +612,23 @@ class Memory:
                     'embedding_ids': self.embedding_ids,
                     'dia_ids_set': self.dia_ids_set  # Set of all dia_ids for easy evaluation
                 }, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+            # JSON format: save memories + metadata for human readability
+            with open(f"{save_path}.json", "w") as f:
+                json.dump(self.memories, f, indent=2)
+            
+            metadata = {
+                "save_name": save_name,
+                "total_memories": len(self.memories),
+                "unique_conversations": len(set(m["sample_id"] for m in self.memories)) if self.memories else 0,
+                "unique_speakers": list(set(m["speaker"] for m in self.memories)) if self.memories else [],
+                "saved_at": datetime.now().isoformat(),
+                "embedding_method": self.embedding_method,
+                "format": format
+            }
+            with open(f"{save_path}_metadata.json", "w") as f:
+                json.dump(metadata, f, indent=2)
+
         else:
             # JSON format: save memories + metadata for human readability
             with open(f"{save_path}.json", "w") as f:

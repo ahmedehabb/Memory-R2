@@ -16,6 +16,7 @@ from functools import partial
 import json
 import random
 import math
+import os
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 
@@ -33,6 +34,68 @@ from verl.rema_trainer.memory.memory_core.memory_manager import MemoryManager
 from verl.rema_trainer.memory.utils.qa_prompt_generator import generate_qa_prompt
 from verl.rema_trainer.memory.judge_llm import judge_with_llm
 import re
+
+
+def _int_env(name: str, default: int, min_value: int | None = None) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed = int(value)
+    except ValueError:
+        return default
+    if min_value is not None:
+        return max(min_value, parsed)
+    return parsed
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _float_env(name: str, default: float, min_value: float | None = None, max_value: float | None = None) -> float:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        parsed = float(value)
+    except ValueError:
+        return default
+    if min_value is not None:
+        parsed = max(min_value, parsed)
+    if max_value is not None:
+        parsed = min(max_value, parsed)
+    return parsed
+
+
+def _reward_speed_config() -> dict:
+    strategy = os.getenv("REMA_REWARD_QA_SAMPLE_STRATEGY", "first").strip().lower()
+    if strategy not in {"first", "random"}:
+        strategy = "first"
+
+    return {
+        # Cap outer parallelism across samples to avoid network/API overload.
+        "max_outer_workers": _int_env("REMA_REWARD_MAX_OUTER_WORKERS", 16, min_value=1),
+        # Cap per-sample parallel QA judging to limit nested thread contention.
+        "max_inner_workers": _int_env("REMA_REWARD_MAX_INNER_WORKERS", 4, min_value=1),
+        # Phase-specific QA caps (-1: no cap, 0: all QAs, >0: cap QAs).
+        "max_qa_train_inner": _int_env("REMA_REWARD_MAX_QA_TRAIN_INNER", -1),
+        "max_qa_train_terminal": _int_env("REMA_REWARD_MAX_QA_TRAIN_TERMINAL", -1),
+        "max_qa_eval": _int_env("REMA_REWARD_MAX_QA_EVAL", -1),
+        "qa_sample_strategy": strategy,
+        # If true, random QA subsampling ignores rollout_idx so all rollouts share the same QA subset.
+        "same_qas_across_rollouts": _bool_env("REMA_REWARD_SAME_QAS_ACROSS_ROLLOUTS", False),
+        # Optional global seed to make random QA subsampling reproducible across runs.
+        "qa_sample_seed": _int_env("REMA_REWARD_QA_SAMPLE_SEED", 0),
+        # QA retrieval knobs.
+        "qa_top_k_per_speaker": _int_env("REMA_REWARD_QA_TOP_K_PER_SPEAKER", 30, min_value=1),
+        "qa_similarity_threshold": _float_env("REMA_REWARD_QA_SIMILARITY_THRESHOLD", 0.1, min_value=0.0, max_value=1.0),
+        "score_timeout_s": _int_env("REMA_REWARD_TIMEOUT_S", 3600, min_value=1),
+        "show_progress_bar": _bool_env("REMA_REWARD_SHOW_TQDM", True),
+    }
 
 def parse_dia_id(dia_id):
     """Parse dia_id like 'D8:17' -> (session:int, dia:int)."""
@@ -113,11 +176,12 @@ def compute_bleu(prediction, truth):
 
 def compute_score_fn(compute_score, params):
     # data_source, response, ground_truth, extra_info = params
-    qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, session_id, session_evidences, extra_info, mem_op_stats, dia_ids_affected_per_turn, total_sessions_tokens = params
-    return compute_score(qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, session_id, session_evidences, extra_info, mem_op_stats, dia_ids_affected_per_turn, total_sessions_tokens)
+    qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, session_id, session_evidences, extra_info, mem_op_stats, dia_ids_affected_per_turn, cumulative_session_tokens, snapshot_suffix = params
+    return compute_score(qa_pairs, conv_id, chunk_id, speakers, epoch, split, index, session_time, session_id, session_evidences, extra_info, mem_op_stats, dia_ids_affected_per_turn, cumulative_session_tokens, snapshot_suffix)
 
-def process_single_qa(qa_pair, memory, speakers, session_time):
+def process_single_qa(qa_pair, memory, speakers, session_time, reward_cfg=None):
     """Process a single QA pair - to be called in parallel"""
+    reward_cfg = reward_cfg or _reward_speed_config()
     question = qa_pair['question']
     gold_answer = str(qa_pair['answer']).strip()
     evidence = qa_pair.get('evidence', None)
@@ -126,7 +190,9 @@ def process_single_qa(qa_pair, memory, speakers, session_time):
     # Generate prompt for memory retrieval (to get dia_ids)
     prompt, speaker_1_dia_ids, speaker_2_dia_ids = generate_qa_prompt(memory, speaker_1=speakers[0], speaker_2=speakers[1], 
                                              question=question, session_time=session_time, 
-                                             top_k_per_speaker=20, similarity_threshold=0.0, use_similarity=True)
+                                             top_k_per_speaker=reward_cfg.get('qa_top_k_per_speaker', 20),
+                                             similarity_threshold=reward_cfg.get('qa_similarity_threshold', 0.0),
+                                             use_similarity=True)
     response = judge_with_llm(prompt)
     predicted_answer = extract_answer_from_text(response)
 
@@ -148,9 +214,23 @@ def process_single_qa(qa_pair, memory, speakers, session_time):
         'prompt': prompt
     }
 
-def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, session_id: int, session_evidences: list, extra_info: dict=None, mem_op_stats: dict=None, dia_ids_affected_per_turn: list=None, total_sessions_tokens: int=None) -> tuple[float, dict]:
+def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: list[str], epoch: int, split: str, index: int, session_time: str, session_id: int, session_evidences: list, extra_info: dict=None, mem_op_stats: dict=None, dia_ids_affected_per_turn: list=None, cumulative_session_tokens: int=None, snapshot_suffix: str = "", reward_cfg: dict=None) -> tuple[float, dict]:
+    reward_cfg = reward_cfg or _reward_speed_config()
     key = f"{conv_id}_chunk{chunk_id}_epoch{epoch}"
-    memory = MemoryManager().get_snapshot(sample_id=conv_id, chunk_id=chunk_id, epoch=epoch, split=split, index_in_batch=index)
+    memory = MemoryManager().get_snapshot(
+        sample_id=conv_id,
+        chunk_id=chunk_id,
+        epoch=epoch,
+        split=split,
+        index_in_batch=index,
+        snapshot_suffix=snapshot_suffix,
+    )
+    if memory is None:
+        raise RuntimeError(
+            f"Missing memory snapshot for reward scoring: sample_id={conv_id}, chunk_id={chunk_id}, "
+            f"epoch={epoch}, split={split}, index_in_batch={index}, snapshot_suffix={snapshot_suffix!r}"
+        )
+    compression_ratio = 0.0
     
     # Track memory-related metrics
     tracking_metrics = {
@@ -173,9 +253,18 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     if memory is not None and hasattr(memory, 'memories'):
         tracking_metrics['memory_size'] = len(memory.memories)
         tracking_metrics['memory_token_count'] = memory.total_tokens
-        compression_ratio = max(0.0, 1.0 - (memory.total_tokens / total_sessions_tokens))
+        # Only penalize memory growth above a free-zone threshold (default 70% of session tokens).
+        # Below the threshold the model can store facts freely with no penalty.
+        # Above it, apply the original compression ratio so unbounded growth is discouraged.
+        compression_threshold_frac = _float_env("REMA_REWARD_COMPRESSION_THRESHOLD_FRAC", 0.7, min_value=0.0, max_value=1.0)
+        compression_threshold = compression_threshold_frac * cumulative_session_tokens
+        mem_tokens = memory.total_tokens
+        if mem_tokens <= compression_threshold:
+            compression_ratio = 0.0
+        else:
+            compression_ratio = max(0.0, 1.0 - (mem_tokens / cumulative_session_tokens))
         tracking_metrics['memory_compression_ratio'] = compression_ratio
-        print(f"[LocomoScore] Memory size for conv {conv_id}, chunk {chunk_id}: {tracking_metrics['memory_size']} memory items, {tracking_metrics['memory_token_count']} tokens")
+        print(f"[LocomoScore] Memory size for conv {conv_id}, chunk {chunk_id} snapshot_suffix: {snapshot_suffix}: {tracking_metrics['memory_size']} memory items, {tracking_metrics['memory_token_count']} tokens")
     
     # Memory operation counts (individual and total)
     if mem_op_stats is not None:
@@ -187,13 +276,29 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
             tracking_metrics['memory_delete_count'] + 
             tracking_metrics['memory_update_count']
         )
-        # print(f"[LocomoScore] Memory operations for conv {conv_id}, chunk {chunk_id}:")
+        # print(f"[LocomoScore] Memory operations for conv {conv_id}, chunk {chunk_id} snapshot_suffix: {snapshot_suffix}:")
         # print(f"  - Insert: {tracking_metrics['memory_insert_count']}")
         # print(f"  - Delete: {tracking_metrics['memory_delete_count']}")
         # print(f"  - Update: {tracking_metrics['memory_update_count']}")
         # print(f"  - Total operations: {tracking_metrics['memory_operation_count']}")
     
-    # Compute score for all QA pairs and return average
+    # Optionally subsample QAs for faster experimentation.
+    max_qa_per_sample = reward_cfg.get('max_qa_per_sample', 0)
+    if max_qa_per_sample > 0 and len(qa_pairs) > max_qa_per_sample:
+        strategy = reward_cfg.get('qa_sample_strategy', 'first')
+        if strategy == 'random':
+            same_qas_across_rollouts = reward_cfg.get('same_qas_across_rollouts', False)
+            qa_sample_seed = reward_cfg.get('qa_sample_seed', 0)
+            if same_qas_across_rollouts:
+                seed_tuple = (qa_sample_seed, conv_id, chunk_id, epoch, session_id)
+            else:
+                seed_tuple = (qa_sample_seed, conv_id, chunk_id, epoch, index, session_id)
+            rng = random.Random(hash(seed_tuple) & 0xFFFFFFFF)
+            qa_pairs = rng.sample(qa_pairs, max_qa_per_sample)
+        else:
+            qa_pairs = qa_pairs[:max_qa_per_sample]
+
+    # Compute score for all selected QA pairs and return average
     qa_scores = 0.0
     bleu_scores = 0.0
     num_questions = len(qa_pairs)
@@ -237,10 +342,15 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
     else:
         # Use parallel processing for any number of questions
         # print(f"[LocomoScore] Using parallel processing for {num_questions} questions")
-        with ThreadPoolExecutor(max_workers=min(num_questions, 8)) as executor:
-            futures = [executor.submit(process_single_qa, qa_pair, memory, speakers, session_time) 
-                      for qa_pair in qa_pairs]
-            results = [future.result() for future in futures]
+        max_inner_workers = max(1, reward_cfg.get('max_inner_workers', 4))
+        worker_count = min(num_questions, max_inner_workers)
+        if worker_count == 1:
+            results = [process_single_qa(qa_pair, memory, speakers, session_time, reward_cfg=reward_cfg) for qa_pair in qa_pairs]
+        else:
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = [executor.submit(process_single_qa, qa_pair, memory, speakers, session_time, reward_cfg)
+                           for qa_pair in qa_pairs]
+                results = [future.result() for future in futures]
     
     # Process results
     for qa_idx, result in enumerate(results):
@@ -534,7 +644,8 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         "conv_id": conv_id,
         "chunk_id": chunk_id,
         "epoch": epoch,
-        "split": split
+        "split": split,
+        "snapshot_suffix": snapshot_suffix,
     }
     
     # Compute average scores per session
@@ -558,8 +669,37 @@ class ReMARewardManager:
         self.tokenizer = tokenizer
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         # self.compute_score = compute_score or _default_compute_score
-        self.compute_score = locomo_score
+        self.reward_speed_cfg = _reward_speed_config()
+        self.compute_score = partial(locomo_score, reward_cfg=self.reward_speed_cfg)
         self.top_k_percentage = top_k_percentage  # sample from top k% of memories (e.g., 0.3 = top 30%)
+
+    def _phase_reward_cfg(self, data: DataProto) -> dict:
+        cfg = dict(self.reward_speed_cfg)
+        split = str(data.meta_info.get('split', 'train')).lower()
+
+        # Inner batches are explicitly tagged with uid prefix "inner_" in trainer code.
+        is_inner_batch = False
+        if split == 'train' and 'uid' in data.non_tensor_batch:
+            try:
+                uids = data.non_tensor_batch['uid']
+                if len(uids) > 0:
+                    is_inner_batch = str(uids[0]).startswith('inner_')
+            except Exception:
+                is_inner_batch = False
+
+        override = -1
+        if split in {'validation', 'test'}:
+            override = cfg.get('max_qa_eval', -1)
+        elif split == 'train' and is_inner_batch:
+            override = cfg.get('max_qa_train_inner', -1)
+        elif split == 'train':
+            override = cfg.get('max_qa_train_terminal', -1)
+
+        if override is not None and override >= 0:
+            cfg['max_qa_per_sample'] = override
+        else:
+            cfg.pop('max_qa_per_sample', None)
+        return cfg
 
     def verify(self, data):
         scores = []
@@ -629,6 +769,9 @@ class ReMARewardManager:
         
         already_print_data_sources = {}
         memory_manager = MemoryManager()
+
+        phase_cfg = self._phase_reward_cfg(data)
+        phase_compute_score = partial(locomo_score, reward_cfg=phase_cfg)
         
         # print(f"\n[RewardManager] Preparing parameters for score computation...")
         params = [
@@ -655,7 +798,8 @@ class ReMARewardManager:
              (list(data[i].non_tensor_batch.get('dia_ids_affected_per_turn', [])) 
               if data[i].non_tensor_batch.get('dia_ids_affected_per_turn') is not None 
               else None),
-             data[i].non_tensor_batch.get('total_sessions_tokens', 0),
+             data[i].non_tensor_batch.get('cumulative_session_tokens', 0),
+             data.meta_info.get('memory_snapshot_suffix', ''),
              )
             for i in range(len(data))
         ]
@@ -671,10 +815,13 @@ class ReMARewardManager:
         turn_level_bleu_list = []  # Track turn-level BLEU rewards
         per_session_f1_list = []  # Track per-session F1 rewards
         # print(f"\n[RewardManager] Starting score computation with ThreadPool...")
-        with ThreadPool(max_workers=32) as pool:  # Parallel processing with 32 threads (matches num_rollouts)
-            future = pool.map(partial(compute_score_fn, self.compute_score), params, timeout=3600)
+        max_outer_workers = self.reward_speed_cfg.get('max_outer_workers', 16)
+        score_timeout_s = self.reward_speed_cfg.get('score_timeout_s', 3600)
+        show_progress_bar = self.reward_speed_cfg.get('show_progress_bar', True)
+        with ThreadPool(max_workers=max_outer_workers) as pool:
+            future = pool.map(partial(compute_score_fn, phase_compute_score), params, timeout=score_timeout_s)
             iterator = future.result()
-            with tqdm(total=len(data), desc="Computing scores") as pbar:
+            with tqdm(total=len(data), desc="Computing scores", disable=not show_progress_bar) as pbar:
                 while True:
                     try:
                         result = next(iterator)
@@ -728,6 +875,7 @@ class ReMARewardManager:
         num_incomplete = 0
         for i in range(len(qa_scores)):
             turn_finished = data[i].batch[f'{agent_roles[0]}_turn_finished'].item()
+
             # Only apply masking if enabled
             if data[i].meta_info['mask_unfinished_reward']:
                 if turn_finished == 1 or max_num_turns == 1:  # Successfully completed
@@ -785,7 +933,8 @@ class ReMARewardManager:
         # Apply compression penalty to per-session F1 (use final compression ratio for all sessions)
         # This ensures per-session and cumulative rewards also incentivize memory efficiency
         for i in range(batch_size):
-            # Add compression_penalty * compression_ratio to all active sessions for this sample
+            # Keep per-session rewards session-specific; operation shaping is applied during
+            # trajectory propagation using each session's own mem_* stats.
             per_session_f1_tensor[i] = per_session_f1_tensor[i] + compression_penalty * compression_ratios[i]
         
         reward_tensor_map['per_session_f1'] = per_session_f1_tensor
@@ -937,6 +1086,14 @@ class ReMARewardManager:
             pass
 
         # print(f"\n[RewardManager] Turn-level rewards already assigned via dia_id causality (see above). Skipping old reward assignment logic.")
+        # Per-role shaping weights:
+        # - meta_thinking gets shared + evidence term
+        # - reasoning gets shared + (1 - retrieval_failure_rate) term
+        fact_evidence_bonus = _float_env("REMA_REWARD_FACT_EVIDENCE_BONUS", 0.1, min_value=0.0)
+        retrieval_failure_bonus = _float_env("REMA_REWARD_RETRIEVAL_FAILURE_BONUS", 0.1, min_value=0.0)
+
+        retrieval_failure_rates = [m.get('retrieval_failure_rate', 1.0) for m in tracking_metrics_list]
+
         # print(f"\n[RewardManager] Processing {len(data)} data items to assign rewards...")
         for i_bsz in range(len(data)):
             data_item = data[i_bsz]  # DataProtoItem
@@ -972,41 +1129,42 @@ class ReMARewardManager:
 
 
         # Only cache the best memory during training (test/validation already has only one memory)
-        current_split = data.meta_info['split']
-        if current_split == "train":
-            # print(f"\n[RewardManager] Training mode: Saving memories (sampling from top {self.top_k_percentage*100:.0f}% by reward)...")
-            for key, score_memory_list in memory_score_dict.items():
-                # score_memory_list: list of (score, memory)
-                if len(score_memory_list) == 0:
-                    # print(f"[RewardManager] No memory found for {key}, skipping save.")
-                    continue
+        # current_split = data.meta_info['split']
+        # if current_split == "train":
+        #     # print(f"\n[RewardManager] Training mode: Saving memories (sampling from top {self.top_k_percentage*100:.0f}% by reward)...")
+        #     for key, score_memory_list in memory_score_dict.items():
+        #         # score_memory_list: list of (score, memory)
+        #         if len(score_memory_list) == 0:
+        #             # print(f"[RewardManager] No memory found for {key}, skipping save.")
+        #             continue
                 
-                # Sort by score in descending order
-                sorted_list = sorted(score_memory_list, key=lambda x: x[0], reverse=True)
+        #         # Sort by score in descending order
+        #         sorted_list = sorted(score_memory_list, key=lambda x: x[0], reverse=True)
                 
-                # Calculate top k% of memories (at least 1)
-                num_top_k = max(1, int(len(sorted_list) * self.top_k_percentage))
-                top_k_candidates = sorted_list[:num_top_k]
+        #         # Calculate top k% of memories (at least 1)
+        #         num_top_k = max(1, int(len(sorted_list) * self.top_k_percentage))
+        #         top_k_candidates = sorted_list[:num_top_k]
                 
-                # Sample one from top k%
-                selected_score, selected_memory_info = random.choice(top_k_candidates)
+        #         # Sample one from top k%
+        #         selected_score, selected_memory_info = random.choice(top_k_candidates)
                 
-                if selected_memory_info is not None:
-                    # Online learning, save the sampled memory to be used in next batch
-                    memory_manager.cache_snapshot(
-                        selected_memory_info["memory"], 
-                        sample_id=selected_memory_info["conv_id"], 
-                        chunk_id=selected_memory_info["chunk_id"], 
-                        epoch=selected_memory_info["epoch"], 
-                        split=selected_memory_info["split"]
-                    )
-                    # print(f"[RewardManager] Saved memory for {key} with score {selected_score:.4f} (sampled from top {num_top_k}/{len(sorted_list)}, best={sorted_list[0][0]:.4f})")
-                else:
-                    # print(f"[RewardManager] Selected memory is None for {key}, skipping save.")
-                    pass
-        else:
-            # print(f"\n[RewardManager] Split={current_split}: Skipping memory caching (test/validation are read-only)")
-            pass
+        #         if selected_memory_info is not None:
+        #             # Online learning, save the sampled memory to be used in next batch
+        #             memory_manager.cache_snapshot(
+        #                 selected_memory_info["memory"], 
+        #                 sample_id=selected_memory_info["conv_id"], 
+        #                 chunk_id=selected_memory_info["chunk_id"], 
+        #                 epoch=selected_memory_info["epoch"], 
+        #                 split=selected_memory_info["split"],
+        #                 snapshot_suffix=selected_memory_info.get("snapshot_suffix", ""),
+        #             )
+        #             # print(f"[RewardManager] Saved memory for {key} with score {selected_score:.4f} (sampled from top {num_top_k}/{len(sorted_list)}, best={sorted_list[0][0]:.4f})")
+        #         else:
+        #             # print(f"[RewardManager] Selected memory is None for {key}, skipping save.")
+        #             pass
+        # else:
+        #     # print(f"\n[RewardManager] Split={current_split}: Skipping memory caching (test/validation are read-only)")
+        #     pass
 
         # Return both reward tensors in a dictionary
         # print(f"\n[RewardManager] Final reward_tensor_map keys: {list(reward_tensor_map.keys())}")

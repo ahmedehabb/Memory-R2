@@ -168,7 +168,19 @@ class MemoryManager:
                 result = self.execute_command(memory, command)
                 
                 # Get operation type (normalize to lowercase)
-                op_type = command.get("operation", "").lower()
+                if isinstance(command, dict):
+                    op_type = str(command.get("operation", "")).lower()
+                    raw_dia_id = command.get("dia_id", None)
+                    # Normalize dia_id: model sometimes outputs a list or comma-separated string
+                    if isinstance(raw_dia_id, list):
+                        command_dia_id = raw_dia_id[0] if raw_dia_id else None
+                    elif isinstance(raw_dia_id, str) and ',' in raw_dia_id:
+                        command_dia_id = raw_dia_id.split(',')[0].strip()
+                    else:
+                        command_dia_id = raw_dia_id
+                else:
+                    op_type = ""
+                    command_dia_id = None
                 
                 # Track success status
                 is_success = result["status"] == "success"
@@ -178,7 +190,7 @@ class MemoryManager:
                     "command_index": i,
                     "command": command,
                     "result": result,
-                    "command_dia_id": command.get("dia_id", None) if is_success else None,
+                    "command_dia_id": command_dia_id if is_success else None,
                 })
                 
                 # Count total operations by type
@@ -231,7 +243,13 @@ class MemoryManager:
         speaker = command.get("speaker")
         content = command.get("content")
         dia_id = command.get("dia_id")
-        
+
+        # Normalize dia_id: model sometimes outputs a list or comma-separated string
+        if isinstance(dia_id, list):
+            dia_id = dia_id[0] if dia_id else None
+        elif isinstance(dia_id, str) and ',' in dia_id:
+            dia_id = dia_id.split(',')[0].strip()
+
         # Validate required fields
         if not sample_id:
             return self._error_result("Missing 'sample_id' field")
@@ -245,7 +263,7 @@ class MemoryManager:
             return self._error_result("Missing 'content' field")
         if not dia_id:
             return self._error_result("Missing 'dia_id' field")
-        
+
         # Type validations (ensure stable schema: strings where expected)
         if not isinstance(sample_id, str):
             return self._error_result(f"'sample_id' must be a string, got {type(sample_id).__name__}: {sample_id}")
@@ -285,7 +303,15 @@ class MemoryManager:
         memory_id = command.get("memory_id")
         content = command.get("content")
         dia_id = command.get("dia_id")
-        
+        session_id = command.get("session_id")
+        session_time = command.get("session_time")
+
+        # Normalize dia_id: model sometimes outputs a list or comma-separated string
+        if isinstance(dia_id, list):
+            dia_id = dia_id[0] if dia_id else None
+        elif isinstance(dia_id, str) and ',' in dia_id:
+            dia_id = dia_id.split(',')[0].strip()
+
         # Validate required fields
         if not memory_id:
             return self._error_result("Missing 'memory_id' field")
@@ -293,7 +319,7 @@ class MemoryManager:
             return self._error_result("Missing 'content' field")
         if not dia_id:
             return self._error_result("Missing 'dia_id' field")
-        
+
         # Validate dia_id and types
         if not isinstance(memory_id, str):
             return self._error_result(f"'memory_id' must be a string, got {type(memory_id).__name__}: {memory_id}")
@@ -301,9 +327,19 @@ class MemoryManager:
             return self._error_result(f"'content' must be a string, got {type(content).__name__}: {content}")
         if not isinstance(dia_id, str):
             return self._error_result(f"'dia_id' must be a string, got {type(dia_id).__name__}: {dia_id}")
+        if session_id is not None and not isinstance(session_id, int):
+            return self._error_result(f"'session_id' must be an integer when provided, got {type(session_id).__name__}: {session_id}")
+        if session_time is not None and not isinstance(session_time, str):
+            return self._error_result(f"'session_time' must be a string when provided, got {type(session_time).__name__}: {session_time}")
         
         try:
-            updated_turn = memory.update(memory_id, content, dia_id)
+            updated_turn = memory.update(
+                memory_id,
+                content,
+                dia_id,
+                session_id=session_id,
+                session_time=session_time,
+            )
             
             if updated_turn:
                 return {
@@ -325,6 +361,8 @@ class MemoryManager:
         # Validate required fields
         if not memory_id:
             return self._error_result("Missing 'memory_id' field")
+        if not isinstance(memory_id, str):
+            return self._error_result(f"'memory_id' must be a string, got {type(memory_id).__name__}: {memory_id}")
         
         try:
             success = memory.delete(memory_id)
@@ -366,6 +404,8 @@ class MemoryManager:
             return self._error_result(f"'speaker' must be a string when provided, got {type(speaker).__name__}: {speaker}")
         if top_k is not None and not isinstance(top_k, int):
             return self._error_result(f"'top_k' must be an integer when provided, got {type(top_k).__name__}: {top_k}")
+        if not isinstance(min_score, (int, float)):
+            return self._error_result(f"'min_score' must be numeric when provided, got {type(min_score).__name__}: {min_score}")
 
         try:
             results = memory.search(
@@ -445,7 +485,7 @@ class MemoryManager:
             "total_operations": len(self.operation_history),
         }
 
-    def get_snapshot(self, sample_id: str, chunk_id: int, epoch: int, split: str = "train", index_in_batch: int = -1) -> Optional[Memory]:
+    def get_snapshot(self, sample_id: str, chunk_id: int, epoch: int, split: str = "train", index_in_batch: int = -1, snapshot_suffix: str = "") -> Optional[Memory]:
         """
         Get a memory snapshot for a specific conversation, chunk, and epoch.
         
@@ -479,6 +519,7 @@ class MemoryManager:
                 print(f"Loaded snapshot with {len(memory.memories)} memories")
         """
         # Get base directory from environment or use default
+        base_dir = None
         if split == "train":
             base_dir = os.environ.get('MEMORY_CACHE_DIR')
         elif split == "validation":
@@ -489,8 +530,12 @@ class MemoryManager:
         if base_dir is None:
             base_dir = os.path.join(os.getcwd(), 'memory_snapshots')
         
-        # Construct directory path: base/epoch_N/conv-ID/
+        # Construct directory path: base/epoch_N/conv-ID/[namespace]/
         snapshot_dir = Path(base_dir) / f"epoch_{epoch}" / sample_id
+        if snapshot_suffix:
+            namespace = snapshot_suffix[1:] if snapshot_suffix.startswith("_") else snapshot_suffix
+            snapshot_dir = snapshot_dir / namespace
+
         # Always use index_in_batch suffix if provided (to support n > 1 rollouts in validation/test)
         if index_in_batch >= 0:
             snapshot_name = f"chunk_{chunk_id}_idx_{index_in_batch}"
@@ -531,12 +576,12 @@ class MemoryManager:
         else:
             # No snapshot exists
             if index_in_batch >= 0:
-                print(f"ℹ No snapshot found at epoch_{epoch}/{sample_id}/chunk_{chunk_id}_idx_{index_in_batch}")
+                print(f"ℹ No snapshot found at {snapshot_dir}/chunk_{chunk_id}_idx_{index_in_batch}")
             else:
-                print(f"ℹ No snapshot found at epoch_{epoch}/{sample_id}/chunk_{chunk_id}")
+                print(f"ℹ No snapshot found at {snapshot_dir}/chunk_{chunk_id}")
             return None
 
-    def cache_snapshot(self, memory: Memory, sample_id: str, chunk_id: int, epoch: int, split: str = "train", index_in_batch: int = -1, format: str = "pickle") -> str:
+    def cache_snapshot(self, memory: Memory, sample_id: str, chunk_id: int, epoch: int, split: str = "train", index_in_batch: int = -1, format: str = "pickle", snapshot_suffix: str = "") -> str:
         """
         Cache the given memory state as a snapshot for a specific conversation, chunk, and epoch.
         
@@ -569,6 +614,7 @@ class MemoryManager:
             print(f"Saved to: {path}")
         """
         # Get base directory from environment or use default
+        base_dir = None
         if split == "train":
             base_dir = os.environ.get('MEMORY_CACHE_DIR')
         elif split == "validation":
@@ -579,8 +625,12 @@ class MemoryManager:
         if base_dir is None:
             base_dir = os.path.join(os.getcwd(), 'memory_snapshots')
         
-        # Construct directory path: base/epoch_N/conv-ID/
+        # Construct directory path: base/epoch_N/conv-ID/[namespace]/
         snapshot_dir = Path(base_dir) / f"epoch_{epoch}" / sample_id
+        if snapshot_suffix:
+            namespace = snapshot_suffix[1:] if snapshot_suffix.startswith("_") else snapshot_suffix
+            snapshot_dir = snapshot_dir / namespace
+
         # Always use index_in_batch suffix if provided (to support n > 1 rollouts in validation/test)
         if index_in_batch >= 0:
             snapshot_name = f"chunk_{chunk_id}_idx_{index_in_batch}"
@@ -616,7 +666,7 @@ class MemoryManager:
 
         Returns:
             The operations list with 'sample_id', 'session_id', and 'session_time' filled
-            on any operation with operation == "insert" (only if those keys are missing).
+            on operation == "insert" or "update" (only if those keys are missing).
         """
         if not turns:
             return operations
@@ -643,7 +693,7 @@ class MemoryManager:
                 # print(f"[MemoryManager] Warning: operation field is {type(operation_value)}, expected str. Skipping operation: {op}")
                 continue
             op["operation"] = operation_value.lower()
-            if op["operation"] == "insert":
+            if op["operation"] in {"insert", "update"}:
                 # Only set metadata when it's not already provided
                 if sample_id is not None:
                     op.setdefault("sample_id", sample_id)
@@ -687,9 +737,13 @@ def create_function_schema() -> List[Dict[str, Any]]:
                     "content": {
                         "type": "string",
                         "description": "LLM-generated summary/content to save"
+                    },
+                    "dia_id": {
+                        "type": "string",
+                        "description": "Dialogue ID (e.g., 'D1:4') for source tracking"
                     }
                 },
-                "required": ["sample_id", "session_id", "session_time", "speaker", "content"]
+                "required": ["sample_id", "session_id", "session_time", "speaker", "content", "dia_id"]
             }
         },
         {
@@ -740,9 +794,13 @@ def create_function_schema() -> List[Dict[str, Any]]:
                     "content": {
                         "type": "string",
                         "description": "New content to replace the existing content"
+                    },
+                    "dia_id": {
+                        "type": "string",
+                        "description": "Dialogue ID (e.g., 'D5:4') for update provenance"
                     }
                 },
-                "required": ["memory_id", "content"]
+                "required": ["memory_id", "content", "dia_id"]
             }
         },
         {

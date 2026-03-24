@@ -83,7 +83,7 @@ def compute_turn_level_return(turn_level_rewards: torch.Tensor, turn_mask: torch
         return returns
 
 def compute_gae_advantage_return(token_level_rewards: torch.Tensor, values: torch.Tensor, eos_mask: torch.Tensor,
-                                 gamma: torch.Tensor, lam: torch.Tensor):
+                                 gamma: torch.Tensor, lam: torch.Tensor, bootstrap_value: torch.Tensor = None):
     """Adapted from https://github.com/huggingface/trl/blob/main/trl/trainer/ppo_trainer.py
 
     Args:
@@ -97,6 +97,9 @@ def compute_gae_advantage_return(token_level_rewards: torch.Tensor, values: torc
             discounted factor used in RL
         lam: `(float)`
             lambda value when computing Generalized Advantage Estimation (https://arxiv.org/abs/1506.02438)
+        bootstrap_value: `(torch.Tensor)` optional
+            shape: (bs,). Value to bootstrap from at the end of the sequence (next session's first token value).
+            If None, defaults to 0 (terminal).
 
     Returns:
         advantages: `(torch.Tensor)`
@@ -106,7 +109,11 @@ def compute_gae_advantage_return(token_level_rewards: torch.Tensor, values: torc
 
     """
     with torch.no_grad():
-        nextvalues = 0
+        # Bootstrap from next session's value instead of treating as terminal
+        if bootstrap_value is not None:
+            nextvalues = bootstrap_value
+        else:
+            nextvalues = 0
         lastgaelam = 0
         advantages_reversed = []
         gen_len = token_level_rewards.shape[-1]
@@ -138,6 +145,7 @@ def compute_bi_level_gae_advantage_return(
     lam: float,
     high_level_gamma: float,
     max_num_turns: int,
+    bootstrap_value: torch.Tensor = None,
 ):
     """Bi-level GAE adapted from "RAGEN" (vectorized). 
 
@@ -196,7 +204,11 @@ def compute_bi_level_gae_advantage_return(
 
         for t in reversed(range(max_num_turns)):
             if t == max_num_turns - 1:
-                nextvalue = torch.zeros(bs, device=device, dtype=values.dtype)
+                # Bootstrap from next session's value instead of treating as terminal
+                if bootstrap_value is not None:
+                    nextvalue = bootstrap_value
+                else:
+                    nextvalue = torch.zeros(bs, device=device, dtype=values.dtype)
             else:
                 nextvalue = eos_values[:, t + 1] * turn_valid[:, t + 1]
 
@@ -296,6 +308,54 @@ def compute_grpo_outcome_advantage(token_level_rewards: torch.Tensor,
 
     return scores, scores
 
+def compute_grpo_maxrl_outcome_advantage(token_level_rewards: torch.Tensor,
+                                   eos_mask: torch.Tensor,
+                                   index: torch.Tensor,
+                                   epsilon: float = 1e-6):
+    """
+    Compute advantage for GRPO, operating only on Outcome reward 
+    (with only one scalar reward for each response).
+    Args:
+        token_level_rewards: `(torch.Tensor)`
+            shape: (bs, response_length)
+        eos_mask: `(torch.Tensor)`
+            shape: (bs, response_length)
+    
+    Returns:
+        advantages: `(torch.Tensor)`
+            shape: (bs, response_length)
+        Returns: `(torch.Tensor)`
+            shape: (bs, response_length)
+    """
+    response_length = token_level_rewards.shape[-1]
+    scores = token_level_rewards.sum(dim=-1)
+
+    id2score = defaultdict(list)
+    id2mean = {}
+    id2std = {}
+
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0)
+                id2std[idx] = torch.tensor(1.0)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.tensor(id2score[idx]))
+                id2std[idx] = torch.std(torch.tensor([id2score[idx]]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            # try MaxRL
+            scores[i] = (scores[i] - id2mean[index[i]])
+            # scores[i] = (scores[i] - id2mean[index[i]]) / (id2mean[index[i]] + epsilon)
+
+        scores = scores.unsqueeze(-1).tile([1, response_length]) * eos_mask
+
+    return scores, scores
+
 
 def compute_rloo_outcome_advantage(token_level_rewards: torch.Tensor,
                                    eos_mask: torch.Tensor,
@@ -374,6 +434,54 @@ def compute_reinforce_plus_plus_outcome_advantage(token_level_rewards: torch.Ten
         advantages = advantages * eos_mask
 
     return advantages, returns
+
+def compute_reinforce_plus_plus_baseline_outcome_advantage(
+    token_level_rewards: torch.Tensor,
+    eos_mask: torch.Tensor,
+    index: torch.Tensor,
+    epsilon: float = 1e-6,
+):
+    """
+    Compute advantage for RF++-baseline (https://arxiv.org/abs/2501.03262), operating only on Outcome reward
+    (with only one scalar reward for each response).
+
+    Args:
+        token_level_rewards: `(torch.Tensor)`
+            shape: (bs, response_length)
+        eos_mask: `(torch.Tensor)`
+            shape: (bs, response_length)
+        config: (AlgoConfig) algorithm config
+
+    Returns:
+        advantages: `(torch.Tensor)`
+            shape: (bs, response_length)
+        Returns: `(torch.Tensor)`
+            shape: (bs, response_length)
+    """
+    response_length = token_level_rewards.shape[-1]
+    scores = token_level_rewards.sum(dim=-1)
+
+    id2score = defaultdict(list)
+    id2mean = {}
+
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i])
+        for idx in id2score:
+            if len(id2score[idx]) == 1:
+                id2mean[idx] = torch.tensor(0.0)
+            elif len(id2score[idx]) > 1:
+                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
+            else:
+                raise ValueError(f"no score in prompt index: {idx}")
+        for i in range(bsz):
+            scores[i] = scores[i] - id2mean[index[i]]
+
+        scores = scores.unsqueeze(-1).tile([1, response_length]) * eos_mask
+        scores = verl_F.masked_whiten(scores, eos_mask) * eos_mask
+
+    return scores, scores
 
 
 def compute_remax_outcome_advantage(token_level_rewards: torch.Tensor, reward_baselines: torch.Tensor,

@@ -71,7 +71,9 @@ class AdvantageEstimator(str, Enum):
     """
     GAE = 'gae'
     GRPO = 'grpo'
+    GRPO_MAXRL = 'grpo_maxrl'
     REINFORCE_PLUS_PLUS = 'reinforce_plus_plus'
+    REINFORCE_PLUS_PLUS_BASELINE = 'reinforce_plus_plus_baseline'
     REMAX = 'remax'
     RLOO = 'rloo'
 
@@ -190,6 +192,101 @@ def apply_kl_penalty(data: DataProto, kl_ctrl, kl_penalty='kl'):
     return data, metrics
 
 
+def compute_bootstrap_values(data: DataProto, gamma_session: float = 1.0) -> torch.Tensor:
+    """Compute bootstrap values for cross-session value propagation.
+    
+    For each row in the batch, finds the next session in the same 
+    trajectory chain and extracts the first turn's critic value 
+    from that next session. This enables the GAE computation to bootstrap
+    from the next session's value instead of treating session boundaries as terminal.
+    
+    After merge_roles_data, the batch has 2x rows (role-A rows then role-B rows).
+    We use uid prefix (role name) + sample_id + rollout_idx to build chains,
+    ensuring each role's trajectory is separate.
+    
+    Args:
+        data: DataProto with 'values', 'step_ids', 'rollout_idx' in batch,
+              and 'uid', 'sample_id', 'session_id' in non_tensor_batch.
+        gamma_session: Cross-session discount factor. Bootstrap values are
+                       multiplied by gamma_session to dampen future session signal.
+    
+    Returns:
+        bootstrap_values: (bs,) tensor. Zero for terminal sessions (last in chain).
+    """
+    values = data.batch['values']
+    step_ids = data.batch['step_ids']
+    rollout_idxs = data.batch['rollout_idx']
+    if isinstance(rollout_idxs, torch.Tensor):
+        rollout_idxs = rollout_idxs.cpu().tolist()
+    
+    sample_ids = data.non_tensor_batch.get('sample_id', None)
+    session_ids = data.non_tensor_batch.get('session_id', None)
+    uids = data.non_tensor_batch.get('uid', None)
+    
+    bs = values.shape[0]
+    bootstrap_values = torch.zeros(bs, device=values.device, dtype=values.dtype)
+    
+    if sample_ids is None or session_ids is None:
+        return bootstrap_values
+    
+    # Determine role prefix for each row to separate role chains after merge_roles_data
+    # After merge, uid format is "rolename_<uuid>" where rolename is from agent_roles
+    agent_roles = data.meta_info.get('agent_roles', [])
+    
+    from collections import defaultdict
+    chain_map = defaultdict(list)
+    for row_idx in range(bs):
+        # Extract role prefix from uid
+        role_prefix = ""
+        if uids is not None:
+            uid_str = str(uids[row_idx])
+            for role in agent_roles:
+                if uid_str.startswith(f"{role}_"):
+                    role_prefix = role
+                    break
+        
+        # Chain key: (role, sample_id, rollout_idx)
+        chain_key = (role_prefix, str(sample_ids[row_idx]), int(rollout_idxs[row_idx]))
+        sess_id = int(session_ids[row_idx])
+        chain_map[chain_key].append((sess_id, row_idx))
+    
+    # Sort each chain by session_id and link consecutive sessions
+    n_chains = len(chain_map)
+    chain_lengths = []
+    n_misses = 0  # Track how many links fail to find valid tokens
+    for key, sessions in chain_map.items():
+        sessions.sort(key=lambda x: x[0])  # Sort by session_id
+        chain_lengths.append(len(sessions))
+        for i in range(len(sessions) - 1):
+            current_row_idx = sessions[i][1]
+            next_row_idx = sessions[i + 1][1]
+            
+            # Extract the value at the first token of turn 0 of the next session
+            # This represents V(s_boundary) = expected return BEFORE any next-session actions
+            next_step_ids = step_ids[next_row_idx]  # (seq_len,)
+            next_values = values[next_row_idx]  # (seq_len,)
+            
+            turn0_mask = (next_step_ids == 0)
+            if turn0_mask.any():
+                first_pos = turn0_mask.nonzero(as_tuple=True)[0][0]
+                # Discount by gamma_session for the cross-session hop
+                bootstrap_values[current_row_idx] = gamma_session * next_values[first_pos].detach()
+            else:
+                n_misses += 1
+        # Last session in chain: bootstrap_values stays 0 (terminal)
+    
+    # Debug: show chain info
+    from collections import Counter
+    len_counts = Counter(chain_lengths)
+    expected_bootstraps = sum(l - 1 for l in chain_lengths)
+    print(f"[Bootstrap Debug] {n_chains} chains, length distribution: {dict(len_counts)}, "
+          f"expected bootstraps: {expected_bootstraps}, misses: {n_misses}, "
+          f"unique roles: {set(k[0] for k in chain_map.keys())}, "
+          f"unique rollout_idxs: {set(k[2] for k in chain_map.keys())}")
+    
+    return bootstrap_values
+
+
 def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_repeat=1):
     # prepare response group
     # TODO: add other ways to estimate advantages
@@ -197,6 +294,9 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         values = data.batch['values']
         step_ids = data.batch['step_ids']
         step_mask = (step_ids != -100).float()
+        
+        # Get bootstrap values for cross-session propagation
+        bootstrap_value = data.batch.get('bootstrap_value', None)
         
         if data.meta_info.get('use_bilevel_gae', False):
             max_num_turns = data.meta_info['max_num_turns']
@@ -227,6 +327,7 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
                 lam=lam,
                 high_level_gamma=high_level_gamma,
                 max_num_turns=max_num_turns,
+                bootstrap_value=bootstrap_value,
             )
         else:
             token_level_rewards = data.batch['token_level_rewards']
@@ -234,7 +335,8 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
                                                                           values=values,
                                                                           eos_mask=step_mask,
                                                                           gamma=gamma,
-                                                                          lam=lam)
+                                                                          lam=lam,
+                                                                          bootstrap_value=bootstrap_value)
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
     elif adv_estimator == AdvantageEstimator.GRPO:
@@ -251,6 +353,20 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
                                                                         index=index)
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
+    elif adv_estimator == AdvantageEstimator.GRPO_MAXRL:
+        grpo_sparse_rewards = torch.zeros_like(data.batch['token_level_rewards'])
+        grpo_sparse_rewards[:, -1] = data.batch['turn_level_reward'].sum(-1)
+        index = data.non_tensor_batch['uid']
+        # responses = data.batch['responses']
+        # response_length = responses.size(-1)
+        # attention_mask = data.batch['attention_mask']
+        # response_mask = attention_mask[:, -response_length:]
+        step_mask = data.batch['step_ids'] != -100
+        advantages, returns = core_algos.compute_grpo_maxrl_outcome_advantage(token_level_rewards=grpo_sparse_rewards,
+                                                                        eos_mask=step_mask,
+                                                                        index=index)
+        data.batch['advantages'] = advantages
+        data.batch['returns'] = returns
     elif adv_estimator == AdvantageEstimator.REINFORCE_PLUS_PLUS:
         token_level_rewards = data.batch['token_level_rewards']
         # responses = data.batch['responses']
@@ -260,6 +376,21 @@ def compute_advantage(data: DataProto, adv_estimator, gamma=1.0, lam=1.0, num_re
         step_mask = data.batch['step_ids'] != -100
         advantages, returns = core_algos.compute_reinforce_plus_plus_outcome_advantage(
             token_level_rewards=token_level_rewards, eos_mask=step_mask, gamma=gamma)
+        data.batch['advantages'] = advantages
+        data.batch['returns'] = returns
+    elif adv_estimator == AdvantageEstimator.REINFORCE_PLUS_PLUS_BASELINE:
+        token_level_rewards = data.batch['token_level_rewards']
+        grpo_sparse_rewards = torch.zeros_like(data.batch['token_level_rewards'])
+        grpo_sparse_rewards[:, -1] = data.batch['turn_level_reward'].sum(-1)
+
+        # responses = data.batch['responses']
+        # response_length = responses.size(-1)
+        # attention_mask = data.batch['attention_mask']
+        # response_mask = attention_mask[:, -response_length:]
+        step_mask = data.batch['step_ids'] != -100
+        index = data.non_tensor_batch['uid']
+        advantages, returns = core_algos.compute_reinforce_plus_plus_baseline_outcome_advantage(
+            token_level_rewards=grpo_sparse_rewards, eos_mask=step_mask, index=index)
         data.batch['advantages'] = advantages
         data.batch['returns'] = returns
     elif adv_estimator == AdvantageEstimator.REMAX:
@@ -360,6 +491,16 @@ def merge_roles_data(data: DataProto) -> DataProto:
         named_uid_list = [f'{role}_{uid}' for uid in uid_list]
         new_uid_list.extend(named_uid_list)
     new_non_tensor_batch['uid'] = np.array(new_uid_list, dtype=object)
+    
+    # Preserve session metadata for cross-session value bootstrapping
+    for meta_key in ['sample_id', 'session_id']:
+        if meta_key in data.non_tensor_batch:
+            original_values = data.non_tensor_batch[meta_key].tolist()
+            # Duplicate for each role (same session info applies to both roles)
+            repeated_values = []
+            for role in agent_roles:
+                repeated_values.extend(original_values)
+            new_non_tensor_batch[meta_key] = np.array(repeated_values, dtype=object)
     
     merged_data = DataProto.from_dict(new_tensor_batch, non_tensors=new_non_tensor_batch, meta_info=data.meta_info)
     return merged_data
@@ -496,7 +637,7 @@ class RayReMATrainer(object):
             self.use_critic = True
         elif self.config.algorithm.adv_estimator in [
                 AdvantageEstimator.GRPO, AdvantageEstimator.REINFORCE_PLUS_PLUS, AdvantageEstimator.REMAX,
-                AdvantageEstimator.RLOO
+                AdvantageEstimator.RLOO, AdvantageEstimator.GRPO_MAXRL, AdvantageEstimator.REINFORCE_PLUS_PLUS_BASELINE
         ]:
             self.use_critic = False
         else:
@@ -701,8 +842,8 @@ class RayReMATrainer(object):
             num_workers=8,
             collate_fn=collate_fn)
 
-        # Create test dataset and dataloader if test_only mode is enabled
-        if self.config.trainer.get('test_only', False):
+        # Create test dataset and dataloader if test_only, test_before_train, or test_after_train is enabled
+        if self.config.trainer.get('test_only', False) or self.config.trainer.get('test_before_train', False) or self.config.trainer.get('test_after_train', True):
             print("INFO: test_only mode enabled, creating test dataset and dataloader")
             self.test_dataset = RLHFDataset(parquet_files=self.config.data.test_files,
                                            prompt_key=self.config.data.prompt_key,
@@ -735,7 +876,10 @@ class RayReMATrainer(object):
         print(f'Size of train dataloader: {len(self.train_dataloader)}')
 
         # inject total_training_steps to actor/critic optim_config. This is hacky.
-        total_training_steps = len(self.train_dataloader) * self.config.trainer.total_epochs
+        # With session accumulation, only ONE gradient update fires per epoch (at the final session).
+        # Using len(dataloader)*epochs would be N_sessions× too large, causing is_last_step to
+        # never trigger (final save/validation would be skipped).
+        total_training_steps = self.config.trainer.total_epochs
 
         if self.config.trainer.total_training_steps is not None:
             total_training_steps = self.config.trainer.total_training_steps
@@ -884,7 +1028,7 @@ class RayReMATrainer(object):
             else:
                 test_gen_batch = test_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx', 'epoch'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json', 'total_sessions_tokens'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json', 'cumulative_session_tokens'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'], 
                         deepcopy=True
                     )
@@ -1214,7 +1358,7 @@ class RayReMATrainer(object):
             else:
                 test_gen_batch = test_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx', 'epoch'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json', 'total_sessions_tokens'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json', 'cumulative_session_tokens'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'], 
                         deepcopy=True
                     )
@@ -1672,6 +1816,12 @@ class RayReMATrainer(object):
                 # print("[FIT] Val-only mode enabled. Exiting after validation.")
                 return
 
+        # perform test evaluation before training
+        if self.test_dataloader is not None and self.config.trainer.get('test_before_train', False):
+            test_metrics = self._test()
+            pprint(f'Initial test metrics: {test_metrics}')
+            logger.log(data=test_metrics, step=self.global_steps)
+
         # we start from step 1
         self.global_steps += 1
         last_val_metrics = None
@@ -1725,6 +1875,13 @@ class RayReMATrainer(object):
             # print(f"\n{'='*80}")
             # print(f"EPOCH {epoch + 1}/{self.config.trainer.total_epochs}")
             # print(f"{'='*80}")
+            
+            # --- Initialize Inner Sampling Buffers ---
+            inner_sampling_fraction = self.config.actor_rollout_ref.rollout.get('inner_sampling_fraction', 0.0)
+            inner_n = self.config.actor_rollout_ref.rollout.get('inner_n', 1)
+            inner_sampling_buffer = []
+            evaluated_inner_batches = []
+            
             for batch_dict in self.train_dataloader:
                 # print(f"\n{'*'*80}")
                 # print(f"TRAINING STEP {self.global_steps}/{self.total_training_steps}")
@@ -1761,7 +1918,7 @@ class RayReMATrainer(object):
                         pass
 
                 # sample from replay and merge with current batch if requested
-                replay_ratio = float(self.config.trainer.get('replay_mix_ratio', 0.5))
+                replay_ratio = float(self.config.trainer.get('replay_mix_ratio', 0.0))
                 n_replay = int(len(batch_dict['question']) * replay_ratio)
                 if n_replay > 0 and getattr(self, 'replay_buffer', None) and len(self.replay_buffer.buffer) > 0:
                     sampled = self.replay_buffer.sample(n_replay, strategy=self.config.trainer.get('replay_strategy', 'uniform'))
@@ -1842,10 +1999,44 @@ class RayReMATrainer(object):
                     # because verl originally calls this 'chat'
                     gen_batch = new_batch.select(
                         batch_keys=['rollout_idx', 'batch_idx', 'epoch'], 
-                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json', 'total_sessions_tokens'], 
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json', 'cumulative_session_tokens'], 
                         meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'],
                         deepcopy=True
                     )
+                
+                # --- INNER SAMPLING COLLECTION PHASE ---
+                if inner_sampling_fraction > 0.0:
+                    import random
+                    # Decide at the SESSION level whether to do inner sampling
+                    if random.random() < inner_sampling_fraction:
+                        # We decided to inner-sample this session!
+                        # Now, for each unique question/sample in the batch, pick EXACTLY ONE 
+                        # of its parallel rollouts to branch off of for inner GRPO.
+                        sampled_indices = []
+                        batch_idxs = gen_batch.batch['batch_idx']
+                        unique_bidxs = np.unique(batch_idxs)
+                        
+                        for bidx in unique_bidxs:
+                            # Find all parallel rollouts for this specific batch item
+                            idx_for_bidx = np.where(batch_idxs == bidx)[0]
+                            if len(idx_for_bidx) > 0:
+                                sampled_indices.append(random.choice(idx_for_bidx))
+                                
+                        if len(sampled_indices) > 0:
+                            inner_item = new_batch[sampled_indices]
+                            # Assign completely new uids for these inner samples to isolate them
+                            inner_item.non_tensor_batch['uid'] = np.array([f"inner_{uuid.uuid4()}" for _ in range(len(inner_item.batch))], dtype=object)
+                            # Keep the selected normal rollout index for memory loading.
+                            if 'rollout_idx' in inner_item.batch:
+                                source_rollout_idx = inner_item.batch['rollout_idx']
+                                if isinstance(source_rollout_idx, torch.Tensor):
+                                    inner_item.batch['source_rollout_idx'] = source_rollout_idx.clone()
+                                else:
+                                    inner_item.batch['source_rollout_idx'] = np.copy(source_rollout_idx)
+                            # Remove or reset rollout_idx because we will repeat them for inner_n
+                            if 'rollout_idx' in inner_item.batch:
+                                inner_item.batch.pop('rollout_idx')
+                            inner_sampling_buffer.append(inner_item)
                 # print(f"[STEP {self.global_steps}] Generation batch prepared with {len(gen_batch.batch)} samples")
                 # print(f"[STEP {self.global_steps}] gen_batch.batch keys: {list(gen_batch.batch.keys())}")
                 # print(f"[STEP {self.global_steps}] gen_batch.non_tensor_batch keys: {list(gen_batch.non_tensor_batch.keys())}")
@@ -1978,6 +2169,106 @@ class RayReMATrainer(object):
                             
                     # print(f"[STEP {self.global_steps}] Found {len(latest_seen)} unique conversations (terminal states).")
                     
+                    # --- 1.15 INNER SAMPLING BATCH EXECUTION ---
+                    # Always executed exactly once per step (we only reach this point at the final chunk).
+                    # inner_sampling_buffer accumulates across all sessions; flush it here.
+                    total_inner_states = sum(len(b.batch) for b in inner_sampling_buffer)
+
+                    if total_inner_states > 0:
+                        # print(f"[STEP {self.global_steps}] Executing Inner Sampling Batch...")
+                        inner_batch_full = DataProto.concat(inner_sampling_buffer)
+                        # DataProto.concat keeps the first meta_info by reference.
+                        # Isolate before any in-place union/meta mutations in the inner branch.
+                        inner_batch_full.meta_info = deepcopy(inner_batch_full.meta_info)
+                        inner_sampling_buffer.clear()
+                        
+                        # Repeat inner samples mapped to the full context
+                        inner_batch_full = inner_batch_full.repeat(repeat_times=inner_n, interleave=True)
+                        n_inner_rollouts = inner_n
+                        inner_rollout_idx = torch.arange(0, n_inner_rollouts).repeat(len(inner_batch_full.batch) // n_inner_rollouts)
+                        inner_batch_full.batch['rollout_idx'] = inner_rollout_idx.numpy()
+
+                        # Create the subset generator batch exactly like standard gen_batch
+                        inner_gen_batch = inner_batch_full.select(
+                            batch_keys=['rollout_idx', 'source_rollout_idx', 'batch_idx', 'epoch'], 
+                            non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json', 'cumulative_session_tokens'], 
+                            meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'],
+                            deepcopy=True
+                        )
+
+                        # DataProto often shares meta_info references across views/concats;
+                        # isolate inner branch mutations from normal rollout state.
+                        inner_gen_batch.meta_info = deepcopy(inner_gen_batch.meta_info)
+
+                        # Set standard validation generation params
+                        inner_gen_batch.meta_info.update({
+                            'eos_token_id': self.tokenizer.eos_token_id,
+                            'pad_token_id': self.tokenizer.pad_token_id,
+                            'recompute_log_prob': False,
+                            'do_sample': self.config.actor_rollout_ref.rollout.val_kwargs.do_sample, # Use validation kwargs for inner sampling
+                            'validate': False, # Treat as training to keep graph attached later
+                            'memory_snapshot_suffix': 'inner',
+                        })
+
+                        # Pad & Generate
+                        inner_gen_batch_padded, pad_size = pad_dataproto_to_divisor(inner_gen_batch, self.actor_rollout_wg.world_size)
+                        with _timer('gen_inner', timing_raw):
+                            inner_output_padded = self.actor_rollout_wg.multi_turn_generate_sequences(inner_gen_batch_padded)
+                        inner_output = unpad_dataproto(inner_output_padded, pad_size=pad_size)
+                        inner_output.meta_info = deepcopy(inner_output.meta_info)
+
+                        # Pop generation-specific keys from both metainfos to prevent union conflicts
+                        for k in ['eos_token_id', 'pad_token_id', 'recompute_log_prob', 'do_sample', 'validate']:
+                            inner_gen_batch.meta_info.pop(k, None)
+                            inner_output.meta_info.pop(k, None)
+
+                        # Union output with FULL prompt data
+                        inner_eval_batch = inner_batch_full.union(inner_output)
+                        inner_eval_batch.meta_info = deepcopy(inner_eval_batch.meta_info)
+                        
+                        # Evaluate QA Reward on inner_eval_batch
+                        inner_eval_batch.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
+                        inner_eval_batch.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
+                        # Inner reward must read/write the isolated inner namespace only.
+                        inner_eval_batch.meta_info['memory_snapshot_suffix'] = 'inner'
+                        with _timer('reward_inner', timing_raw):
+                            # This evaluates the turn immediately
+                            reward_tensor_map_inner = self.reward_fn(inner_eval_batch, compression_penalty=self.config.trainer.compression_penalty)
+                        
+                        # Assign turn-level reward strictly per role (no cross-role fallback).
+                        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                        max_turns = self.config.actor_rollout_ref.rollout.max_num_turns
+                        bsz = len(inner_eval_batch.batch)
+
+                        curr_num_turns = inner_eval_batch.non_tensor_batch['num_turns']
+                        
+                        agent_roles = inner_eval_batch.meta_info.get('agent_roles', ['meta_thinking', 'reasoning'])
+                        
+                        for role in agent_roles:
+                            role_reward_key = f'{role}_turn_level_reward'
+                            assert role_reward_key in reward_tensor_map_inner, (
+                                f"Inner reward integrity failure: missing '{role_reward_key}' in reward tensor map."
+                            )
+                            inner_rewards_all = reward_tensor_map_inner[role_reward_key].sum(dim=-1).to(device)  # (B,)
+                            propagated_reward = torch.zeros((bsz, max_turns), device=device)
+                            
+                            for r_idx in range(bsz):
+                                last_turn_idx = curr_num_turns[r_idx] - 1
+                                if 0 <= last_turn_idx < max_turns:
+                                    propagated_reward[r_idx, last_turn_idx] = inner_rewards_all[r_idx]
+
+                            inner_eval_batch.batch[role_reward_key] = propagated_reward
+                            turn_mask = verl_F.get_turn_mask(propagated_reward, curr_num_turns)
+                            key_return = role_reward_key.replace('reward', 'return')
+                            inner_eval_batch.batch[key_return] = core_algos.compute_turn_level_return(
+                                propagated_reward, turn_mask, self.config.algorithm.gamma_turn_level)
+
+                        # Keep TensorDict schema aligned with normal batches before final concat.
+                        if 'source_rollout_idx' in inner_eval_batch.batch.keys():
+                            inner_eval_batch.batch.pop('source_rollout_idx')
+
+                        evaluated_inner_batches.append(inner_eval_batch)
+
                     # 1.2 Group and Extract Terminal States
                     # We need to construct `terminal_batch` containing these final states.
                     # We also need `terminal_keys_ordered` to map the resulting rows back to their IDs for reward assignment.
@@ -2011,6 +2302,7 @@ class RayReMATrainer(object):
                         terminal_keys_ordered.extend(keys)
                         
                     terminal_batch = DataProto.concat(terminal_sub_batches)
+                    terminal_batch.meta_info = deepcopy(terminal_batch.meta_info)
                     # print(f"[STEP {self.global_steps}] Terminal batch constructed with size {len(terminal_batch.batch)}")
 
 
@@ -2023,6 +2315,8 @@ class RayReMATrainer(object):
 
                         terminal_batch.meta_info['mask_unfinished_reward'] = self.config.reward_model.mask_unfinished_reward
                         terminal_batch.meta_info['use_format_reward'] = self.config.reward_model.get('use_format_reward', False)
+                        # Terminal reward must always use the normal snapshot namespace.
+                        terminal_batch.meta_info['memory_snapshot_suffix'] = ''
                         
                         reward_tensor_map = self.reward_fn(terminal_batch, compression_penalty=self.config.trainer.compression_penalty)
                         # print(f"[STEP {self.global_steps}] Reward computed. Keys: {list(reward_tensor_map.keys())}")
@@ -2040,7 +2334,12 @@ class RayReMATrainer(object):
                                     metrics[f'train/{cat_name}_bleu'] = bleu_sum / count
                                     metrics[f'train/{cat_name}_count'] = count
                         
-                        keys_to_pop = [key for key in reward_tensor_map.keys() if not key.endswith('_turn_level_reward') and key != 'per_session_f1']
+                        # Keep per-session tensors for propagation below; only pop true metric-only keys.
+                        keys_to_pop = [
+                            key for key in reward_tensor_map.keys()
+                            if not key.endswith('_turn_level_reward')
+                            and key not in ('per_session_f1', 'cumulative_per_session_f1')
+                        ]
                         scalar_metric_keys = [
                             'memory_size', 'memory_insert_count', 'memory_delete_count', 'memory_token_count', 'memory_compression_ratio',
                             'memory_update_count', 'memory_ops', 'evidence_precision', 
@@ -2058,25 +2357,31 @@ class RayReMATrainer(object):
                                 metrics[f'train/{key}'] = mean_val
                                 if key in ['acc', 'bleu', 'evidence']:
                                     metrics[f'critic/{key}'] = mean_val
+
+                        if 'per_session_f1' in reward_tensor_map:
+                            metrics['train/per_session_f1'] = reward_tensor_map['per_session_f1'].float().mean().item()
+                        if 'cumulative_per_session_f1' in reward_tensor_map:
+                            metrics['train/cumulative_per_session_f1'] = reward_tensor_map['cumulative_per_session_f1'].float().mean().item()
                         
-                        # --- 3. Build Global Reward Map ---
-                        # We use 'reasoning_turn_level_reward' as the main reward signal
-                        global_reward_map = {} # (sample_id, rollout_idx) -> reward_value (float)
+                        # --- 3. Build Global Reward Maps ---
+                        # Build one strict outcome map per role.
+                        global_reward_map_by_role = {} # role -> {(sample_id, rollout_idx): reward_value (float)}
                         global_per_session_map = {} # (sample_id, rollout_idx) -> per_session_row (Tensor)
                         
                         agent_roles = terminal_batch.meta_info['agent_roles']
-                        main_reward_key = 'reasoning_turn_level_reward'
-                        
-                        if main_reward_key in reward_tensor_map:
-                            rewards_all = reward_tensor_map[main_reward_key] # (B_term, T)
+
+                        for role in agent_roles:
+                            role_reward_key = f'{role}_turn_level_reward'
+                            assert role_reward_key in reward_tensor_map, (
+                                f"Reward integrity failure: missing '{role_reward_key}' in terminal reward tensor map."
+                            )
+                            rewards_all = reward_tensor_map[role_reward_key] # (B_term, T)
                             outcome_rewards_all = rewards_all.sum(dim=-1) # (B_term,)
-                            
+
+                            role_map = {}
                             for i, key in enumerate(terminal_keys_ordered):
-                                global_reward_map[key] = outcome_rewards_all[i].item()
-                                
-                            # print(f"[STEP {self.global_steps}] Global reward map built with {len(global_reward_map)} entries.")
-                        # else:
-                            # print(f"[WARNING] '{main_reward_key}' not found in reward_tensor_map.")
+                                role_map[key] = outcome_rewards_all[i].item()
+                            global_reward_map_by_role[role] = role_map
 
 
                         reward_type = self.config.trainer.get('rewardtype', 'global')
@@ -2113,6 +2418,35 @@ class RayReMATrainer(object):
                         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
                         max_turns = self.config.actor_rollout_ref.rollout.max_num_turns
                         
+                        per_session_hits = 0
+                        invalid_session_hits = 0
+                        op_shaping_session_hits = 0
+
+                        insert_penalty = float(self.config.trainer.get('insert_penalty', 0.0))
+                        update_bonus = float(self.config.trainer.get('update_bonus', 0.0))
+                        delete_bonus = float(self.config.trainer.get('delete_bonus', 0.0))
+
+                        def _extract_scalar(value, field_name: str):
+                            if isinstance(value, torch.Tensor):
+                                if value.numel() != 1:
+                                    raise TypeError(
+                                        f"Expected scalar for {field_name}, got tensor with shape={tuple(value.shape)}"
+                                    )
+                                return value.item()
+                            if isinstance(value, np.ndarray):
+                                if value.size != 1:
+                                    raise TypeError(
+                                        f"Expected scalar for {field_name}, got ndarray with shape={value.shape}"
+                                    )
+                                return value.reshape(-1)[0].item() if hasattr(value.reshape(-1)[0], 'item') else value.reshape(-1)[0]
+                            if isinstance(value, (list, tuple)):
+                                if len(value) != 1:
+                                    raise TypeError(
+                                        f"Expected scalar for {field_name}, got sequence with len={len(value)}"
+                                    )
+                                return _extract_scalar(value[0], field_name)
+                            return value
+
                         for b_idx, target_batch in enumerate(all_batches):
                             # info for this batch
                             curr_sample_ids = target_batch.non_tensor_batch['sample_id']
@@ -2120,49 +2454,98 @@ class RayReMATrainer(object):
                             if isinstance(curr_rollout_idxs, torch.Tensor):
                                 curr_rollout_idxs = curr_rollout_idxs.cpu().tolist()
                             curr_num_turns = target_batch.non_tensor_batch['num_turns']
-                            
-                            # Determine session index for this batch
-                            # Note: chunk_id is 1-based index (Session 1, Session 2...)
-                            sess_idx_1based = target_batch.non_tensor_batch['chunk_id'][0]
-                            if isinstance(sess_idx_1based, torch.Tensor):
-                                sess_idx_1based = sess_idx_1based.item()
-                            sess_idx_0based = int(sess_idx_1based) - 1
-                            
+
+                            # Determine session index per sample (chunk_id is 1-based: Session 1, Session 2...)
+                            chunk_ids_raw = target_batch.non_tensor_batch['chunk_id']
+                            if isinstance(chunk_ids_raw, torch.Tensor):
+                                chunk_ids = chunk_ids_raw.cpu().tolist()
+                            elif isinstance(chunk_ids_raw, np.ndarray):
+                                chunk_ids = chunk_ids_raw.tolist()
+                            elif isinstance(chunk_ids_raw, (list, tuple)):
+                                chunk_ids = list(chunk_ids_raw)
+                            else:
+                                chunk_ids = [chunk_ids_raw] * len(curr_sample_ids)
+                            if not isinstance(chunk_ids, list):
+                                chunk_ids = [chunk_ids] * len(curr_sample_ids)
+                            if len(chunk_ids) != len(curr_sample_ids):
+                                chunk_ids = [chunk_ids[0]] * len(curr_sample_ids)
+
+                            def _normalize_to_list(raw_value, expected_len: int):
+                                if isinstance(raw_value, torch.Tensor):
+                                    values = raw_value.cpu().tolist()
+                                elif isinstance(raw_value, np.ndarray):
+                                    values = raw_value.tolist()
+                                elif isinstance(raw_value, (list, tuple)):
+                                    values = list(raw_value)
+                                else:
+                                    values = [raw_value] * expected_len
+
+                                if not isinstance(values, list):
+                                    values = [values] * expected_len
+                                if len(values) != expected_len:
+                                    values = [values[0]] * expected_len
+                                return values
+
+                            insert_counts = _normalize_to_list(
+                                target_batch.non_tensor_batch.get('mem_insert_successful', 0), len(curr_sample_ids)
+                            )
+                            delete_counts = _normalize_to_list(
+                                target_batch.non_tensor_batch.get('mem_delete_successful', 0), len(curr_sample_ids)
+                            )
+                            update_counts = _normalize_to_list(
+                                target_batch.non_tensor_batch.get('mem_update_successful', 0), len(curr_sample_ids)
+                            )
+
                             bsz = len(target_batch.batch)
-                            
+
                             # For each role, apply rewards
                             for role in agent_roles:
                                 role_reward_key = f'{role}_turn_level_reward'
+                                role_global_reward_map = global_reward_map_by_role.get(role)
+                                assert role_global_reward_map is not None, (
+                                    f"Reward propagation integrity failure: missing global reward map for role '{role}'."
+                                )
                                 propagated_reward = torch.zeros((bsz, max_turns), device=device)
                                 
                                 for r_idx in range(bsz):
-                                    key = (curr_sample_ids[r_idx], int(curr_rollout_idxs[r_idx]))
+                                    rollout_idx_scalar = _extract_scalar(curr_rollout_idxs[r_idx], 'rollout_idx')
+                                    key = (curr_sample_ids[r_idx], int(rollout_idx_scalar))
+                                    sess_idx_1based = _extract_scalar(chunk_ids[r_idx], 'chunk_id')
+                                    sess_idx_0based = int(sess_idx_1based) - 1
                                     
-                                    reward_val = 0.0
-                                    
+                                    if key not in role_global_reward_map:
+                                        raise AssertionError(
+                                            f"Reward propagation integrity failure: missing global reward for role={role}, key={key}."
+                                        )
+
                                     # Strategy A: Use per-session F1 if available (Dense Reward)
                                     if key in global_per_session_map:
                                         per_session_row = global_per_session_map[key]
-                                        # Use the value corresponding to *this batch's* session index
-                                        # Check bounds just in case
-                                        if sess_idx_0based < per_session_row.shape[0]:
-                                            reward_val = per_session_row[sess_idx_0based].item()
-                                    
-                                    # Strategy B: Fallback to outcome reward (Sparse/Global Reward)
-                                    elif key in global_reward_map:
-                                        # If we don't have per-session breakdown, we assign the FINAL outcome reward
-                                        # to the LAST turn of the session? Or should we only assign it at the very end?
-                                        # Usually for PPO with sparse reward, we assign it at the end of trajectory.
-                                        # But here we are doing multi-session.
-                                        # If we are in the terminal batch for this key, assigns it.
-                                        # But wait, 'target_batch' might NOT be the terminal batch for this key 
-                                        # (e.g. if conversation continued).
-                                        # If this conversation ENDED at this batch, we can assign reward.
-                                        # REVISION: Since sessions are treated as independent samples in the PPO buffer
-                                        # (compute_advantage processes each row independently), we MUST assign the 
-                                        # final outcome reward to ALL sessions if we want the signal to reach earlier sessions.
-                                        # Otherwise, Session 1 gets 0 reward and learns nothing about the outcome.
-                                        reward_val = global_reward_map[key]
+                                        if not (0 <= sess_idx_0based < per_session_row.shape[0]):
+                                            invalid_session_hits += 1
+                                            raise AssertionError(
+                                                f"Reward propagation integrity failure: invalid session index {sess_idx_0based} "
+                                                f"for key={key} with per_session length={per_session_row.shape[0]}."
+                                            )
+                                        reward_val = per_session_row[sess_idx_0based].item()
+                                        if update_bonus > 0.0 or delete_bonus > 0.0:
+                                            inserts = float(_extract_scalar(insert_counts[r_idx], 'mem_insert_successful'))
+                                            deletes = float(_extract_scalar(delete_counts[r_idx], 'mem_delete_successful'))
+                                            updates = float(_extract_scalar(update_counts[r_idx], 'mem_update_successful'))
+                                            # Ratio-based shaping: reward the *proportion* of ops that are update/delete.
+                                            # This prevents reward hacking (spamming ops to inflate raw-count bonuses)
+                                            # and avoids destabilizing the QA signal with an unbounded insert penalty.
+                                            total_ops = inserts + updates + deletes
+                                            if total_ops > 0:
+                                                update_ratio = updates / total_ops
+                                                delete_ratio = deletes / total_ops
+                                                op_bonus = (update_bonus * update_ratio) + (delete_bonus * delete_ratio)
+                                                reward_val += min(op_bonus, 0.1)
+                                            op_shaping_session_hits += 1
+                                        per_session_hits += 1
+                                    else:
+                                        # Strategy B: strict outcome reward (no fallback chains)
+                                        reward_val = float(role_global_reward_map[key])
                                             
                                     # Assign to the last turn of this session
                                     last_turn_idx = curr_num_turns[r_idx] - 1
@@ -2177,16 +2560,33 @@ class RayReMATrainer(object):
                                 target_batch.batch[key_return] = core_algos.compute_turn_level_return(
                                     propagated_reward, turn_mask, self.config.algorithm.gamma_turn_level)
 
+                        metrics['train/reward_per_session_hits'] = float(per_session_hits)
+                        metrics['train/reward_invalid_session_hits'] = float(invalid_session_hits)
+                        metrics['train/reward_op_shaping_session_hits'] = float(op_shaping_session_hits)
+
+                        assert invalid_session_hits == 0, (
+                            f"Reward propagation integrity failure: invalid_session_hits={invalid_session_hits}. "
+                            "At least one sample had session index outside per-session reward bounds."
+                        )
+
                         # Concatenate everything for PPO update
                         # print(f"[STEP {self.global_steps}] Concatenating {len(all_batches)} batches for update...")
-                        batch = DataProto.concat(all_batches)
+                        batch = DataProto.concat(all_batches + evaluated_inner_batches)
                         self.accumulated_batches = [] # Clear accumulation
+                        evaluated_inner_batches = []
                         # print(f"[STEP {self.global_steps}] Mega-batch size: {len(batch.batch)}")
 
                     with _timer('adv', timing_raw):
                         # print(f"\n[STEP {self.global_steps}] Computing advantages (Trajectory Aggregated)...")
                         # Merge different role data into a single DataProto
                         merged_batch = merge_roles_data(batch)
+
+                        # Recalculate global_token_num for the entire merged mega-batch
+                        # This ensures the metadata has the correct length (2 * MegaBatchSize) 
+                        # and accurately reflects all tokens across all sessions and inner samples.
+                        merged_batch.meta_info['global_token_num'] = (
+                            merged_batch.batch['attention_mask'].view(len(merged_batch.batch), -1).sum(-1)
+                        ).tolist()
 
                         # recompute old_log_probs (on merged data)
                         with _timer('old_log_prob', timing_raw):
@@ -2222,6 +2622,18 @@ class RayReMATrainer(object):
                             with _timer('values', timing_raw):
                                 values = self.critic_wg.compute_values(batch)
                                 batch = batch.union(values)
+                            
+                            # Compute cross-session bootstrap values
+                            # For each non-terminal session, bootstrap from the next session's
+                            # first turn critic value instead of treating the boundary as terminal
+                            gamma_session = self.config.algorithm.get('gamma_session_level', 1.0)
+                            bootstrap_vals = compute_bootstrap_values(batch, gamma_session=gamma_session)
+                            batch.batch['bootstrap_value'] = bootstrap_vals
+                            n_nonzero = (bootstrap_vals != 0).sum().item()
+                            print(f"[STEP {self.global_steps}] Cross-session bootstrap (gamma_session={gamma_session}): "
+                                  f"{n_nonzero} non-zero / {len(bootstrap_vals)} total rows "
+                                  f"(mean of non-zero={bootstrap_vals[bootstrap_vals != 0].mean():.4f})" if n_nonzero > 0 
+                                  else f"[STEP {self.global_steps}] Cross-session bootstrap: no bootstrapping (single session or no critic)")
 
                         # print(f"[STEP {self.global_steps}] Computing advantages with {self.config.algorithm.adv_estimator}...")
                         batch.meta_info['gamma_turn_level'] = self.config.algorithm.gamma_turn_level
@@ -2286,7 +2698,7 @@ class RayReMATrainer(object):
                                 
                         metrics.update(val_metrics)
 
-                        max_patience = self.config.trainer.get('early_stop_patience', 0)
+                        max_patience = self.config.trainer.get('early_stop_patience', 3)
                         if max_patience > 0 and self.patience_counter >= max_patience:
                             print(f"\n[STEP {self.global_steps}] Early stopping triggered! Validation accuracy hasn't improved for {self.patience_counter} evaluations. Best acc: {self.best_val_acc:.4f} at step {self.best_global_step}.")
                             is_last_step = True
@@ -2319,10 +2731,11 @@ class RayReMATrainer(object):
                 total_prompt_cnt = 0
 
                 if is_last_step:
-                    # print(f"\n{'='*80}")
-                    # print(f"TRAINING COMPLETE")
-                    # print(f"{'='*80}")
-                    # pprint(f'Final validation metrics: {last_val_metrics}')
+                    # run test evaluation at end of training
+                    if self.test_dataloader is not None and self.config.trainer.get('test_after_train', True):
+                        test_metrics = self._test()
+                        pprint(f'Final test metrics: {test_metrics}')
+                        logger.log(data=test_metrics, step=self.global_steps)
                     del logger
                     try:
                         # flush wandb pending logs

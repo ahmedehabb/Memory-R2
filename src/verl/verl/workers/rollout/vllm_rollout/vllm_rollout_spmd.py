@@ -377,14 +377,19 @@ class vLLMRollout(BaseRollout):
                     turns_data = turns_data[start_idx:end_idx]
                     # print(f"Generating fact prompt for iteration {current_turn+1}/{max_turns}, processing turns {start_idx}-{end_idx-1} ({len(turns_data)} turns)")
 
-            prompt = "Analyze the new conversation turns below and generate the new facts.\n```{turns}```"
+            prompt = (
+                "Analyze ONLY the following new dialogue turns and extract new stable facts.\n"
+                "The turns are speaker-tagged and already formatted.\n"
+                "New turns:\n"
+                "```\n{turns}\n```"
+            )
             formatted_turns = format_turns_for_prompt(turns_data)
             prompt = prompt.format(turns=formatted_turns)
             prompts.append(prompt)
 
         return prompts
     
-    def generate_memory_prompts(self, sample_ids, chunk_ids, facts_responses, epochs, split, conv_memories=None, rollout_batch_indices=None) -> Tuple[List[str], List[Memory], MemoryManager]:
+    def generate_memory_prompts(self, sample_ids, chunk_ids, facts_responses, epochs, split, conv_memories=None, rollout_batch_indices=None, snapshot_suffix: str = "") -> Tuple[List[str], List[Memory], MemoryManager]:
         """Load memory snapshots before multi-turn generation and generate memory-augmented prompts for each sample.
         
         Args:
@@ -413,8 +418,16 @@ class vLLMRollout(BaseRollout):
                 # Load memory from previous chunk if it exists
                 if chunk_id > 1:  # chunk_id starts from 1
                     prev_chunk_id = chunk_id - 1
-                    # Load the memory snapshot that the previous chunk_id had saved as our starting memory state
-                    loaded_memory = shared_manager.get_snapshot(conv_id, prev_chunk_id, epoch, split, index_in_batch)
+                    # Always load lineage from normal rollouts.
+                    # Inner sampling only namespaces saves to avoid overwriting normal snapshots.
+                    loaded_memory = shared_manager.get_snapshot(
+                        conv_id,
+                        prev_chunk_id,
+                        epoch,
+                        split,
+                        index_in_batch,
+                        snapshot_suffix="",
+                    )
                     if loaded_memory is not None:
                         conv_memories.append(loaded_memory)
                         # print(f"Loaded memory for conv {conv_id} from chunk {prev_chunk_id}")
@@ -516,6 +529,7 @@ class vLLMRollout(BaseRollout):
         # Use rollout indices computed AFTER repeating (not batch_idx which is set before repeating)
         rollout_batch_indices = prompts.batch['rollout_idx'].cpu().numpy().tolist()
         
+        snapshot_suffix = prompts.meta_info.get("memory_snapshot_suffix", "")
         for i in range(len(sample_ids)):
             conv_id = sample_ids[i]
             chunk_id = prompts.non_tensor_batch["chunk_id"][i]
@@ -531,7 +545,8 @@ class vLLMRollout(BaseRollout):
                 chunk_id,
                 prompts.batch["epoch"][i],
                 prompts.meta_info["split"],
-                index_in_batch=global_idx
+                index_in_batch=global_idx,
+                snapshot_suffix=snapshot_suffix,
             )
             # print(f"Saved memory snapshot for conv {conv_id}, chunk {chunk_id} at global index {global_idx}")
 
@@ -955,6 +970,16 @@ class vLLMRollout(BaseRollout):
                 # print(f"  Generating responses...")
                 current_outputs, num_gen_tokens, stop_reasons, resp_lens = self._generate_role_responses(
                     prompt_proto, tokenizer, response_length, **kwargs)
+                if not (
+                    len(current_outputs) == len(unfinished_indices)
+                    and len(num_gen_tokens) == len(unfinished_indices)
+                    and len(stop_reasons) == len(unfinished_indices)
+                ):
+                    raise RuntimeError(
+                        "Mismatch between unfinished indices and generation outputs: "
+                        f"unfinished={len(unfinished_indices)}, outputs={len(current_outputs)}, "
+                        f"num_gen_tokens={len(num_gen_tokens)}, stop_reasons={len(stop_reasons)}"
+                    )
                 # print(f"  Generated {len(current_outputs)} responses")
                 # print(f"  Sample output [0]: {current_outputs[0]}..." if current_outputs else "  No outputs")
                 # print(f"  Sample num_gen_tokens [0]: {num_gen_tokens[0]}" if num_gen_tokens else "  No tokens")
@@ -969,7 +994,10 @@ class vLLMRollout(BaseRollout):
                     # Filter ALL inputs to unfinished samples
                     unfinished_sample_ids = [prompts.non_tensor_batch["sample_id"][idx] for idx in unfinished_indices]
                     unfinished_chunk_ids = [prompts.non_tensor_batch["chunk_id"][idx] for idx in unfinished_indices]
-                    unfinished_rollout_batch_indices = [prompts.batch["rollout_idx"][idx] for idx in unfinished_indices]
+                    # source_rollout_idx is the index of the sample in the original rollout batch (before filtering), 
+                    # which is needed for loading the correct memory snapshots. If source_rollout_idx is not available, fallback to rollout_idx which should be the same in this context since we are not doing any shuffling or reordering.
+                    load_rollout_indices = prompts.batch["source_rollout_idx"] if "source_rollout_idx" in prompts.batch.keys() else prompts.batch["rollout_idx"]
+                    unfinished_rollout_batch_indices = [load_rollout_indices[idx] for idx in unfinished_indices]
                     unfinished_epochs = [prompts.batch["epoch"][idx] for idx in unfinished_indices]
                     unfinished_conv_memories = None
                     if conv_memories is not None:
@@ -984,6 +1012,7 @@ class vLLMRollout(BaseRollout):
                         split=prompts.meta_info["split"],
                         conv_memories=unfinished_conv_memories,
                         rollout_batch_indices=unfinished_rollout_batch_indices,
+                        snapshot_suffix=prompts.meta_info.get("memory_snapshot_suffix", ""),
                     )
                     
                     # Rebuild full arrays for next iteration
@@ -1007,15 +1036,19 @@ class vLLMRollout(BaseRollout):
                     rewards, ops_per_sample, batch_op_stats = self._execute_memory_operations(
                         prompts, conv_memories, shared_manager, current_outputs, unfinished_indices, i_turn
                     )
+                    if len(conv_memories) != len(mem_op_stats['insert_successful']):
+                        raise RuntimeError(
+                            f"conv_memories length mismatch: {len(conv_memories)} != {len(mem_op_stats['insert_successful'])}"
+                        )
                     # Accumulate operation statistics for unfinished samples
                     for i, idx in enumerate(unfinished_indices):
                         for key in mem_op_stats.keys():
                             if key != 'dia_ids_affected_per_turn':  # Skip this one, handled separately
-                                mem_op_stats[key][idx] += batch_op_stats[key][i]
+                                mem_op_stats[key][idx] += batch_op_stats[key][idx]
                     
                     # For dia_ids_affected_per_turn, extend the list instead of adding
                     for i, idx in enumerate(unfinished_indices):
-                        mem_op_stats['dia_ids_affected_per_turn'][idx].extend(batch_op_stats['dia_ids_affected_per_turn'][i])
+                        mem_op_stats['dia_ids_affected_per_turn'][idx].extend(batch_op_stats['dia_ids_affected_per_turn'][idx])
                 
                 # XXX(ziyu): remove finish flag in output for reasoning agent here
                 #  consider move to a post-processing function
@@ -1087,6 +1120,9 @@ class vLLMRollout(BaseRollout):
             memory_operations_per_sample: List of lists of dicts - recorded operations per sample.
             operation_stats: Dict with per-sample operation statistics for each type.
         """
+        if memories is None:
+            raise RuntimeError("memories must be initialized before executing memory operations")
+
         rewards = []
         # Per-sample recorded operations (parsed from LLM)
         memory_operations_per_sample: list[list[dict]] = [[] for _ in range(len(memories))]
@@ -1107,6 +1143,21 @@ class vLLMRollout(BaseRollout):
         # If unfinished_indices not provided, assume all samples
         if unfinished_indices is None:
             unfinished_indices = list(range(len(memories)))
+
+        if len(response_texts) != len(unfinished_indices):
+            raise RuntimeError(
+                "response_texts must align with unfinished_indices: "
+                f"response_texts={len(response_texts)}, unfinished_indices={len(unfinished_indices)}"
+            )
+
+        if len(set(unfinished_indices)) != len(unfinished_indices):
+            raise RuntimeError("unfinished_indices contains duplicate indices")
+
+        for idx in unfinished_indices:
+            if idx < 0 or idx >= len(memories):
+                raise RuntimeError(
+                    f"unfinished index out of range: idx={idx}, valid_range=[0, {len(memories) - 1}]"
+                )
         
         # Create mapping from unfinished index to response_texts index
         idx_to_response_idx = {idx: i for i, idx in enumerate(unfinished_indices)}
