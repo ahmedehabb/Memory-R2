@@ -161,9 +161,9 @@ fi
 export DATA_SEED=$(echo "$JOB_ID" | cksum | awk '{print $1}')
 echo "Generated DATA_SEED: $DATA_SEED"
 
-STAGES=(32)
-EPOCHS_PER_STAGE=(20)
-QA_TOP_K_PER_STAGE=(80)  # per speaker: 8-sess=30, 16-sess=50, 32-sess=80
+STAGES=(8)
+EPOCHS_PER_STAGE=(5)
+QA_TOP_K_PER_STAGE=(30)  # per speaker: 8-sess=30, 16-sess=50, 32-sess=80
 INNER_GPRO_FRAC=0.25
 
 for i in "${!STAGES[@]}"; do
