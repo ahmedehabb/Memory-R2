@@ -15,7 +15,7 @@ SERVER_WAIT_TIMEOUT=${SERVER_WAIT_TIMEOUT:-600}
 # ---------------------------------------------------------------------------
 # Common environment
 # ---------------------------------------------------------------------------
-export DATASET_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/processed
+export DATASET_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/processed_${JOB_ID}
 export JOB_ID=${SLURM_JOB_ID:-local_$(date +%Y%m%d_%H%M%S)}
 export LOG_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/logs/$JOB_ID
 export TMPDIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/tmp
@@ -176,7 +176,7 @@ for i in "${!STAGES[@]}"; do
     export HYDRA_RUN_DIR=$TMPDIR/hydra_${STAGE_EXP_NAME}
     mkdir -p $HYDRA_RUN_DIR
 
-    python data/locomo/data_preprocess.py --max_sessions $STAGE_SESSIONS --train_convs $NUM_TRAIN_CONVS --val_convs $NUM_VAL_CONVS --test_convs $NUM_TEST_CONVS --seed $DATA_SEED
+    python data/locomo/data_preprocess.py --max_sessions $STAGE_SESSIONS --train_convs $NUM_TRAIN_CONVS --val_convs $NUM_VAL_CONVS --test_convs $NUM_TEST_CONVS --seed $DATA_SEED --output_dir $DATASET_DIR
 
     STAGE_LR="2e-6"
 
@@ -283,7 +283,7 @@ done
 # ---------------------------------------------------------------------------
 echo "STARTING FINAL TESTING ON 32 SESSIONS"
 
-python data/locomo/data_preprocess.py --max_sessions 32 --train_convs $NUM_TRAIN_CONVS --val_convs $NUM_VAL_CONVS --test_convs $NUM_TEST_CONVS --seed $DATA_SEED
+python data/locomo/data_preprocess.py --max_sessions 32 --train_convs $NUM_TRAIN_CONVS --val_convs $NUM_VAL_CONVS --test_convs $NUM_TEST_CONVS --seed $DATA_SEED --output_dir $DATASET_DIR
 
 export TEST_EXP_NAME="TEST_${STAGE_EXP_NAME}"
 FINAL_TEST_SESSIONS=32

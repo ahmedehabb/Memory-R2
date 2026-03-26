@@ -10,8 +10,8 @@ import pandas as pd
 CHUNK_BY_SESSION = True  # If True, each session becomes one chunk (ignores CHUNK_SIZE)
 MAX_SESSION = None # set to None to use all sessions
 CHUNK_SIZE = 8  # Number of dialogue turns per chunk (only used if CHUNK_BY_SESSION=False)
-INPUT_JSON = "/hkfs/work/workspace/scratch/tum_eyi5958-myspace/projects/ReMA-public/data/locomo/locomo10.json"
-OUTPUT_DIR = Path("/hkfs/work/workspace/scratch/tum_eyi5958-myspace/projects/ReMA-public/data/locomo/processed")
+INPUT_JSON = "/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/locomo10.json"
+OUTPUT_DIR = Path("/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/processed")
 
 # Category 5 (adversarial) questions config
 SKIP_CATEGORY_5 = True  # If True, skip all category 5 (adversarial) questions
@@ -20,7 +20,6 @@ SKIP_CATEGORY_5 = True  # If True, skip all category 5 (adversarial) questions
 USE_ONLY_CURRENT_QAS = True   # If True, only use current QAs (variable count). If False, use balanced sampling.
 TARGET_QA_PER_CHUNK = 3       # Fixed number of QAs per chunk for balanced training (only used if USE_ONLY_CURRENT_QAS=False)
 MIN_FUTURE_QA = 1             # Always include at least 1 future QA (only used if USE_ONLY_CURRENT_QAS=False)
-# RANDOM_SEED = 41              # For reproducibility
 
 # Redistribution config
 QA_KEEP_RATIO = 1.0           # Ratio of questions to keep in current session (rest are deferred to future sessions)
@@ -32,24 +31,23 @@ VAL_CONVS = 1
 
 
 # Fixed Training IDs (to ensure reproducibility across generations)
-TRAIN_IDS = ["conv-41"] #, "conv-44", "conv-49", "conv-50" ]
-VAL_IDS = ["conv-43"]
-TEST_IDS = ["conv-42", "conv-47", "conv-48", "conv-30", "conv-26"]
+TRAIN_IDS = ["conv-43", "conv-47"]
+VAL_IDS = ["conv-44"]
+TEST_IDS = ["conv-41", "conv-49", "conv-50", "conv-42", "conv-48", "conv-30", "conv-26"]
 # Set to None to use random sampling
 # TRAIN_IDS = None
 # VAL_IDS = None
+# TEST_IDS = None
 
 # Post-processing for test data, validation data
-MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_TRAIN = True  # If True, move all QAs to last chunk for train conversations only
+MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_TRAIN = False  # If True, move all QAs to last chunk for train conversations only
+CUMULATIVE_QAS_FOR_TRAIN = True             # If True, Session N gets QAs from Session 1..N
 MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_VAL = True  # If True, move all QAs to last chunk for val conversations only
 MOVE_ALL_QAS_TO_LAST_CHUNK_FOR_TEST = True  # If True, move all QAs to last chunk for test conversations only
 
 # Micro training set for overfitting experiments
 CREATE_MICRO_TRAIN = True  # Set to True to create micro_train.{json,parquet}
 MICRO_TRAIN_CHUNKS = 10     # Number of chunks for micro training (for learnability testing)
-
-# random.seed(RANDOM_SEED)
-
 
 # ===== HELPERS =====
 def _tokenize(text: str) -> list:
@@ -480,6 +478,7 @@ def process_single_conversation(conv, conv_idx, max_session_limit):
     conv_chunks = []
     chunk_counter = 1
     append_to_next = False
+    cumulative_session_tokens = 0
     chunk_stats = {
         'total_chunks': 0, 'total_qas': 0,
         'current_qas': 0, 'recent_qas': 0, 'distant_qas': 0, 'future_qas': 0,
@@ -547,7 +546,8 @@ def process_single_conversation(conv, conv_idx, max_session_limit):
         
         session_time = chunk_turns[0].get('session_time') if chunk_turns else None
         session_tokens = sum(len(_tokenize(t.get('text', ''))) for t in chunk_turns)
-        
+        cumulative_session_tokens += session_tokens
+
         chunk_data = {
             "sample_id": sample_id,
             "chunk_id": chunk_counter,
@@ -556,6 +556,7 @@ def process_single_conversation(conv, conv_idx, max_session_limit):
             "dialogue_num_turns": len(chunk_turns),
             "num_questions": len(all_qas),
             "session_tokens": session_tokens,
+            "cumulative_session_tokens": cumulative_session_tokens,
             "total_sessions_tokens": total_sessions_tokens,
             "prompt": format_chunk_as_prompt(chunk_turns),
             "turns": chunk_turns,
@@ -574,6 +575,7 @@ def process_single_conversation(conv, conv_idx, max_session_limit):
             prev_chunk['dialogue_num_turns'] += chunk_data['dialogue_num_turns']
             prev_chunk['num_questions'] += chunk_data['num_questions']
             prev_chunk['session_tokens'] += chunk_data['session_tokens']
+            prev_chunk['cumulative_session_tokens'] = chunk_data['cumulative_session_tokens']
             prev_chunk['prompt'] = format_chunk_as_prompt(prev_chunk['turns'])
             append_to_next = False
         else:
@@ -596,6 +598,7 @@ def process_single_conversation(conv, conv_idx, max_session_limit):
                 prev_chunk['qa_stats'][qa_type] += chunk_data['qa_stats'][qa_type]
             prev_chunk['dialogue_num_turns'] += chunk_data['dialogue_num_turns']
             prev_chunk['num_questions'] += chunk_data['num_questions']
+            prev_chunk['cumulative_session_tokens'] = chunk_data['cumulative_session_tokens']
             prev_chunk['prompt'] = format_chunk_as_prompt(prev_chunk['turns'])
             conv_chunks.pop(-1)
             chunk_counter -= 1
@@ -632,16 +635,44 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
     all_conv_ids_raw = sorted([conv.get("sample_id", f"conv-{i}") for i, conv in enumerate(data)])
     
     if TRAIN_IDS is not None:
-        train_conv_ids = [tid for tid in TRAIN_IDS if tid in all_conv_ids_raw]
-        remaining_ids = [cid for cid in all_conv_ids_raw if cid not in train_conv_ids]
+        # If fixed ID pools are configured, choose from them first (in configured order)
+        # and only backfill from remaining IDs when pool size is insufficient.
+        used_ids = set()
+
+        train_pool = [tid for tid in TRAIN_IDS if tid in all_conv_ids_raw]
+        train_conv_ids = train_pool[:TRAIN_CONVS]
+        used_ids.update(train_conv_ids)
+
         if VAL_IDS is not None:
-            val_conv_ids = [vid for vid in VAL_IDS if vid in remaining_ids]
-            remaining_ids = [cid for cid in remaining_ids if cid not in val_conv_ids]
+            val_pool = [vid for vid in VAL_IDS if vid in all_conv_ids_raw and vid not in used_ids]
+            val_conv_ids = val_pool[:VAL_CONVS]
+            used_ids.update(val_conv_ids)
         else:
-            random.shuffle(remaining_ids)
-            val_conv_ids = remaining_ids[:VAL_CONVS]
-            remaining_ids = remaining_ids[VAL_CONVS:]
-        test_conv_ids = remaining_ids[:TEST_CONVS]
+            val_conv_ids = []
+
+        if TEST_IDS is not None:
+            test_pool = [tid for tid in TEST_IDS if tid in all_conv_ids_raw and tid not in used_ids]
+            test_conv_ids = test_pool[:TEST_CONVS]
+            used_ids.update(test_conv_ids)
+        else:
+            test_conv_ids = []
+
+        # Backfill from remaining IDs only when requested counts exceed fixed pools.
+        remaining_ids = [cid for cid in all_conv_ids_raw if cid not in used_ids]
+        if len(train_conv_ids) < TRAIN_CONVS:
+            need = TRAIN_CONVS - len(train_conv_ids)
+            train_conv_ids.extend(remaining_ids[:need])
+            used_ids.update(remaining_ids[:need])
+            remaining_ids = [cid for cid in remaining_ids if cid not in used_ids]
+        if len(val_conv_ids) < VAL_CONVS:
+            need = VAL_CONVS - len(val_conv_ids)
+            val_conv_ids.extend(remaining_ids[:need])
+            used_ids.update(remaining_ids[:need])
+            remaining_ids = [cid for cid in remaining_ids if cid not in used_ids]
+        if len(test_conv_ids) < TEST_CONVS:
+            need = TEST_CONVS - len(test_conv_ids)
+            test_conv_ids.extend(remaining_ids[:need])
+            used_ids.update(remaining_ids[:need])
     else:
         random.shuffle(all_conv_ids_raw)
         train_conv_ids = all_conv_ids_raw[:TRAIN_CONVS]
@@ -820,8 +851,42 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                             qa_type = qa.get('qa_type', 'current')
                             qa_type_counts[qa_type] += 1
                         chunk['qa_stats'] = qa_type_counts
+                print(f"      ✅ Moved all {len(all_qas_in_conv)} QAs to chunk {len(conv_chunks)}")
+
+        elif CUMULATIVE_QAS_FOR_TRAIN:
+            print(f"\n🔄 POST-PROCESSING: Making QAs cumulative for train conversations...")
+            
+            train_chunks_by_conv = {}
+            for chunk in train_chunks:
+                conv_id = chunk['sample_id']
+                if conv_id not in train_chunks_by_conv:
+                    train_chunks_by_conv[conv_id] = []
+                train_chunks_by_conv[conv_id].append(chunk)
+
+            for conv_id, conv_chunks in train_chunks_by_conv.items():
+                if not conv_chunks:
+                    continue
                 
-                print(f"      ✅ Moved all {len(all_qas_in_conv)} QAs to chunk {len(conv_chunks)} (last chunk)")
+                accumulated_qas = []
+                total_propagated = 0
+                for i, chunk in enumerate(conv_chunks):
+                    # Add this chunk's new QAs to the accumulator
+                    accumulated_qas.extend(chunk['qa_pairs'])
+                    
+                    # Update the chunk with all accumulated QAs
+                    # We make a copy so we don't accidentally link lists
+                    chunk['qa_pairs'] = list(accumulated_qas)
+                    chunk['num_questions'] = len(accumulated_qas)
+                    
+                    # Recount QA stats
+                    qa_type_counts = {'current': 0, 'recent': 0, 'distant': 0, 'future': 0}
+                    for qa in chunk['qa_pairs']:
+                        qa_type = qa.get('qa_type', 'current')
+                        qa_type_counts[qa_type] += 1
+                    chunk['qa_stats'] = qa_type_counts
+                    total_propagated += chunk['num_questions']
+                print(f"      ✅ Cumulative QAs set for {len(conv_chunks)} chunks in conv {conv_id} (last chunk has {len(accumulated_qas)} QAs)")
+
     
     # Save as both JSON and Parquet
     splits = {
@@ -864,6 +929,7 @@ def process_locomo10(data_path=INPUT_JSON, output_dir=OUTPUT_DIR):
                 'session_evidences_json': json.dumps(chunk.get('session_evidences', [])),  # Evidence needed for this session
                 'dialogue_num_turns': chunk['dialogue_num_turns'],  # Actual number of turns (may be < CHUNK_SIZE)
                 'session_tokens': chunk.get('session_tokens', 0),
+                'cumulative_session_tokens': chunk.get('cumulative_session_tokens', 0),
                 'total_sessions_tokens': chunk.get('total_sessions_tokens', 0),
                 'num_qas': len(chunk['qa_pairs']),
                 'current_qas': chunk['qa_stats']['current'],
@@ -957,11 +1023,18 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--max_sessions", type=int, default=MAX_SESSION, help="Max sessions per conversation (overrides global MAX_SESSION)")
-    parser.add_argument("--train_convs", type=int, default=None, help="Number of training conversations (overrides global TRAIN_CONVS and disables fixed TRAIN_IDS)")
-    parser.add_argument("--test_convs", type=int, default=None, help="Number of test conversations (overrides global TEST_CONVS and disables fixed TEST_IDS)")
-    parser.add_argument("--val_convs", type=int, default=None, help="Number of validation conversations (overrides global VAL_CONVS and disables fixed VAL_IDS)")
+    parser.add_argument("--train_convs", type=int, default=None, help="Number of training conversations (overrides global TRAIN_CONVS)")
+    parser.add_argument("--test_convs", type=int, default=None, help="Number of test conversations (overrides global TEST_CONVS)")
+    parser.add_argument("--val_convs", type=int, default=None, help="Number of validation conversations (overrides global VAL_CONVS)")
+    parser.add_argument("--seed", type=int, default=None, help="Random seed for reproducibility")
+    parser.add_argument("--output_dir", type=str, default=None, help="Output directory for parquet files (default: data/locomo/processed)")
     args = parser.parse_args()
     
+    # Set random seed if provided
+    if args.seed is not None:
+        random.seed(args.seed)
+        print(f"🎲 Set random seed to: {args.seed}")
+
     # Update global variable if argument is provided
     if args.max_sessions is not None:
         MAX_SESSION = args.max_sessions
@@ -978,5 +1051,9 @@ if __name__ == "__main__":
     if args.val_convs is not None:
         VAL_CONVS = args.val_convs
         print(f"🔧 Overriding VAL_CONVS with: {VAL_CONVS}")
-        
-    process_locomo10()
+
+    output_dir = Path(args.output_dir) if args.output_dir else OUTPUT_DIR
+    if args.output_dir:
+        print(f"🔧 Overriding OUTPUT_DIR with: {output_dir}")
+
+    process_locomo10(output_dir=output_dir)
