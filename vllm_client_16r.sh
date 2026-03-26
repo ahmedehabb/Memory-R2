@@ -15,8 +15,8 @@ SERVER_WAIT_TIMEOUT=${SERVER_WAIT_TIMEOUT:-600}
 # ---------------------------------------------------------------------------
 # Common environment
 # ---------------------------------------------------------------------------
-export DATASET_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/processed_${JOB_ID}
 export JOB_ID=${SLURM_JOB_ID:-local_$(date +%Y%m%d_%H%M%S)}
+export DATASET_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/processed_${JOB_ID}
 export LOG_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/logs/$JOB_ID
 export TMPDIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/tmp
 export RAY_TMPDIR=/scratch/$USER/ray_$JOB_ID
