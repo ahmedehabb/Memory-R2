@@ -120,11 +120,11 @@ export BASE_MODEL=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReM
 CURRENT_MODEL_PATH=$BASE_MODEL
 
 MAX_NUM_TURNS=4
-NUM_TRAIN_CONVS=1
+NUM_TRAIN_CONVS=2
 NUM_VAL_CONVS=1
 NUM_TEST_CONVS=8
 algorithm=grpo
-num_rollouts=8
+num_rollouts=16
 max_prompt_length=24576
 max_response_length=2048
 use_kl_loss=True
