@@ -236,7 +236,7 @@ for i in "${!STAGES[@]}"; do
         actor_rollout_ref.rollout.val_kwargs.n=8 \
         actor_rollout_ref.rollout.stop_when_truncated=True \
         actor_rollout_ref.actor.optim.lr=$STAGE_LR \
-        +trainer.val_before_train=True \
+        +trainer.val_before_train=False \
         +trainer.test_before_train=False \
         +trainer.test_after_train=True \
         +trainer.val_only=False \
