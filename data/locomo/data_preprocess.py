@@ -25,8 +25,8 @@ MIN_FUTURE_QA = 1             # Always include at least 1 future QA (only used i
 QA_KEEP_RATIO = 1.0           # Ratio of questions to keep in current session (rest are deferred to future sessions)
 
 # Train/Test/Val split
-TRAIN_CONVS = 4
-TEST_CONVS = 5
+TRAIN_CONVS = 2
+TEST_CONVS = 7
 VAL_CONVS = 1
 
 

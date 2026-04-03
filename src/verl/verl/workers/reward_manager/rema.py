@@ -255,14 +255,17 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         tracking_metrics['memory_token_count'] = memory.total_tokens
         # Only penalize memory growth above a free-zone threshold (default 70% of session tokens).
         # Below the threshold the model can store facts freely with no penalty.
-        # Above it, apply the original compression ratio so unbounded growth is discouraged.
+        # Above the threshold, penalty grows linearly with memory size.
+        # Old formula (1 - mem/cumulative) was backwards: it gave ZERO penalty when
+        # mem > cumulative (the worst bloated case), because max(0,...) clamped negatives.
+        # New formula: (mem - threshold) / cumulative grows monotonically as memory bloats.
         compression_threshold_frac = _float_env("REMA_REWARD_COMPRESSION_THRESHOLD_FRAC", 0.7, min_value=0.0, max_value=1.0)
         compression_threshold = compression_threshold_frac * cumulative_session_tokens
         mem_tokens = memory.total_tokens
         if mem_tokens <= compression_threshold:
             compression_ratio = 0.0
         else:
-            compression_ratio = max(0.0, 1.0 - (mem_tokens / cumulative_session_tokens))
+            compression_ratio = (mem_tokens - compression_threshold) / cumulative_session_tokens
         tracking_metrics['memory_compression_ratio'] = compression_ratio
         print(f"[LocomoScore] Memory size for conv {conv_id}, chunk {chunk_id} snapshot_suffix: {snapshot_suffix}: {tracking_metrics['memory_size']} memory items, {tracking_metrics['memory_token_count']} tokens")
     
@@ -879,14 +882,14 @@ class ReMARewardManager:
             # Only apply masking if enabled
             if data[i].meta_info['mask_unfinished_reward']:
                 if turn_finished == 1 or max_num_turns == 1:  # Successfully completed
-                    # Combined Reward: QA F1 * Compression Ratio
-                    score = qa_scores[i] + compression_penalty * compression_ratios[i]
+                    # Combined reward = QA quality minus memory-bloat penalty.
+                    score = qa_scores[i] - compression_penalty * compression_ratios[i]
                 else:  # Incomplete trajectory - give 0 score
                     score = 0.0
                     num_incomplete += 1
             else:
                 # No masking - use score regardless of completion status
-                score = qa_scores[i] + compression_penalty * compression_ratios[i]
+                score = qa_scores[i] - compression_penalty * compression_ratios[i]
             combined_scores.append(score)
         # print(f"[RewardManager] Combined scores computed: mean={sum(combined_scores)/len(combined_scores):.4f}")
         # print(f"[RewardManager] Incomplete trajectories (turn_finished != 1): {num_incomplete}/{len(combined_scores)}")
@@ -935,7 +938,7 @@ class ReMARewardManager:
         for i in range(batch_size):
             # Keep per-session rewards session-specific; operation shaping is applied during
             # trajectory propagation using each session's own mem_* stats.
-            per_session_f1_tensor[i] = per_session_f1_tensor[i] + compression_penalty * compression_ratios[i]
+            per_session_f1_tensor[i] = per_session_f1_tensor[i] - compression_penalty * compression_ratios[i]
         
         reward_tensor_map['per_session_f1'] = per_session_f1_tensor
 

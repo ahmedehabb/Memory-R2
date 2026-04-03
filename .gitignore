@@ -7,7 +7,7 @@ __pycache__/
 checkpoints/
 outputs/
 wandb/
-data/locomo/processed
+data/locomo/processed*
 *.log
 memory/memory_cache_*
 logs/

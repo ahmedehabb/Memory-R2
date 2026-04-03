@@ -2572,6 +2572,20 @@ class RayReMATrainer(object):
                         # Concatenate everything for PPO update
                         # print(f"[STEP {self.global_steps}] Concatenating {len(all_batches)} batches for update...")
                         batch = DataProto.concat(all_batches + evaluated_inner_batches)
+                        
+                        # Fix for DP chunking error: Ensure the final batch size (after role expansion) is perfectly 
+                        # divisible by world_size by dropping dangling inner samples at the very end of the batch.
+                        target_bsz_before_roles = len(batch.batch)
+                        while (target_bsz_before_roles * len(agent_roles)) % self.actor_rollout_wg.world_size != 0:
+                            target_bsz_before_roles -= 1
+                            
+                        if target_bsz_before_roles < len(batch.batch):
+                            import copy
+                            # slice dataproto to truncate
+                            batch = batch[:target_bsz_before_roles]
+                            # we must manually re-copy the meta info as slicing loses or proxies it sometimes
+                            batch.meta_info = copy.deepcopy(batch.meta_info)
+
                         self.accumulated_batches = [] # Clear accumulation
                         evaluated_inner_batches = []
                         # print(f"[STEP {self.global_steps}] Mega-batch size: {len(batch.batch)}")
