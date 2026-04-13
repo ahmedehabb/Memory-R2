@@ -19,7 +19,6 @@ from verl.rema_separated_trainer.ppo.ray_trainer import RayReMASeparatedTrainer
 import os
 import ray
 import hydra
-import pdb
 
 
 def get_custom_reward_fn(config):

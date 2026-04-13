@@ -17,7 +17,6 @@ This trainer supports model-agonistic model initialization with huggingface
 """
 
 import json
-import pdb
 import copy
 import os
 from pathlib import Path
@@ -1127,6 +1126,11 @@ class RayReMASeparatedTrainer(object):
         with open(local_latest_checkpointed_iteration, 'w') as f:
             f.write(str(self.global_steps))
 
+        # best_checkpoint_info.txt — used by convert_fsdp_to_hf.py to find the last saved step
+        best_info_path = os.path.join(self.config.trainer.default_local_dir, 'best_checkpoint_info.txt')
+        with open(best_info_path, 'w') as f:
+            f.write(str(self.global_steps))
+
     def _load_checkpoint(self):
         if self.config.trainer.resume_mode == 'disable':
             return 0
@@ -1432,9 +1436,9 @@ class RayReMASeparatedTrainer(object):
                 else:
                     # because verl originally calls this 'chat'
                     gen_batch = new_batch.select(
-                        batch_keys=['batch_idx', 'epoch', 'rollout_idx'], 
-                        non_tensor_batch_keys=['question', 'sample_id', 'chunk_id', 'turns_json'], 
-                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'], 
+                        batch_keys=['batch_idx', 'epoch', 'rollout_idx'],
+                        non_tensor_batch_keys=['sample_id', 'chunk_id', 'speakers', 'qa_pairs_json', 'num_qas', 'turns_json', 'session_id', 'session_time', 'session_evidences_json', 'cumulative_session_tokens'],
+                        meta_info_keys=['agent_roles', 'finish_flag', 'system_prompts', 'max_num_turns', 'split'],
                         deepcopy=True
                     )
 

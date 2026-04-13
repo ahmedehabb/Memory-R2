@@ -1261,6 +1261,67 @@ Key override vs baseline: `actor_rollout_ref.rollout.single_agent_mode=true`
 
 ---
 
+### G5 — Co-Learning vs Separated Parameters Never Ablated 🟠 MAJOR
+
+**Reviewer comment:** "Why do both the meta agent and memory agent share model weights? If the two roles have different information needs (parsing raw turns vs. performing structured memory operations), separate specialized models might work better — or equally well with less coupling complexity."
+
+**The co-learning claim:**
+
+In ReMA, both agents are two *roles* of the same model differentiated only by system prompt. This is a deliberate architectural choice, not a default. The claim is:
+
+> *"Shared-parameter co-learning enables implicit cross-role alignment. The meta agent learns to extract facts in the granularity and format that the memory agent finds most useful for INSERT/UPDATE/DELETE decisions. The memory agent learns to produce operations consistent with the type of facts the meta agent extracts. This alignment emerges naturally through shared representation and cannot occur with separate parameters trained independently."*
+
+With separated models (two independent GPU pools, alternately frozen training):
+- Meta agent has no gradient signal about what format makes the executor succeed
+- Memory agent is trained on facts from a frozen, different model — distribution mismatch at each switch
+- No shared internal representation of "what is a memory-worthy fact" vs "what is a valid operation"
+
+**Why this matters for the paper:**
+
+This is distinct from G4 (single vs two agents). G4 asks "should there be one agent or two?". G5 asks "given two agents, should they share weights or not?". These are orthogonal ablations.
+
+**Implementation — `rema_separated_trainer` (already exists):**
+
+The separated trainer infrastructure is already implemented at `src/verl/verl/rema_separated_trainer/`. It supports:
+- Two independent model checkpoints (`algorithm.switch_agent.model_paths`)
+- Alternating frozen training (`switch_agent.level`, `switch_agent.freq`)
+- Two separate GPU pools for Agent0 (meta_thinking) and Agent1 (reasoning)
+
+Code has been synced with `rema_trainer` on 2026-04-13:
+- Fixed `import pdb` debug leftover in `main_ppo.py` and `ray_trainer.py`
+- Fixed `gen_batch.select()` in `fit()` — was missing `speakers`, `qa_pairs_json`, `num_qas`, `session_id`, `session_time`, `session_evidences_json`, `cumulative_session_tokens`
+- Added `best_checkpoint_info.txt` saving in `_save_checkpoint()`
+- Config fixes: `top_k_memories_for_operations: 25`, `similarity_threshold: 0.1`, `gamma_turn_level: 0.95`, `gamma_session_level: 1.0`, `mini_batch_shuffle: False`, `ref_model` uncommented, critic `path` fixed, `resume_mode: disable`
+
+**To run separated-parameter ablation:**
+
+```bash
+# Use rema_separated_trainer instead of rema_trainer
+python -m verl.rema_separated_trainer.main_ppo \
+    algorithm.switch_agent.enable=True \
+    algorithm.switch_agent.model_paths=[Qwen/Qwen2.5-7B-Instruct,Qwen/Qwen2.5-7B-Instruct] \
+    algorithm.switch_agent.level=step \
+    algorithm.switch_agent.freq=10 \
+    [same other overrides as inner_n8_rerun]
+```
+
+Starting with the same base model for both agents is the cleanest comparison — it isolates the effect of *parameter sharing* vs *alternating frozen training*, independent of initialization quality.
+
+**Comparison target:** `inner_n8_rerun` (shared params, val=0.488, mfail=0.050)
+
+**Expected:** Shared parameters should win. Without co-learning, the meta agent cannot receive gradient signal about how the executor uses its output (the reward signal is end-to-end but the frozen agent's behavior is fixed at each switch). This should cause slower learning and/or lower plateau.
+
+**Results (pending):**
+
+| Config | val/acc | mfail | Notes |
+| --- | --- | --- | --- |
+| Shared params (`inner_n8_rerun`) | **0.488** | 0.050 | co-learning baseline |
+| Separated params (8-sess scout) | — | — | [ ] not yet run |
+
+**Status:** 🟠 MAJOR — code ready, run not yet launched.
+
+---
+
 ### G6 — Inner GRPO Topk Confound at 32-sess ✅ ADDRESSED (eval running for final number)
 
 **Reviewer comment:** "The 32-session inner GRPO ablation (inner=0.0, topk=80) is compared against the champion (inner=0.5, topk=30). Since topk=30 is strictly better than topk=80, the reported +0.136 gap conflates two separate effects. A matched comparison is needed."
