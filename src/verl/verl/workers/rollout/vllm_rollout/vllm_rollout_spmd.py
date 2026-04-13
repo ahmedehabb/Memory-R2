@@ -1002,8 +1002,26 @@ class vLLMRollout(BaseRollout):
             # Each role takes turns generating in every round
             for i_role, role in enumerate(agent_roles):
                 # In single-agent mode, skip the meta-thinking (agent_roles[0]) generation.
-                # executor_prompts have already been built by generate_single_agent_prompts.
+                # Instead of a bare continue, inject dummy entries so that:
+                #   - conversation_history['meta_thinking'] is non-None (encode_conversation needs it)
+                #   - history has a meta_thinking entry at every turn (assertions + [-2] lookup need it)
+                #   - stop_reason='completion_token_exceeded' ensures labels are all IGNORE_INDEX (no gradient)
                 if single_agent_mode and role == agent_roles[0]:
+                    for _idx in unfinished_indices:
+                        if conversation_history[agent_roles[0]][_idx] is None:
+                            conversation_history[agent_roles[0]][_idx] = [
+                                {"role": "system", "content": system_prompts.get(agent_roles[0], "")}
+                            ]
+                        # Append empty user+assistant pair — matches what _prepare_role_prompts produces
+                        conversation_history[agent_roles[0]][_idx].append({"role": "user", "content": ""})
+                        conversation_history[agent_roles[0]][_idx].append({"role": "assistant", "content": ""})
+                        # Dummy history entry: completion_token_exceeded → all labels IGNORE_INDEX, zero gradient
+                        history[_idx].append({
+                            "role": agent_roles[0],
+                            "content": "",
+                            "num_gen_tokens": 0,
+                            "stop_reason": "completion_token_exceeded",
+                        })
                     continue
 
                 # Choose questions based on role
