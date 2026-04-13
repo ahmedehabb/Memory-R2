@@ -48,6 +48,7 @@ actor_rollout_ref:
     kl_loss_type: low_var_kl # for grpo
     ppo_epochs: 1
     shuffle: False # Set to False for sequential chunk processing (memory requires chunk order) Online Learning !!
+    mini_batch_shuffle: False # Shuffle PPO mini-batches inside each actor update epoch
     ulysses_sequence_parallel_size: 1 # sp size
     checkpoint:
       contents: ['model', 'hf_model', 'optimizer', 'extra']  # with 'hf_model' you can save whole model as hf format, now only use sharded model checkpoint to save space
@@ -103,9 +104,10 @@ actor_rollout_ref:
     enable_chunked_prefill: True # may get higher throughput when set to True. When activated, Please increase max_num_batched_tokens or decrease max_model_len.
     enable_sleep_mode: True
     max_num_turns: 1
+    single_agent_mode: false   # ablation: skip meta-thinking agent, memory agent sees raw turns directly
     stop_when_truncated: False
-    top_k_memories_for_operations: 10
-    similarity_threshold: 0.0
+    top_k_memories_for_operations: 25
+    similarity_threshold: 0.1
     add_checking: True 
     # for hf rollout
     do_sample: True
@@ -152,6 +154,7 @@ critic:
   ulysses_sequence_parallel_size: 1 # sp size
   ppo_epochs: ${actor_rollout_ref.actor.ppo_epochs}
   shuffle: ${actor_rollout_ref.actor.shuffle}
+  mini_batch_shuffle: ${actor_rollout_ref.actor.mini_batch_shuffle}
   grad_clip: 1.0
   cliprange_value: 0.5
   checkpoint:
@@ -196,6 +199,7 @@ algorithm:
   lam_token_level: 1.0
   lam_turn_level: 1.0
   gamma_turn_level: 0.95
+  gamma_session_level: 1.0  # Cross-session discount for bootstrapping
 
   filter_groups:
     enable: False # We try to avoid forgetting to set enable
@@ -213,7 +217,7 @@ trainer:
   n_gpus_per_node: 8
   save_freq: -1
   # auto: find the last ckpt to resume. If can't find, start from scratch
-  resume_mode: auto # or disable or resume_path if 
+  resume_mode: disable # safer default for ablations; set explicitly when intentional resume is needed
   resume_from_path: False
   test_freq: -1
   critic_warmup: 0

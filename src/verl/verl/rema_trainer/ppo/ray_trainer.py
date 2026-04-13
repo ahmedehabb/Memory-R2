@@ -939,23 +939,20 @@ class RayReMATrainer(object):
         data_source_lst = []
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
+        single_agent_mode = self.config.actor_rollout_ref.rollout.get('single_agent_mode', False)
         # print(f"\n[VALIDATE] Configuring rollout meta_info with max_num_turns={max_num_turns}")
         if max_num_turns > 1:
-            from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
+            from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT, SINGLE_AGENT_PROMPT
             from prompt import FINISH_FLAG
             rollout_meta_info = {
                 'agent_roles': ['meta_thinking', 'reasoning'],
                 'finish_flag': None, # changed this to None from FINISH_FLAG
                 'system_prompts': {
                     'meta_thinking': MEMORY_REASONER_PROMPT,
-                    'reasoning': MEMORY_EXECUTOR_PROMPT
+                    'reasoning': SINGLE_AGENT_PROMPT if single_agent_mode else MEMORY_EXECUTOR_PROMPT
                 },
                 'max_num_turns': max_num_turns
             }
-            # print(f"[VALIDATE] Multi-turn mode enabled with FINISH_FLAG")
-            # print(f"[VALIDATE] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
-            # print(f"[VALIDATE] agent_roles: {rollout_meta_info['agent_roles']}")
-            # print(f"[VALIDATE] finish_flag: {rollout_meta_info['finish_flag'][:50] if rollout_meta_info['finish_flag'] else None}...")
         else:
             from prompt.math.single_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             rollout_meta_info = {
@@ -1273,22 +1270,20 @@ class RayReMATrainer(object):
         sample_scores = []
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
+        single_agent_mode = self.config.actor_rollout_ref.rollout.get('single_agent_mode', False)
         # print(f"\n[TEST] Configuring rollout meta_info with max_num_turns={max_num_turns}")
         if max_num_turns > 1:
-            from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
+            from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT, SINGLE_AGENT_PROMPT
             from prompt import FINISH_FLAG
             rollout_meta_info = {
                 'agent_roles': ['meta_thinking', 'reasoning'],
                 'finish_flag': None,
                 'system_prompts': {
                     'meta_thinking': MEMORY_REASONER_PROMPT,
-                    'reasoning': MEMORY_EXECUTOR_PROMPT
+                    'reasoning': SINGLE_AGENT_PROMPT if single_agent_mode else MEMORY_EXECUTOR_PROMPT
                 },
                 'max_num_turns': max_num_turns
             }
-            # print(f"[TEST] Multi-turn mode enabled")
-            # print(f"[TEST] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
-            # print(f"[TEST] agent_roles: {rollout_meta_info['agent_roles']}")
         else:
             from prompt.math.single_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             rollout_meta_info = {
@@ -1827,23 +1822,20 @@ class RayReMATrainer(object):
         last_val_metrics = None
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
+        single_agent_mode = self.config.actor_rollout_ref.rollout.get('single_agent_mode', False)
         # print(f"\n[FIT] Configuring rollout meta_info with max_num_turns={max_num_turns}")
         if max_num_turns > 1:
-            from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
+            from prompt.math.multi_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT, SINGLE_AGENT_PROMPT
             from prompt import FINISH_FLAG
             rollout_meta_info = {
                 'agent_roles': ['meta_thinking', 'reasoning'],
-                'finish_flag': None, # changed this to None from FINISH_FLAG
+                'finish_flag': None,
                 'system_prompts': {
                     'meta_thinking': MEMORY_REASONER_PROMPT,
-                    'reasoning': MEMORY_EXECUTOR_PROMPT
+                    'reasoning': SINGLE_AGENT_PROMPT if single_agent_mode else MEMORY_EXECUTOR_PROMPT
                 },
                 'max_num_turns': max_num_turns
             }
-            # print(f"[FIT] Multi-turn mode enabled with FINISH_FLAG")
-            # print(f"[FIT] rollout_meta_info keys: {list(rollout_meta_info.keys())}")
-            # print(f"[FIT] agent_roles: {rollout_meta_info['agent_roles']}")
-            # print(f"[FIT] finish_flag: {rollout_meta_info['finish_flag'][:50] if rollout_meta_info['finish_flag'] else None}...")
         else:
             from prompt.math.single_turn_mamrp import MEMORY_REASONER_PROMPT, MEMORY_EXECUTOR_PROMPT
             from prompt import FINISH_FLAG

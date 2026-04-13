@@ -39,7 +39,7 @@ from verl.protocol import collate_fn as data_proto_collate_fn
 from verl.utils.torch_functional import get_eos_mask, pad_2d_list_to_length
 from verl.rema_trainer.memory.memory_core.memory import Memory
 from verl.rema_trainer.memory.memory_core.memory_manager import MemoryManager
-from verl.rema_trainer.memory.memory_core.prompt_generator import format_turns_for_prompt, generate_memory_prompt_using_facts
+from verl.rema_trainer.memory.memory_core.prompt_generator import format_turns_for_prompt, generate_memory_prompt_using_facts, format_memory_for_prompt
 from verl.rema_trainer.memory.utils.parse_response import extract_llm_json_from_response
 from verl.workers.rollout.base import BaseRollout
 from vllm.distributed import parallel_state as vllm_ps
@@ -466,6 +466,80 @@ class vLLMRollout(BaseRollout):
 
         return prompts, conv_memories, shared_manager
 
+    def generate_single_agent_prompts(
+        self,
+        sample_ids,
+        chunk_ids,
+        turns_json_list,
+        epochs,
+        split,
+        conv_memories=None,
+        rollout_batch_indices=None,
+        snapshot_suffix: str = "",
+    ) -> Tuple[List[str], List[Memory], MemoryManager]:
+        """Build prompts for the single-agent ablation.
+
+        Skips fact extraction entirely. Retrieves relevant memories using the raw
+        dialogue turns as queries and returns a combined prompt (existing memory +
+        new turns) for the memory-executor agent.
+
+        Returns the same (prompts, conv_memories, shared_manager) signature as
+        generate_memory_prompts so the turn loop can call either transparently.
+        """
+        shared_manager = MemoryManager()
+
+        if conv_memories is None:
+            conv_memories: List[Memory] = []
+            for i in range(len(sample_ids)):
+                conv_id = sample_ids[i]
+                chunk_id = chunk_ids[i]
+                epoch = epochs[i]
+                index_in_batch = rollout_batch_indices[i]
+                if chunk_id > 1:
+                    prev_chunk_id = chunk_id - 1
+                    loaded_memory = shared_manager.get_snapshot(
+                        conv_id, prev_chunk_id, epoch, split, index_in_batch,
+                        snapshot_suffix="",
+                    )
+                    if loaded_memory is not None:
+                        conv_memories.append(loaded_memory)
+                    else:
+                        raise Exception(
+                            f"No cached memory for conv {conv_id}, chunk {prev_chunk_id}."
+                        )
+                else:
+                    conv_memories.append(Memory())
+
+        prompts = []
+        for i in range(len(sample_ids)):
+            turns_data = turns_json_list[i]
+            if isinstance(turns_data, str):
+                turns_data = json.loads(turns_data)
+
+            formatted_turns = format_turns_for_prompt(turns_data)
+            relevant_memories = format_memory_for_prompt(
+                conv_memories[i],
+                query_turns=turns_data,
+                top_k=self.config.top_k_memories_for_operations,
+                similarity_threshold=self.config.similarity_threshold,
+                use_similarity=True,
+            )
+
+            import json as _json
+            prompt = (
+                "Existing memory:\n"
+                "```json\n"
+                f"{_json.dumps(relevant_memories, indent=2)}\n"
+                "```\n\n"
+                "New conversation turns:\n"
+                "```json\n"
+                f"{_json.dumps(formatted_turns, indent=2)}\n"
+                "```"
+            )
+            prompts.append(prompt)
+
+        return prompts, conv_memories, shared_manager
+
     @torch.no_grad()
     def multi_turn_generate_sequences(
         self,
@@ -874,21 +948,64 @@ class vLLMRollout(BaseRollout):
                 # print("All samples finished, breaking out of turn loop.")
                 break
             
-            # Regenerate fact prompts for the current turn chunk
-            fact_prompts = self.generate_fact_prompts(
-                prompts.non_tensor_batch["turns_json"], 
-                current_turn=i_turn,  # Use current turn index to get correct chunk
-                max_turns=max_num_turns
-            )
-            fact_prompts = np.array(fact_prompts, dtype=object)
-            # print(f"Generated fact extraction prompts for turn {i_turn+1}/{max_num_turns}")
-            
+            single_agent_mode = getattr(self.config, 'single_agent_mode', False)
+
+            if single_agent_mode:
+                # Single-agent ablation: skip meta-thinking entirely.
+                # Build executor prompts directly from raw turns + memory state.
+                unfinished_sample_ids = [prompts.non_tensor_batch["sample_id"][idx] for idx in unfinished_indices]
+                unfinished_chunk_ids = [prompts.non_tensor_batch["chunk_id"][idx] for idx in unfinished_indices]
+                load_rollout_indices = prompts.batch["source_rollout_idx"] if "source_rollout_idx" in prompts.batch.keys() else prompts.batch["rollout_idx"]
+                unfinished_rollout_batch_indices = [load_rollout_indices[idx] for idx in unfinished_indices]
+                unfinished_epochs = [prompts.batch["epoch"][idx] for idx in unfinished_indices]
+                unfinished_turns_json = [prompts.non_tensor_batch["turns_json"][idx] for idx in unfinished_indices]
+                unfinished_conv_memories = None
+                if conv_memories is not None:
+                    unfinished_conv_memories = [conv_memories[idx] for idx in unfinished_indices]
+
+                # Slice turns to current turn chunk (same chunking logic as generate_fact_prompts)
+                sliced_turns_json = []
+                for turns_data in unfinished_turns_json:
+                    if isinstance(turns_data, str):
+                        turns_data = json.loads(turns_data)
+                    total_turns = len(turns_data)
+                    chunk_size = (total_turns + max_num_turns - 1) // max_num_turns
+                    start_idx = i_turn * chunk_size
+                    end_idx = min(start_idx + chunk_size, total_turns)
+                    sliced_turns_json.append(turns_data[start_idx:end_idx] if start_idx < total_turns else [])
+
+                sa_prompts, updated_conv_memories, shared_manager = self.generate_single_agent_prompts(
+                    sample_ids=unfinished_sample_ids,
+                    chunk_ids=unfinished_chunk_ids,
+                    turns_json_list=sliced_turns_json,
+                    epochs=unfinished_epochs,
+                    split=prompts.meta_info["split"],
+                    conv_memories=unfinished_conv_memories,
+                    rollout_batch_indices=unfinished_rollout_batch_indices,
+                    snapshot_suffix=prompts.meta_info.get("memory_snapshot_suffix", ""),
+                )
+
+                if conv_memories is None:
+                    conv_memories = [None] * len(prompts.non_tensor_batch["sample_id"])
+                for i, idx in enumerate(unfinished_indices):
+                    conv_memories[idx] = updated_conv_memories[i]
+                    executor_prompts[idx] = sa_prompts[i]
+            else:
+                # Two-agent mode: regenerate fact prompts for the current turn chunk
+                fact_prompts = self.generate_fact_prompts(
+                    prompts.non_tensor_batch["turns_json"],
+                    current_turn=i_turn,
+                    max_turns=max_num_turns
+                )
+                fact_prompts = np.array(fact_prompts, dtype=object)
+
             # Each role takes turns generating in every round
             for i_role, role in enumerate(agent_roles):
-                # print(f"\n  >>> Generating for role: {role} (role index: {i_role})")
-                # Prepare prompts for current role
-                # print(f"  Preparing prompts for {len(unfinished_indices)} unfinished samples...")
-                
+                # In single-agent mode, skip the meta-thinking (agent_roles[0]) generation.
+                # executor_prompts have already been built by generate_single_agent_prompts.
+                if single_agent_mode and role == agent_roles[0]:
+                    continue
+
                 # Choose questions based on role
                 if role == agent_roles[0]:
                     questions = fact_prompts
