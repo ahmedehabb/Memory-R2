@@ -19,13 +19,13 @@ export TEACHER_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace/teache
 mkdir -p $LOG_DIR $TMPDIR $RAY_TMPDIR $HYDRA_RUN_DIR $SCRATCH_DIR $HF_HOME $HF_DATASETS_CACHE $TRITON_HOME $TRITON_DUMP_DIR $EMBEDDING_CACHE_DIR $MEMORY_CACHE_DIR $MEMORY_CACHE_DIR_VAL $OPENAI_CACHE_DIR $TEACHER_CACHE_DIR
 
 export HYDRA_FULL_ERROR=1
-export HF_TOKEN="***HF_TOKEN_REDACTED***"
-export OPENAI_API_KEY="***OPENAI_KEY_REDACTED***"
+export HF_TOKEN="${HF_TOKEN:?Set HF_TOKEN via env or sourced .env file}"
+export OPENAI_API_KEY="${OPENAI_API_KEY:?Set OPENAI_API_KEY via env or sourced .env file}"
 export GEMINI_API_KEY=""
 export USE_GEMINI=True
 export TOGETHER_API_KEY="${TOGETHER_API_KEY:?Set TOGETHER_API_KEY via env or sourced .env file}"
-# another : ***TOGETHER_KEY_REDACTED*** - ${TOGETHER_API_KEY:?Set TOGETHER_API_KEY via env or sourced .env file}
-export WANDB_API_KEY="***WANDB_KEY_REDACTED***"
+# another : ***TOGETHER_KEY_REDACTED*** - [REDACTED]
+export WANDB_API_KEY="${WANDB_API_KEY:?Set WANDB_API_KEY via env or sourced .env file}"
 unset ROCR_VISIBLE_DEVICES
 cd /hkfs/work/workspace/scratch/tum_eyi5958-myspace/projects/ReMA-public
 

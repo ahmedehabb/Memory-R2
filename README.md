@@ -102,35 +102,65 @@ For OOD evaluation (LongMemEval, MSC-Self-Instruct, MemBench), see [`testing/`](
 
 ## Training
 
-### Shared-parameter (recommended): 3B example
+There are three ways to run training, depending on what you want:
+
+### A) Quick smoke-test (single stage, 4 sessions × 4 turns) — 3B and 3B-separated
+
+Useful to verify the pipeline + judge wiring on a single stage before launching long runs.
 
 ```bash
+# Shared-parameter 3B
 bash scripts/examples/example_3b.sh
-```
 
-### Shared-parameter 7B (full curriculum 8 → 16 → 32 sessions)
-
-Use the per-stage launchers in `scripts/vllm_clients/`, e.g.:
-
-```bash
-# Stage 1 (8-session warm-start at the target λ)
-COMP_LAMBDA=0.3 bash scripts/vllm_clients/vllm_client_7b_8sess_lambda_sweep.sh
-
-# Stage 3 (32-session, warm-started from the 8-session ckpt at the same λ)
-COMP_LAMBDA=0.3 \
-WARM_START_PATH=checkpoints/.../curr_8sess_p7_8sess_lambda03_consistent_*/global_step_5/hf_fixed \
-  bash scripts/vllm_clients/vllm_client_7b_32sess_lambda_sweep.sh
-```
-
-Each launcher invokes [`scripts/vllm_clients/vllm_client_standalone.sh`](scripts/vllm_clients/vllm_client_standalone.sh), which expects a vLLM judge server (see below) to be reachable for QA reward computation.
-
-### Separated-parameter ablation (extractor and manager have independent backbones)
-
-```bash
+# Separated-parameter 3B (extractor and manager have independent backbones)
 bash scripts/examples/example_3b_separated.sh
 ```
 
-### Single-agent ablation (manager-only, no extractor)
+Both fix `MAX_NUM_TURNS=4`, `STAGES=8` (single stage), and run `verl.rema_trainer.main_ppo` directly. **No curriculum loop.**
+
+### B) Full curriculum 8 → 16 → 32 (the paper's training recipe)
+
+The actual curriculum runner is [`scripts/examples/_curriculum_learning.sh`](scripts/examples/_curriculum_learning.sh). It loops over a `STAGES=(...)` array, runs PPO for each stage, converts the FSDP checkpoint to HF format, and uses that as the warm-start for the next stage.
+
+```bash
+# Edit the script to set STAGES, COMPRESSION_PENALTY, NUM_TRAIN_CONVS, num_rollouts, etc.
+# Default is STAGES=(32) (single 32-sess stage). For the full paper curriculum:
+#   STAGES=(8 16 32)
+bash scripts/examples/_curriculum_learning.sh
+```
+
+This is what the paper uses for the canonical Memory-R2 7B / 3B Memory-R2 checkpoints.
+
+### C) Single-stage compression-sweep launchers (used to fill `tab:compression`)
+
+For the λ-consistent compression sweep (each row of `tab:compression`), training is split into two single-stage launchers that warm-start from each other. **The 8sess(λ) ckpt is the warm-start for 32sess(λ); both stages train at the SAME λ.**
+
+```bash
+# 3B sweep — single λ (e.g. 0.3): trains 8sess(λ=0.3) → 32sess(λ=0.3)
+
+# Stage 1: 3B 8sess at target λ (warm-starts from Qwen2.5-3B base)
+# (the 8sess ckpts already exist in checkpoints/rema-curriculum-v1/curr_8sess_p7_3b_*; reuse)
+
+# Stage 2: 3B 32sess at target λ (warm-starts from corresponding 8sess(λ))
+COMP_LAMBDA=0.3 \
+WARM_START_PATH=checkpoints/rema-curriculum-v1/curr_8sess_p7_3b_comp03_8sess_h200_*/global_step_10/hf_fixed \
+  bash scripts/vllm_clients/vllm_client_3b_32sess_lambda_sweep.sh
+
+# 7B sweep — same shape, both stages need to be trained from scratch:
+
+# Stage 1: 7B 8sess at target λ (from Qwen2.5-7B-Instruct base)
+COMP_LAMBDA=0.3 \
+  bash scripts/vllm_clients/vllm_client_7b_8sess_lambda_sweep.sh
+
+# Stage 2: 7B 32sess at target λ (warm-start from above)
+COMP_LAMBDA=0.3 \
+WARM_START_PATH=checkpoints/rema-curriculum-v1/curr_8sess_p7_8sess_lambda03_consistent_*/global_step_5/hf_fixed \
+  bash scripts/vllm_clients/vllm_client_7b_32sess_lambda_sweep.sh
+```
+
+These per-stage launchers all delegate to [`scripts/vllm_clients/vllm_client_standalone.sh`](scripts/vllm_clients/vllm_client_standalone.sh), which expects a vLLM judge server (see below) to be reachable for QA reward computation.
+
+### D) Single-agent ablation (manager-only, no extractor)
 
 Set `actor_rollout_ref.rollout.single_agent_mode=true` (the default `false` runs the standard two-agent pipeline). A ready-made launcher is provided:
 
