@@ -1,0 +1,12 @@
+{
+  "8sess_turns1_step10_qwen": "done",
+  "8sess_inner0_step5_qwen": "done",
+  "8sess_inner0_step10_convert": "done",
+  "8sess_inner0_step10_qwen": "skip",
+  "8sess_turns6_step10_qwen": "done",
+  "16sess_champion_v2_step5_qwen": "done",
+  "32sess_topk80_step5_qwen": "done",
+  "32sess_inner0_step5_qwen": "done",
+  "8sess_turns1_step10_gptoss": "done",
+  "32sess_champion_v2_step5_gptoss": "pending"
+}

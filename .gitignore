@@ -11,3 +11,9 @@ data/locomo/processed*
 *.log
 memory/memory_cache_*
 logs/
+cache/
+testing/results/
+qa_dumps*/
+results/
+vllm_servers*/
+testing/*/qdrants
