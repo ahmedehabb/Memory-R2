@@ -1,0 +1,5502 @@
+{
+    "9": [
+        {
+            "question": "What did Speaker_9_A mention he wanted to learn in his free time after retirement?",
+            "answer": "culinary school",
+            "response": "culinary school",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "3": [
+        {
+            "question": "What fast food place did Speaker_3_A mention he is working at",
+            "answer": "Burger King",
+            "response": "Burger King",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "1": [
+        {
+            "question": "What did Speaker_1_A say he did to save money on groceries",
+            "answer": "eat a fresh and raw diet",
+            "response": "Walks 3 miles to work to save money every day",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "5": [
+        {
+            "question": "What kind of pet does Speaker_5_A have",
+            "answer": "cat",
+            "response": "bird",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "0": [
+        {
+            "question": "What was the artist Speaker_0_A mentioned he could get into",
+            "answer": "Taylor Swift",
+            "response": "Taylor Swift",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "8": [
+        {
+            "question": "What age did Speaker_8_A say he was when he first learned to play guitar",
+            "answer": "three",
+            "response": "7 years old",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "6": [
+        {
+            "question": "What was the favorite movie Speaker_6_A mentioned",
+            "answer": "Clueless",
+            "response": "Clueless",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "4": [
+        {
+            "question": "What was the distance Speaker_4_A mentioned he liked to walk for a small workout",
+            "answer": "Three miles",
+            "response": "3 miles",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "2": [
+        {
+            "question": "What field did Speaker_2_A mention he used to work in",
+            "answer": "human services field",
+            "response": "movies",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "7": [
+        {
+            "question": "What kind of animal does Speaker_7_A have as a pet",
+            "answer": "cow",
+            "response": "cow",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "13": [
+        {
+            "question": "What did Speaker_13_A mention his dad does for a living",
+            "answer": "army soldier",
+            "response": "army soldier",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "10": [
+        {
+            "question": "What did Speaker_10_A say he did for a living",
+            "answer": "Construction like his dad",
+            "response": "Works as a custodian",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "16": [
+        {
+            "question": "What was the band Speaker_16_A mentioned he was into apart from Metallica",
+            "answer": "Aerosmith",
+            "response": "old school rap",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "11": [
+        {
+            "question": "What was the name of the outdoor show that Speaker_11_A mentioned his dad had",
+            "answer": "Jim Shockey",
+            "response": "Jim Shockey",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "12": [
+        {
+            "question": "What was the specific color of the hat Speaker_12_A mentioned during the conversation about his concerts",
+            "answer": "Yellow",
+            "response": "yellow",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "17": [
+        {
+            "question": "What is the name of Speaker_17_A's dog",
+            "answer": "Trooper",
+            "response": "Trooper",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "15": [
+        {
+            "question": "What did Speaker_15_A mention used to scare him when his grandfather told stories",
+            "answer": "World War II stories",
+            "response": "WWII stories",
+            "category": "none",
+            "bleu_score": 0.18393972058572117,
+            "f1_score": 0.3333333333333333,
+            "llm_score": 1
+        }
+    ],
+    "18": [
+        {
+            "question": "What is the favorite play area of Speaker_18_A's fifth son in the house",
+            "answer": "The attic",
+            "response": "attic",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "14": [
+        {
+            "question": "What line of work was Speaker_14_A's father in",
+            "answer": "manager at Home Depot",
+            "response": "Home Depot manager",
+            "category": "none",
+            "bleu_score": 0.7165313105737893,
+            "f1_score": 0.8571428571428571,
+            "llm_score": 1
+        }
+    ],
+    "19": [
+        {
+            "question": "What outdoor activity did Speaker_19_A mention he enjoys on sunny days?",
+            "answer": "Lawn mowing",
+            "response": "gardening",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "21": [
+        {
+            "question": "What type of music did Speaker_21_A mention he listens to all the time in his big truck",
+            "answer": "Country music",
+            "response": "country music",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "20": [
+        {
+            "question": "What age did Speaker_20_A mention he was turning for his birthday",
+            "answer": "83",
+            "response": "83",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "23": [
+        {
+            "question": "What did Speaker_23_A ask about the size of Speaker_23_A's farm?",
+            "answer": "quite a few acres",
+            "response": "Speaker_23_A has a couple of horses on their farm.",
+            "category": "none",
+            "bleu_score": 0.10000000000000002,
+            "f1_score": 0.15384615384615383,
+            "llm_score": 0
+        }
+    ],
+    "24": [
+        {
+            "question": "What did Speaker_24_A mention that scares him?",
+            "answer": "Scorpions",
+            "response": "scorpions",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "22": [
+        {
+            "question": "What amount did Speaker_22_A mention he makes annually at his job",
+            "answer": "About 15k",
+            "response": "50000",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "26": [
+        {
+            "question": "How many bedrooms did Speaker_26_A say his house has when discussing the possibility of moving in?",
+            "answer": "3 bedrooms",
+            "response": "3 bedrooms",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "27": [
+        {
+            "question": "Where was Speaker_27_A staying when busy streets could be a danger to his cat?",
+            "answer": "Beijing",
+            "response": "Beijing",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "25": [
+        {
+            "question": "What band did Speaker_25_A mention he sees every year?",
+            "answer": "The Rolling Stones",
+            "response": "Rolling Stones",
+            "category": "none",
+            "bleu_score": 0.6065306597126334,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "29": [
+        {
+            "question": "What career did Speaker_29_A mention he was interested in pursuing?",
+            "answer": "A lawyer",
+            "response": "lawyer",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "28": [
+        {
+            "question": "What is the activity Speaker_28_A mentioned he likes to compete in",
+            "answer": "Dog agility",
+            "response": "dog agility",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "31": [
+        {
+            "question": "Where does Speaker_31_A originally come from",
+            "answer": "Somalia",
+            "response": "Somalia",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "32": [
+        {
+            "question": "What was the major that Speaker_32_A studied?",
+            "answer": "Psychology",
+            "response": "Geography",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "30": [
+        {
+            "question": "What instrument did Speaker_30_A mention he played last year but didn't enjoy",
+            "answer": "The violin",
+            "response": "violin",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "35": [
+        {
+            "question": "What was the food Speaker_35_A mentioned as his favorite",
+            "answer": "cheeseburgers",
+            "response": "Mexican food",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "36": [
+        {
+            "question": "What was the contest Speaker_36_A mentioned he won from?",
+            "answer": "Twitter contest",
+            "response": "Twitter",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 0
+        }
+    ],
+    "37": [
+        {
+            "question": "What age did Speaker_37_A start working in construction",
+            "answer": "16",
+            "response": "16",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "33": [
+        {
+            "question": "What was the place Speaker_33_A mentioned where his audio studio was located",
+            "answer": "California",
+            "response": "small town",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "38": [
+        {
+            "question": "What type of dressing did Speaker_38_A suggest for the salad after their run",
+            "answer": "favorite dressing",
+            "response": "lite dressing",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "40": [
+        {
+            "question": "What unique instrument does Speaker_40_A use in his Scottish black metal band",
+            "answer": "Electric bagpipes",
+            "response": "Bagpipe",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "41": [
+        {
+            "question": "What was the one thing Speaker_41_A mentioned he didn't like about the weather in Texas",
+            "answer": "The humidity",
+            "response": "Speaker_41_A mentioned he didn't like the weather in Texas. However, there is no explicit mention of what he didn't like about the weather in Texas in the provided memories. Based on the given information, we can infer that he might not have liked the weather being too practical (i.e., not humid), but this is an assumption. Given the question's phrasing and the memories provided, the answer is that he didn't like the weather in Texas, but the specific aspect is not stated. ",
+            "category": "none",
+            "bleu_score": 0.010204081632653057,
+            "f1_score": 0.039215686274509796,
+            "llm_score": 0
+        }
+    ],
+    "44": [
+        {
+            "question": "What reason did Speaker_44_A give for why he could definitely go to Disney as a dog like Pluto",
+            "answer": "Because Pluto is a dog and he is in Disney",
+            "response": "Dogs cannot go to Disney",
+            "category": "none",
+            "bleu_score": 0.08556951983876535,
+            "f1_score": 0.14285714285714285,
+            "llm_score": 0
+        }
+    ],
+    "47": [
+        {
+            "question": "What was the peanut butter cookie recipe that Speaker_47_A mentioned?",
+            "answer": "1 cup of peanut butter 1 cup of sugar 1 egg Mix and roll them then bake for 10-12 minutes",
+            "response": "1 cup peanut butter, 1 cup sugar, 1 egg, mix and roll, bake for 10-12 minutes",
+            "category": "none",
+            "bleu_score": 0.8,
+            "f1_score": 0.896551724137931,
+            "llm_score": 1
+        }
+    ],
+    "46": [
+        {
+            "question": "What year did Speaker_46_A say he finished school",
+            "answer": "1995",
+            "response": "1995",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "42": [
+        {
+            "question": "How many languages did Speaker_42_A mention he could speak",
+            "answer": "2 languages Spanish and English",
+            "response": "3",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "49": [
+        {
+            "question": "How many dogs does Speaker_49_A have",
+            "answer": "3 dogs",
+            "response": "2",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "34": [
+        {
+            "question": "What dietary preference did Speaker_34_A mention he hoped his girls would have",
+            "answer": "Omnivores",
+            "response": "omnivores",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "43": [
+        {
+            "question": "What was the favorite TV show Speaker_43_A mentioned",
+            "answer": "The Walking Dead",
+            "response": "The Walking Dead",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "45": [
+        {
+            "question": "What job did Speaker_45_A mention he just got hired as",
+            "answer": "life coach",
+            "response": "life coach",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "50": [
+        {
+            "question": "What is the name of Speaker_50_A's german shepherd",
+            "answer": "Barnaby",
+            "response": "Sirius",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "48": [
+        {
+            "question": "What activity did Speaker_48_A mention he liked to do on his ideal Saturday",
+            "answer": "Have a bottle of wine",
+            "response": "watch a war documentary and eat a cheeseburger",
+            "category": "none",
+            "bleu_score": 0.12500000000000003,
+            "f1_score": 0.16666666666666666,
+            "llm_score": 0
+        }
+    ],
+    "52": [
+        {
+            "question": "What colors did Speaker_52_A say his classroom was decorated in",
+            "answer": "Red and Silver",
+            "response": "red and silver",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "51": [
+        {
+            "question": "What dish did Speaker_51_A mention he loves to cook",
+            "answer": "Paella",
+            "response": "Paella",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "55": [
+        {
+            "question": "What did Speaker_55_A say he would do after hearing about Speaker_55_A's strange psychic experiences related to his surgery",
+            "answer": "Post about it on Facebook",
+            "response": "User would start a weight loss program after hearing about Speaker_55_A's strange psychic experiences related to his surgery.",
+            "category": "none",
+            "bleu_score": 0.05000000000000001,
+            "f1_score": 0.08695652173913045,
+            "llm_score": 0
+        }
+    ],
+    "54": [
+        {
+            "question": "What was the strange thing Speaker_54_A warned about in relation to a banana during the conversation about escaping",
+            "answer": "That the banana only stretches once",
+            "response": "banana peppers",
+            "category": "none",
+            "bleu_score": 0.06766764161830635,
+            "f1_score": 0.25,
+            "llm_score": 0
+        }
+    ],
+    "56": [
+        {
+            "question": "What position did Speaker_56_A mention he was working at",
+            "answer": "manager at a gas station",
+            "response": "gas station",
+            "category": "none",
+            "bleu_score": 0.22313016014842982,
+            "f1_score": 0.5714285714285715,
+            "llm_score": 0
+        }
+    ],
+    "57": [
+        {
+            "question": "Where does Speaker_57_A usually camp",
+            "answer": "On the beach",
+            "response": "woods",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "61": [
+        {
+            "question": "What color is Speaker_61_A's motorbike",
+            "answer": "blue",
+            "response": "blue",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "63": [
+        {
+            "question": "What was the weakness Speaker_63_A mentioned?",
+            "answer": "vanilla ice cream and cats",
+            "response": "eating when bored",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "62": [
+        {
+            "question": "What did Speaker_62_A mention he had given up for mountain biking",
+            "answer": "Ice cream",
+            "response": "construction",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "60": [
+        {
+            "question": "What distance does Speaker_60_A try to fit into his daily walk?",
+            "answer": "Three miles",
+            "response": "long distance",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "65": [
+        {
+            "question": "Which branch of the military did Speaker_65_A mention he was in",
+            "answer": "The Navy",
+            "response": "Navy",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "58": [
+        {
+            "question": "What specific topping did Speaker_58_A mention enjoying on his pizza during a discussion about his diet",
+            "answer": "Pepperoni",
+            "response": "pepperoni",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "59": [
+        {
+            "question": "What was the first superpower Speaker_59_A mentioned he recently woke up with after his heart surgery",
+            "answer": "Moving objects with my mind",
+            "response": "weird superpowers",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "67": [
+        {
+            "question": "What job did Speaker_67_A mention he wanted to pursue after high school",
+            "answer": "physical therapist",
+            "response": "physical therapist",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "68": [
+        {
+            "question": "What kind of pet was Speaker_68_A telling about",
+            "answer": "German Shepherd",
+            "response": "dogs",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "66": [
+        {
+            "question": "What music genre did Speaker_66_A mention he was really into?",
+            "answer": "Death metal",
+            "response": "death metal",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "64": [
+        {
+            "question": "What is the name of Speaker_64_A's cat",
+            "answer": "Spook",
+            "response": "Spook",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "69": [
+        {
+            "question": "What color did Speaker_69_A mention was his natural hair color",
+            "answer": "Blond",
+            "response": "blond",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "53": [
+        {
+            "question": "What is the name of the state where Speaker_53_A's mom lives",
+            "answer": "Texas",
+            "response": "Nebraska",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "70": [
+        {
+            "question": "What did Speaker_70_A mention he likes to play during his free time",
+            "answer": "Board games",
+            "response": "video games",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "72": [
+        {
+            "question": "How many cats does Speaker_72_A have",
+            "answer": "5 cats",
+            "response": "5",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "77": [
+        {
+            "question": "What place did Speaker_77_A mention he likes to visit for fun",
+            "answer": "National parks",
+            "response": "lake",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "76": [
+        {
+            "question": "What was the project Speaker_76_A mentioned he was building?",
+            "answer": "robot to act as his body double",
+            "response": "robots",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "39": [
+        {
+            "question": "What job did Speaker_39_A mention he wished he could get even in jest?",
+            "answer": "Hooters",
+            "response": "painter",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "74": [
+        {
+            "question": "What kind of movies did Speaker_74_A mention he was planning to watch for Halloween?",
+            "answer": "Horror movies",
+            "response": "horror movies",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "71": [
+        {
+            "question": "What does Speaker_71_A usually do before participating in a big event",
+            "answer": "meditate",
+            "response": "Meditates",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "75": [
+        {
+            "question": "What small town outside of Albuquerque did Speaker_75_A mention he lived in",
+            "answer": "He actually didn't mention the name of it",
+            "response": "small town outside Albuquerque",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "78": [
+        {
+            "question": "What special skill did Speaker_78_A offer to help improve on?",
+            "answer": "Swimming",
+            "response": "magic",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "79": [
+        {
+            "question": "What did Speaker_79_A ask about what Speaker_79_A makes in his factory job",
+            "answer": "Speaker_79_A did not mention what is made at the factory",
+            "response": "job salary",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "73": [
+        {
+            "question": "What was the event Speaker_73_A mentioned he was training for during their teenage years",
+            "answer": "5k",
+            "response": "Homecoming king",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "83": [
+        {
+            "question": "What specific type of music does Speaker_83_A enjoy listening to on the farm",
+            "answer": "Country",
+            "response": "softer music",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "84": [
+        {
+            "question": "What was the favorite food that Speaker_84_A mentioned",
+            "answer": "potatoes",
+            "response": "papaya",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "80": [
+        {
+            "question": "What did Speaker_80_A say he did not like about his job",
+            "answer": "being a veterinarian",
+            "response": "talk to people",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "82": [
+        {
+            "question": "Had Speaker_82_A ever broken a bone while doing his interesting side job",
+            "answer": "No he has never broken a bone",
+            "response": "No",
+            "category": "none",
+            "bleu_score": 0.0024787521766663585,
+            "f1_score": 0.25,
+            "llm_score": 1
+        }
+    ],
+    "87": [
+        {
+            "question": "What cuisine did Speaker_87_A mention as his favorite",
+            "answer": "Italian food",
+            "response": "Italian food",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "86": [
+        {
+            "question": "What did Speaker_86_A say he did for a living",
+            "answer": "custodian",
+            "response": "Bee farmer",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "81": [
+        {
+            "question": "What did Speaker_81_A say he had stopped drinking during their discussion about diets",
+            "answer": "Soda",
+            "response": "soda",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "89": [
+        {
+            "question": "What advice did Speaker_89_A give regarding getting a smartphone for his grandkids?",
+            "answer": "it depends on the kid but it should be all or none",
+            "response": "Speaker_89_A did not give any advice regarding getting a smartphone for his grandkids.",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "85": [
+        {
+            "question": "Where does Speaker_85_A work when he is not volunteering to pet the bunnies",
+            "answer": "shipyard",
+            "response": "shipyard",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "91": [
+        {
+            "question": "What breeds are the dogs that Speaker_91_A mentioned",
+            "answer": "Springer spaniel and a labrador retriever",
+            "response": "Springer spaniel and Labrador retriever",
+            "category": "none",
+            "bleu_score": 0.8187307530779819,
+            "f1_score": 0.9090909090909091,
+            "llm_score": 1
+        }
+    ],
+    "92": [
+        {
+            "question": "What were the numbers Speaker_92_A guessed for the lottery",
+            "answer": "12 5 76 34 8 45",
+            "response": "1",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "90": [
+        {
+            "question": "What kind of music did Speaker_90_A mention he enjoyed the most",
+            "answer": "Death metal music",
+            "response": "death metal music",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "94": [
+        {
+            "question": "Where did Speaker_94_A move from when discussing his move to this country",
+            "answer": "Spain",
+            "response": "Spain",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "88": [
+        {
+            "question": "What specific type of shirt did Speaker_88_A mention he liked?",
+            "answer": "Band shirts with ruffled sleeves",
+            "response": "band shirts with ruffled sleeves",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "93": [
+        {
+            "question": "What animal did Speaker_93_A mention acted like a horse in the movie Frozen",
+            "answer": "a reindeer",
+            "response": "reindeer",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "97": [
+        {
+            "question": "What was the third piece of advice Speaker_97_A mentioned about staying out of trouble?",
+            "answer": "Get married and obey your wife",
+            "response": "Avoid whistling at lots of girls",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "98": [
+        {
+            "question": "What was the odd way Speaker_98_A mentioned he gets paid?",
+            "answer": "broken watches",
+            "response": "Speaker_98_A mentions spending paychecks on shoes and watches, which is an odd way to get paid.",
+            "category": "none",
+            "bleu_score": 0.05555555555555554,
+            "f1_score": 0.1111111111111111,
+            "llm_score": 0
+        }
+    ],
+    "100": [
+        {
+            "question": "What kind of animals does Speaker_100_A have on his farm",
+            "answer": "Horses",
+            "response": "Dogs",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "99": [
+        {
+            "question": "What did Speaker_99_A mention they usually have for dinner on Thanksgiving at his grandma Frankie's place",
+            "answer": "Pollo Loco",
+            "response": "Pollo Loco",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "101": [
+        {
+            "question": "What machine did Speaker_101_A mention he likes using at the gym",
+            "answer": "rowing machine",
+            "response": "rowing machine",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "95": [
+        {
+            "question": "What was the topic Speaker_95_A mentioned he was planning to try to learn?",
+            "answer": "The alphabet",
+            "response": "alphabet",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "102": [
+        {
+            "question": "What has Speaker_102_A been doing for a living since he was sixteen",
+            "answer": "usher at an orchestra theatre",
+            "response": "Works as an usher at an orchestra theatre",
+            "category": "none",
+            "bleu_score": 0.625,
+            "f1_score": 0.8333333333333333,
+            "llm_score": 1
+        }
+    ],
+    "96": [
+        {
+            "question": "What type of taco did Speaker_96_A mention his fianc\u00e9 makes",
+            "answer": "Fish tacos with cilantro lime slaw",
+            "response": "spicy tacos",
+            "category": "none",
+            "bleu_score": 0.06766764161830635,
+            "f1_score": 0.25,
+            "llm_score": 0
+        }
+    ],
+    "103": [
+        {
+            "question": "What dish was Speaker_103_A planning on making at home",
+            "answer": "Paella",
+            "response": "paella",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "105": [
+        {
+            "question": "What specific activity did Speaker_105_A mention he was doing related to his love for cats?",
+            "answer": "taking care of his two cats",
+            "response": "watching NASCAR",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "104": [
+        {
+            "question": "What special outing did Speaker_104_A arrange for one of his horses?",
+            "answer": "mini pony to a children's hospital",
+            "response": "arranged a visit to the children's hospital for the mini pony",
+            "category": "none",
+            "bleu_score": 0.5833333333333334,
+            "f1_score": 0.7499999999999999,
+            "llm_score": 1
+        }
+    ],
+    "108": [
+        {
+            "question": "What type of food did Speaker_108_A mention as his favorite",
+            "answer": "Mexican",
+            "response": "Mexican food",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "110": [
+        {
+            "question": "What are the names of the dogs that Speaker_110_A mentioned he has",
+            "answer": "Blue and Biscuit",
+            "response": "The dogs mentioned by Speaker_110_A do not have specific names given in the memories.",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "107": [
+        {
+            "question": "What were the two colors Speaker_107_A mentioned his parents painted his bedroom",
+            "answer": "Purple and lime green",
+            "response": "purple and lime green",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "112": [
+        {
+            "question": "What was the name of the musician Speaker_112_A mentioned he recently saw",
+            "answer": "Bruce Springsteen",
+            "response": "Bruce Springsteen",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "109": [
+        {
+            "question": "What was the car Speaker_109_A mentioned he was looking to get himself during the discussion about going rock climbing",
+            "answer": "BMW",
+            "response": "Corvette",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "114": [
+        {
+            "question": "What color did Speaker_114_A want to paint his apartment but his boyfriend disagreed?",
+            "answer": "Red",
+            "response": "red",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "106": [
+        {
+            "question": "What was the career aspiration Speaker_106_A mentioned he wanted to become?",
+            "answer": "A physical therapist",
+            "response": "physical therapist",
+            "category": "none",
+            "bleu_score": 0.6065306597126334,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "115": [
+        {
+            "question": "What was the one place Speaker_115_A's dad worked at",
+            "answer": "Home Depot",
+            "response": "Human services",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "117": [
+        {
+            "question": "What instrument did Speaker_117_A mention he used to play while discussing hobbies?",
+            "answer": "Wood blocks",
+            "response": "wood blocks",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "111": [
+        {
+            "question": "How many caps did Speaker_111_A mention he had in his collection",
+            "answer": "About 25",
+            "response": "a few",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "116": [
+        {
+            "question": "What did Speaker_116_A mention he used to do during hospitalizations?",
+            "answer": "read many comics",
+            "response": "read many comics",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "119": [
+        {
+            "question": "What was the color of the bike Speaker_119_A mentioned wanting to take out for a spin",
+            "answer": "red",
+            "response": "red",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "122": [
+        {
+            "question": "What instrument did Speaker_122_A mention he plays in his band",
+            "answer": "The drums",
+            "response": "drums",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "121": [
+        {
+            "question": "What was the specific song Speaker_121_A mentioned he plays loud in his car",
+            "answer": "Close Your Eyes by Ozzy and Lyda Ford",
+            "response": "Close Your Eyes by Her and Ozzy",
+            "category": "none",
+            "bleu_score": 0.7430381997858699,
+            "f1_score": 0.7999999999999999,
+            "llm_score": 0
+        }
+    ],
+    "113": [
+        {
+            "question": "What did Speaker_113_A say he loved to do while tanning",
+            "answer": "Listen to Britney Spears",
+            "response": "listen to Britney Spears",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "125": [
+        {
+            "question": "What breed is Speaker_125_A's roommate's dog",
+            "answer": "chihuahua",
+            "response": "Beagle",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "120": [
+        {
+            "question": "What unusual hobby did Speaker_120_A mention he likes to do?",
+            "answer": "Count the freckles on his foot",
+            "response": "count the freckles on their foot",
+            "category": "none",
+            "bleu_score": 0.8333333333333334,
+            "f1_score": 0.8333333333333334,
+            "llm_score": 1
+        }
+    ],
+    "124": [
+        {
+            "question": "What character's name did Speaker_124_A correct himself on during a discussion about favorite characters",
+            "answer": "Mickey Mouse",
+            "response": "Mickey Mouse",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "118": [
+        {
+            "question": "What activity did Speaker_118_A mention he loves related to his hobbies",
+            "answer": "Being in the stock market",
+            "response": "loves being in the stock market",
+            "category": "none",
+            "bleu_score": 0.8333333333333334,
+            "f1_score": 0.9090909090909091,
+            "llm_score": 1
+        }
+    ],
+    "127": [
+        {
+            "question": "What was the favorite late night snack that Speaker_127_A mentioned?",
+            "answer": "Nachos or chili cheese fries",
+            "response": "fries with gravy",
+            "category": "none",
+            "bleu_score": 0.17113903967753066,
+            "f1_score": 0.25,
+            "llm_score": 0
+        }
+    ],
+    "129": [
+        {
+            "question": "What did Speaker_129_A say was the tough part about his job?",
+            "answer": "The holiday hours are rough",
+            "response": "Holiday hours are rough",
+            "category": "none",
+            "bleu_score": 0.7788007830714049,
+            "f1_score": 0.888888888888889,
+            "llm_score": 1
+        }
+    ],
+    "126": [
+        {
+            "question": "What age did Speaker_126_A mention the twins are?",
+            "answer": "5",
+            "response": "5 years old",
+            "category": "none",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "131": [
+        {
+            "question": "What breed were Speaker_131_A's dogs?",
+            "answer": "black labs",
+            "response": "Black labs",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "132": [
+        {
+            "question": "What kind of fish does Speaker_132_A have",
+            "answer": "piranha",
+            "response": "piranha",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "134": [
+        {
+            "question": "What line of work did Speaker_134_A mention he is in?",
+            "answer": "construction field",
+            "response": "tailor",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "130": [
+        {
+            "question": "Where did Speaker_130_A mention he wanted to live once he leaves home",
+            "answer": "In a penthouse",
+            "response": "penthouse",
+            "category": "none",
+            "bleu_score": 0.1353352832366127,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "128": [
+        {
+            "question": "What was the favorite Italian dish that Speaker_128_A mentioned",
+            "answer": "Chicken Alfredo",
+            "response": "garlic bread",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "133": [
+        {
+            "question": "What dish did Speaker_133_A mention making that he loves so much when discussing going to Europe",
+            "answer": "Paella",
+            "response": "paella",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "135": [
+        {
+            "question": "What is the name of Speaker_135_A's horse",
+            "answer": "Coco",
+            "response": "Coco",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "137": [
+        {
+            "question": "What activity did Speaker_137_A mention that helps him clear his mind",
+            "answer": "Running",
+            "response": "Clears head when needed",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "123": [
+        {
+            "question": "What was the game Speaker_123_A mentioned he was playing a lot of recently",
+            "answer": "Call of Duty",
+            "response": "Fallout",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "142": [
+        {
+            "question": "What did Speaker_142_A mention he studied that was quite different from his current job",
+            "answer": "Chemistry",
+            "response": "chemistry",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "140": [
+        {
+            "question": "What reason did Speaker_140_A mention for kitties not playing with birds where he is from?",
+            "answer": "They must want to eat them",
+            "response": "kitties sometimes try to snatch birds",
+            "category": "none",
+            "bleu_score": 0.16666666666666669,
+            "f1_score": 0.16666666666666666,
+            "llm_score": 0
+        }
+    ],
+    "141": [
+        {
+            "question": "What was Speaker_141_A's preferred platform for car advertising when discussing social media",
+            "answer": "Facebook",
+            "response": "Facebook",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "144": [
+        {
+            "question": "What was the favorite character of Speaker_144_A mentioned during the discussion about Disneyland",
+            "answer": "Goofy",
+            "response": "Mickey Mouse",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "136": [
+        {
+            "question": "What was the item Speaker_136_A mentioned wanting to buy once he makes it big",
+            "answer": "A car",
+            "response": "car",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "143": [
+        {
+            "question": "What color is Speaker_143_A's lab?",
+            "answer": "black",
+            "response": "mutt",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "145": [
+        {
+            "question": "What job did Speaker_145_A mention he had just started at the time they talked about their backgrounds",
+            "answer": "Whataburger",
+            "response": "Whataburger",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "146": [
+        {
+            "question": "What band did Speaker_146_A mention he liked?",
+            "answer": "Aerosmith",
+            "response": "Aerosmith",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "150": [
+        {
+            "question": "What kind of animal is Speaker_150_A's pet and what is its name",
+            "answer": "cow Billy",
+            "response": "German Shepherd, Barnaby",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "148": [
+        {
+            "question": "What did Speaker_148_A say about the number of kids he has that are the same age as Speaker_148_A's students",
+            "answer": "one 9 year old",
+            "response": "10",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "139": [
+        {
+            "question": "What did Speaker_139_A wish would come faster regarding his future plans",
+            "answer": "Retirement",
+            "response": "retirement",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "138": [
+        {
+            "question": "What food did Speaker_138_A mention he pretty much eats all the time",
+            "answer": "Pizza",
+            "response": "pizza",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "147": [
+        {
+            "question": "What two activities does Speaker_147_A enjoy partaking in for his athleticism",
+            "answer": "run swim",
+            "response": "running and biking",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "151": [
+        {
+            "question": "What does Speaker_151_A do at the watch shop",
+            "answer": "He helps with repairs",
+            "response": "works as a watch dealer",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "149": [
+        {
+            "question": "What color did Speaker_149_A say Hogan's uniform was",
+            "answer": "Orange",
+            "response": "orange",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "153": [
+        {
+            "question": "What was Speaker_153_A's favorite drink to unwind after dealing with his five sons",
+            "answer": "Coffee",
+            "response": "coffee",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "154": [
+        {
+            "question": "What kind of products did Speaker_154_A mention he tries to buy?",
+            "answer": "Organic products",
+            "response": "organic products",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "158": [
+        {
+            "question": "What did Speaker_158_A mention he does while his children play on the playground",
+            "answer": "My dogs play with them",
+            "response": "lets their kids play on the playground",
+            "category": "none",
+            "bleu_score": 0.14285714285714285,
+            "f1_score": 0.16666666666666666,
+            "llm_score": 0
+        }
+    ],
+    "157": [
+        {
+            "question": "What character did Speaker_157_A mention he wanted to surf with at Disney",
+            "answer": "Mickey Mouse",
+            "response": "Mickey Mouse",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "161": [
+        {
+            "question": "What dish did Speaker_161_A mention he was excited about that includes fries?",
+            "answer": "Fries with melted cheese and gravy cheese crumbles or curds",
+            "response": "chili cheese fries",
+            "category": "none",
+            "bleu_score": 0.06464797857627003,
+            "f1_score": 0.3333333333333333,
+            "llm_score": 0
+        }
+    ],
+    "162": [
+        {
+            "question": "What particular diet was Speaker_162_A trying out",
+            "answer": "low sodium keto diet",
+            "response": "keto diet",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 0
+        }
+    ],
+    "155": [
+        {
+            "question": "What shade of blue did Speaker_155_A mention he particularly liked",
+            "answer": "navy blue",
+            "response": "navy blue",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "152": [
+        {
+            "question": "What was the unique food choice Speaker_152_A mentioned during their conversation about favorite foods",
+            "answer": "French fries",
+            "response": "french fries",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "165": [
+        {
+            "question": "What was the favorite lunch Speaker_165_A mentioned he was having that day",
+            "answer": "pasta and garlic bread",
+            "response": "shawarma",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "164": [
+        {
+            "question": "What kind of pans does Speaker_164_A typically use when cooking during camping trips",
+            "answer": "cast iron pans",
+            "response": "cast iron pans",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "163": [
+        {
+            "question": "What was the toy Speaker_163_A mentioned that relaxes him",
+            "answer": "Lite brite",
+            "response": "lite brite",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "166": [
+        {
+            "question": "What profession did Speaker_166_A mention he ended up in after struggling in school?",
+            "answer": "professional tennis player",
+            "response": "professional tennis player",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "168": [
+        {
+            "question": "What was the model of the Rolls Royce that Speaker_168_A mentioned he was a big fan of",
+            "answer": "Ghost",
+            "response": "Rolls Royce Ghost",
+            "category": "none",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "159": [
+        {
+            "question": "What type of music did Speaker_159_A mention they both enjoy",
+            "answer": "Rock music",
+            "response": "classic rock",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "156": [
+        {
+            "question": "Where did Speaker_156_A say he was thinking of moving to for his retirement plans",
+            "answer": "Spain",
+            "response": "Spain",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "160": [
+        {
+            "question": "What was the show Speaker_160_A mentioned he just finished watching",
+            "answer": "Narcos",
+            "response": "Narcos",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "170": [
+        {
+            "question": "What was the favorite band Speaker_170_A mentioned",
+            "answer": "Aerosmith",
+            "response": "Insane Clown Posse",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "173": [
+        {
+            "question": "What were the unique names Speaker_173_A came up with for his turtles",
+            "answer": "Shi nae nae and Water Melon Drea",
+            "response": "Water Melon Drea",
+            "category": "none",
+            "bleu_score": 0.2635971381157267,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 0
+        }
+    ],
+    "171": [
+        {
+            "question": "What reason did Speaker_171_A give for finding the place where he works gross?",
+            "answer": "fast food place animal rights",
+            "response": "Speaker_171_A found the place where he works gross because it is Burger King.",
+            "category": "none",
+            "bleu_score": 0.07142857142857141,
+            "f1_score": 0.1111111111111111,
+            "llm_score": 0
+        }
+    ],
+    "175": [
+        {
+            "question": "What profession was Speaker_175_A aiming for in his studies",
+            "answer": "nurse",
+            "response": "nurse",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "167": [
+        {
+            "question": "What was the one thing Speaker_167_A mentioned he needed to do related to his job before the wedding day",
+            "answer": "create a curriculum for his kindergarten class",
+            "response": "Create curriculum",
+            "category": "none",
+            "bleu_score": 0.0820849986238988,
+            "f1_score": 0.4444444444444445,
+            "llm_score": 1
+        }
+    ],
+    "177": [
+        {
+            "question": "What were the two apps Speaker_177_A mentioned he spent a lot of time on",
+            "answer": "Facebook and twitter",
+            "response": "Facebook and Twitter",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "176": [
+        {
+            "question": "What did Speaker_176_A want to do after he got released from the center",
+            "answer": "Work at a gas station",
+            "response": "Start a new life or get a job",
+            "category": "none",
+            "bleu_score": 0.12500000000000003,
+            "f1_score": 0.16666666666666666,
+            "llm_score": 0
+        }
+    ],
+    "179": [
+        {
+            "question": "How many arabian horses did Speaker_179_A mention he had",
+            "answer": "3 arabian horses",
+            "response": "3",
+            "category": "none",
+            "bleu_score": 0.1353352832366127,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "180": [
+        {
+            "question": "What event led Speaker_180_A to try skinny dipping for the first time",
+            "answer": "He lost a bet that the cubs wouldn't win at the world series",
+            "response": "A week ago",
+            "category": "none",
+            "bleu_score": 0.008520511068835796,
+            "f1_score": 0.13333333333333333,
+            "llm_score": 0
+        }
+    ],
+    "181": [
+        {
+            "question": "What car does Speaker_181_A drive and how many miles does it have?",
+            "answer": "1999 Ford Mustang 40000 miles",
+            "response": "Mustang, but the miles driven are not mentioned.",
+            "category": "none",
+            "bleu_score": 0.2,
+            "f1_score": 0.3076923076923077,
+            "llm_score": 0
+        }
+    ],
+    "169": [
+        {
+            "question": "Where did Speaker_169_A say he worked before he was fired",
+            "answer": "Petsmart",
+            "response": "Petsmart",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "172": [
+        {
+            "question": "What country did Speaker_172_A mention is his favorite to visit in Europe",
+            "answer": "Italy",
+            "response": "Italy",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "182": [
+        {
+            "question": "What theme park did Speaker_182_A mention he should take his son to visit?",
+            "answer": "Disney World",
+            "response": "Disney World",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "184": [
+        {
+            "question": "Where did Speaker_184_A say he learned how to survive off grid for weeks?",
+            "answer": "his mom and dad",
+            "response": "from mom and dad",
+            "category": "none",
+            "bleu_score": 0.75,
+            "f1_score": 0.75,
+            "llm_score": 1
+        }
+    ],
+    "186": [
+        {
+            "question": "What did Speaker_186_A say his DJ will play at his wedding?",
+            "answer": "Taylor Swift",
+            "response": "Taylor Swift music",
+            "category": "none",
+            "bleu_score": 0.6666666666666666,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "187": [
+        {
+            "question": "What is the name of the ribbons Speaker_187_A's dog Princess Pei Pei won",
+            "answer": "A blue ribbon",
+            "response": "blue ribbon",
+            "category": "none",
+            "bleu_score": 0.6065306597126334,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "185": [
+        {
+            "question": "What did Speaker_185_A describe about his living situation",
+            "answer": "he lives in the suburbs",
+            "response": "lives in the suburbs",
+            "category": "none",
+            "bleu_score": 0.7788007830714049,
+            "f1_score": 0.888888888888889,
+            "llm_score": 1
+        }
+    ],
+    "174": [
+        {
+            "question": "What breed of cat did Speaker_174_A mention",
+            "answer": "Maine Coon",
+            "response": "Scottish fold",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "190": [
+        {
+            "question": "What was the favorite color of Speaker_190_A that he mentioned during their conversation about favorite colors",
+            "answer": "red",
+            "response": "red",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "188": [
+        {
+            "question": "What was the job Speaker_188_A mentioned he had when discussing career options?",
+            "answer": "tour guide at a local museum",
+            "response": "museum worker",
+            "category": "none",
+            "bleu_score": 0.06766764161830635,
+            "f1_score": 0.25,
+            "llm_score": 0
+        }
+    ],
+    "189": [
+        {
+            "question": "What is the profession of Speaker_189_A outside of volunteering",
+            "answer": "professional wrestler",
+            "response": "Wrestler",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "193": [
+        {
+            "question": "What activity did Speaker_193_A mention he does for meditation",
+            "answer": "Painting",
+            "response": "meditates",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "194": [
+        {
+            "question": "What food did Speaker_194_A mention he liked in the army",
+            "answer": "Shawarma",
+            "response": "shawarma",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "178": [
+        {
+            "question": "What outdoor sport did Speaker_178_A mention he likes to do after work for stress relief?",
+            "answer": "rock climbing",
+            "response": "rock climbing",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "195": [
+        {
+            "question": "What was the name of the watch dealer Speaker_195_A works for",
+            "answer": "Time out",
+            "response": "discount watch dealer",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "196": [
+        {
+            "question": "What ages did Speaker_196_A mention his boys were",
+            "answer": "15 and 16",
+            "response": "15 and 16 years old",
+            "category": "none",
+            "bleu_score": 0.6,
+            "f1_score": 0.7499999999999999,
+            "llm_score": 1
+        }
+    ],
+    "183": [
+        {
+            "question": "What did Speaker_183_A say was his favorite food?",
+            "answer": "steak and fresh crab legs",
+            "response": "tacos",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "197": [
+        {
+            "question": "What kind of flowers did Speaker_197_A suggest to decorate the studio apartment?",
+            "answer": "Roses",
+            "response": "roses",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "198": [
+        {
+            "question": "Where did Speaker_198_A mention he tried hiding his ice cream from his large family",
+            "answer": "In the peas",
+            "response": "Large family's house",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "200": [
+        {
+            "question": "What specific method did Speaker_200_A mention he uses to find his internal self",
+            "answer": "Floating on my kayak",
+            "response": "singing",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "201": [
+        {
+            "question": "What two machines did Speaker_201_A mention were his favorite at the gym",
+            "answer": "treadmill and rowing machine",
+            "response": "treadmill and rowing machine",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "191": [
+        {
+            "question": "What activity did Speaker_191_A mention he loves to do during his spare time after retirement",
+            "answer": "yard work",
+            "response": "yard work",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "199": [
+        {
+            "question": "Who did Speaker_199_A mention he might knit something for?",
+            "answer": "his wife",
+            "response": "wife",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "192": [
+        {
+            "question": "What did Speaker_192_A say his dogs would do if he could move things with his mind after his heart transplant",
+            "answer": "They would totally freak out",
+            "response": "steal cookies",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "205": [
+        {
+            "question": "What was the game Speaker_205_A mentioned he plays daily?",
+            "answer": "Pot Farm",
+            "response": "Star Craft",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "206": [
+        {
+            "question": "What diet was Speaker_206_A following during his workout routine",
+            "answer": "raw diet",
+            "response": "raw diet",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "207": [
+        {
+            "question": "What gathering did Speaker_207_A mention he attends a lot in relation to his hobbies during the discussion about his pregnancy",
+            "answer": "Feminist rallies",
+            "response": "feminist rallies",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "210": [
+        {
+            "question": "What was the name of Speaker_210_A's black labrador retriever who saved his life when he was a kid",
+            "answer": "Trevor",
+            "response": "Black labs are wonderful family pets and do great on a farm",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "204": [
+        {
+            "question": "What was Speaker_204_A willing to trade honey for",
+            "answer": "Tickets to the upcoming Olympics I'm in",
+            "response": "tickets to the upcoming Olympics",
+            "category": "none",
+            "bleu_score": 0.5488116360940264,
+            "f1_score": 0.8333333333333333,
+            "llm_score": 1
+        }
+    ],
+    "202": [
+        {
+            "question": "What instrument does Speaker_202_A play aside from banjo",
+            "answer": "guitar",
+            "response": "harp",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "209": [
+        {
+            "question": "What major had Speaker_209_A just finished at that time",
+            "answer": "economy major",
+            "response": "economy major",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "213": [
+        {
+            "question": "Did Speaker_213_A ever make an account to follow some of the action discussed about social media",
+            "answer": "No he never made a twitter account",
+            "response": "No",
+            "category": "none",
+            "bleu_score": 0.0024787521766663585,
+            "f1_score": 0.25,
+            "llm_score": 1
+        }
+    ],
+    "212": [
+        {
+            "question": "Where was the job that Speaker_212_A mentioned he was working at",
+            "answer": "nursing home",
+            "response": "nursing home",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "208": [
+        {
+            "question": "How long has Speaker_208_A had his cat",
+            "answer": "one year",
+            "response": "3 days",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "214": [
+        {
+            "question": "What does Speaker_214_A always wear to protect himself while skateboarding",
+            "answer": "A helmet like Rob Dryden",
+            "response": "helmets",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "203": [
+        {
+            "question": "What was the dish Speaker_203_A mentioned that he said sounds like it is not tasty",
+            "answer": "Paella",
+            "response": "paella",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "217": [
+        {
+            "question": "What was the breed of Speaker_217_A's German Shepherd",
+            "answer": "King",
+            "response": "German Shepherd",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "218": [
+        {
+            "question": "What type of races did Speaker_218_A mention he took part in",
+            "answer": "run Disney races",
+            "response": "Disney races",
+            "category": "none",
+            "bleu_score": 0.6065306597126334,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "216": [
+        {
+            "question": "What activity did Speaker_216_A mention he likes to do in his spare time",
+            "answer": "Volunteer",
+            "response": "hiking",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "219": [
+        {
+            "question": "What did Speaker_219_A mention he used to do before he started streaming on Twitch",
+            "answer": "design video games",
+            "response": "design a videogame",
+            "category": "none",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.3333333333333333,
+            "llm_score": 1
+        }
+    ],
+    "221": [
+        {
+            "question": "What dish did Speaker_221_A mention he was eating for lunch?",
+            "answer": "A raw spinach salad",
+            "response": "raw spinach salad",
+            "category": "none",
+            "bleu_score": 0.7165313105737893,
+            "f1_score": 0.8571428571428571,
+            "llm_score": 1
+        }
+    ],
+    "222": [
+        {
+            "question": "What types of animals did Speaker_222_A mention he has on his farm",
+            "answer": "sheep horses German Shepherds",
+            "response": "horses, German Shepherds, parrot",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.75,
+            "llm_score": 0
+        }
+    ],
+    "220": [
+        {
+            "question": "What color did Speaker_220_A jokingly wish his tractor was",
+            "answer": "Orange",
+            "response": "red",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "225": [
+        {
+            "question": "What kind of car did Speaker_225_A suggest he should get when he retires",
+            "answer": "Cadillac",
+            "response": "Cadillac",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "224": [
+        {
+            "question": "What breed did Speaker_224_A mention his dogs were",
+            "answer": "mini Australian shepherds",
+            "response": "Mini Australian shepherds",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "226": [
+        {
+            "question": "What was the subject of the painting that Speaker_226_A mentioned he did for a charity project in art school",
+            "answer": "shrimp",
+            "response": "shrimp portrait",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "211": [
+        {
+            "question": "What was the model of the new car Speaker_211_A mentioned",
+            "answer": "Volvo S 40",
+            "response": "Volvo S40",
+            "category": "none",
+            "bleu_score": 0.3032653298563167,
+            "f1_score": 0.4,
+            "llm_score": 1
+        }
+    ],
+    "228": [
+        {
+            "question": "What was the game Speaker_228_A mentioned he loved playing apart from Monopoly",
+            "answer": "Scrabble",
+            "response": "Trivial Pursuit",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "227": [
+        {
+            "question": "What famous relative did Speaker_227_A mention during the discussion about his family history",
+            "answer": "Christopher Columbus",
+            "response": "Christopher Columbus",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "229": [
+        {
+            "question": "Where did Speaker_229_A suggest he should travel to join him for a blind date on his yacht",
+            "answer": "Seattle",
+            "response": "Italy",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "230": [
+        {
+            "question": "What did Speaker_230_A say about the days he works each week?",
+            "answer": "four times per week",
+            "response": "4 times per week",
+            "category": "none",
+            "bleu_score": 0.75,
+            "f1_score": 0.75,
+            "llm_score": 1
+        }
+    ],
+    "215": [
+        {
+            "question": "Where did Speaker_215_A say he found those Spanish dance books",
+            "answer": "Spain",
+            "response": "Spain",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "231": [
+        {
+            "question": "What was the favorite superhero of Speaker_231_A mentioned by him?",
+            "answer": "Cyborg",
+            "response": "Spiderman",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "233": [
+        {
+            "question": "What number of guests did Speaker_233_A mention he was expecting for his wedding",
+            "answer": "50 guests",
+            "response": "50",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "232": [
+        {
+            "question": "Where did Speaker_232_A say he had his workout bench",
+            "answer": "In my shed",
+            "response": "shed",
+            "category": "none",
+            "bleu_score": 0.1353352832366127,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "236": [
+        {
+            "question": "What place did Speaker_236_A recommend he could find work at",
+            "answer": "An auto parts store",
+            "response": "new restaurant downtown",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "237": [
+        {
+            "question": "What ages did Speaker_237_A mention his kids are",
+            "answer": "five eight ten",
+            "response": "10 years old",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "242": [
+        {
+            "question": "What was the favorite modern artist Speaker_242_A mentioned",
+            "answer": "Travis Scott",
+            "response": "Travis Scott",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "240": [
+        {
+            "question": "What instruments did Speaker_240_A mention he plays",
+            "answer": "Guitar and piano",
+            "response": "guitar and piano",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "243": [
+        {
+            "question": "When does Speaker_243_A usually go to the Rolling Stones concert as part of his annual family ritual",
+            "answer": "On May 5th every year",
+            "response": "May 5th",
+            "category": "none",
+            "bleu_score": 0.22313016014842982,
+            "f1_score": 0.5714285714285715,
+            "llm_score": 1
+        }
+    ],
+    "241": [
+        {
+            "question": "What did Speaker_241_A say he did after retiring from the military",
+            "answer": "building boats",
+            "response": "Works in the shipyard and builds boats",
+            "category": "none",
+            "bleu_score": 0.14285714285714285,
+            "f1_score": 0.22222222222222224,
+            "llm_score": 1
+        }
+    ],
+    "235": [
+        {
+            "question": "What were the colors Speaker_235_A was working with in his painting",
+            "answer": "Red and silver",
+            "response": "red and silver",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "223": [
+        {
+            "question": "What snack did Speaker_223_A mention he usually makes when watching his show",
+            "answer": "Hummus",
+            "response": "vegan seasoned pretzels",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "245": [
+        {
+            "question": "What did Speaker_245_A mention he didn't miss about farming",
+            "answer": "The early mornings",
+            "response": "gatherings",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "246": [
+        {
+            "question": "What breed did Speaker_246_A mention his dog was",
+            "answer": "Collie",
+            "response": "German Shepherd",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "247": [
+        {
+            "question": "What does Speaker_247_A do for a living",
+            "answer": "mechanical engineer",
+            "response": "Works as a mechanical engineer",
+            "category": "none",
+            "bleu_score": 0.4,
+            "f1_score": 0.5714285714285715,
+            "llm_score": 1
+        }
+    ],
+    "249": [
+        {
+            "question": "What breed of horse does Speaker_249_A's wife like",
+            "answer": "Shetlands",
+            "response": "Arabian horses",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "234": [
+        {
+            "question": "What did Speaker_234_A mention his dog's name was",
+            "answer": "Snowbird",
+            "response": "Snowbird",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "250": [
+        {
+            "question": "What type of dogs does Speaker_250_A have?",
+            "answer": "Shepherds",
+            "response": "Yorkie",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "248": [
+        {
+            "question": "What was the name of Speaker_248_A's sister's fish",
+            "answer": "Shark bate",
+            "response": "Bubbles",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "238": [
+        {
+            "question": "What country and color did Speaker_238_A mention he hates despite being in a country famous for it",
+            "answer": "The Netherlands and orange",
+            "response": "Netherlands, orange",
+            "category": "none",
+            "bleu_score": 0.47768754038252614,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "239": [
+        {
+            "question": "What job did Speaker_239_A mention he had while watching a movie?",
+            "answer": "traveling circus",
+            "response": "construction and engineering",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "252": [
+        {
+            "question": "What was the favorite food of Speaker_252_A that he mentioned",
+            "answer": "Pizza with black olives",
+            "response": "Chinese food",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "253": [
+        {
+            "question": "Where does Speaker_253_A say he travels frequently?",
+            "answer": "Europe",
+            "response": "US",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "256": [
+        {
+            "question": "What kind of farm did Speaker_256_A mention he had?",
+            "answer": "bee farm",
+            "response": "Bee farm",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "244": [
+        {
+            "question": "What song was Speaker_244_A working on when they talked about playing music together",
+            "answer": "new song",
+            "response": "F\u00fcr Elise",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "255": [
+        {
+            "question": "What was the favorite song Speaker_255_A mentioned during the conversation about superpowers",
+            "answer": "Let It Go",
+            "response": "Let It Go",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "257": [
+        {
+            "question": "What positions did Speaker_257_A have open at that time for his online business",
+            "answer": "Assistant marketing director",
+            "response": "Marketing and drop shipping positions",
+            "category": "none",
+            "bleu_score": 0.2,
+            "f1_score": 0.25,
+            "llm_score": 0
+        }
+    ],
+    "251": [
+        {
+            "question": "What was the reason Speaker_251_A said he couldn't skate at that moment",
+            "answer": "broken arm",
+            "response": "User's arm wasn't 100%",
+            "category": "none",
+            "bleu_score": 0.14285714285714285,
+            "f1_score": 0.3333333333333333,
+            "llm_score": 0
+        }
+    ],
+    "259": [
+        {
+            "question": "What was the unique plant Speaker_259_A mentioned that closes when touched",
+            "answer": "sensitive plant",
+            "response": "sensitive plant",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "258": [
+        {
+            "question": "What was the dream car Speaker_258_A mentioned",
+            "answer": "A Lamborghini",
+            "response": "sports car",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "261": [
+        {
+            "question": "Where was Speaker_261_A working at his part-time job",
+            "answer": "Burger King",
+            "response": "dog walking business",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "260": [
+        {
+            "question": "What was the first place Speaker_260_A mentioned he worked at",
+            "answer": "convenience store",
+            "response": "McDonald's",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "262": [
+        {
+            "question": "What was the English translation of the Spanish word Speaker_262_A was trying to teach?",
+            "answer": "Trabajo means work",
+            "response": "work",
+            "category": "none",
+            "bleu_score": 0.1353352832366127,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "263": [
+        {
+            "question": "What dish did Speaker_263_A mention he loves to cook?",
+            "answer": "Paella",
+            "response": "paella",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "266": [
+        {
+            "question": "What was the institute Speaker_266_A worked at as a librarian",
+            "answer": "Boston College",
+            "response": "Boston College",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "265": [
+        {
+            "question": "What position did Speaker_265_A say he plays in basketball",
+            "answer": "point guard",
+            "response": "point guard",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "269": [
+        {
+            "question": "What was the favorite ice cream flavor that Speaker_269_A mentioned",
+            "answer": "mint chocolate chip",
+            "response": "Based on the memories provided, Speaker_269_A did not mention any specific favorite ice cream flavor.",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "267": [
+        {
+            "question": "What color did Speaker_267_A say his dog Barnaby was",
+            "answer": "Grey",
+            "response": "gray",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "264": [
+        {
+            "question": "What substance did Speaker_264_A mention was legal where he lives",
+            "answer": "Weed",
+            "response": "Weed",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "268": [
+        {
+            "question": "What type of pet did Speaker_268_A mention he had?",
+            "answer": "German Shepherd",
+            "response": "dog",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "273": [
+        {
+            "question": "What was the favorite artist Speaker_273_A mentioned",
+            "answer": "Britney Spears",
+            "response": "Britney Spears",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "270": [
+        {
+            "question": "What was the choice of topping for Speaker_270_A's pizza?",
+            "answer": "Pepperoni",
+            "response": "black olives",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "274": [
+        {
+            "question": "What was the band that Speaker_274_A mentioned he did security for?",
+            "answer": "The Rolling Stones",
+            "response": "Rolling Stones",
+            "category": "none",
+            "bleu_score": 0.6065306597126334,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "276": [
+        {
+            "question": "What sports did Speaker_276_A's parents play?",
+            "answer": "baseball basketball",
+            "response": "sports",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "275": [
+        {
+            "question": "What was the number of sons Speaker_275_A mentioned he has?",
+            "answer": "Five sons",
+            "response": "3",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "277": [
+        {
+            "question": "Where are the students of Speaker_277_A's friend who teaches from",
+            "answer": "China",
+            "response": "China",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "272": [
+        {
+            "question": "What was the favorite flavor of ice cream that Speaker_272_A mentioned",
+            "answer": "Vanilla",
+            "response": "vanilla",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "278": [
+        {
+            "question": "What did Speaker_278_A offer to read about the tanning bed?",
+            "answer": "A book about the dangers of skin cancer",
+            "response": "Speaker_278_A did not offer to read about the tanning bed.",
+            "category": "none",
+            "bleu_score": 0.18181818181818182,
+            "f1_score": 0.22222222222222224,
+            "llm_score": 0
+        }
+    ],
+    "254": [
+        {
+            "question": "What trick was Speaker_254_A trying to teach his lab before the next show",
+            "answer": "Backflip",
+            "response": "backflip",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "281": [
+        {
+            "question": "What was the one thing Speaker_281_A mentioned he hoped to do to make himself happier?",
+            "answer": "Lose weight",
+            "response": "Hope for the market to be better this year than last year",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "283": [
+        {
+            "question": "What were the two music genres Speaker_283_A mentioned he prefers",
+            "answer": "Metal and jazz",
+            "response": "metal music and jazz",
+            "category": "none",
+            "bleu_score": 0.75,
+            "f1_score": 0.8571428571428571,
+            "llm_score": 1
+        }
+    ],
+    "280": [
+        {
+            "question": "What grade does Speaker_280_A teach",
+            "answer": "4th grade",
+            "response": "4th grade",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "282": [
+        {
+            "question": "What was unusual about the zoo that Speaker_282_A visited once",
+            "answer": "All the animals were just people dressed in costumes",
+            "response": "animals were people dressed in costumes",
+            "category": "none",
+            "bleu_score": 0.6065306597126334,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "286": [
+        {
+            "question": "What did Speaker_286_A say he would need to do before meeting Speaker_286_A?",
+            "answer": "Check with his parents",
+            "response": "confirm with parents",
+            "category": "none",
+            "bleu_score": 0.47768754038252614,
+            "f1_score": 0.5714285714285715,
+            "llm_score": 1
+        }
+    ],
+    "284": [
+        {
+            "question": "Where does Speaker_284_A work at night to pay for his college?",
+            "answer": "bar in NJ",
+            "response": "Speaker_284_A's parents are wealthy, so he does not work at night to pay for his college.",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "287": [
+        {
+            "question": "What location did Speaker_287_A mention where his dad is stationed in the military",
+            "answer": "Iraq",
+            "response": "Iraq",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "285": [
+        {
+            "question": "What fruit did Speaker_285_A mention his wife got him into eating when discussing visiting his bee farm",
+            "answer": "Papaya",
+            "response": "papaya",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "288": [
+        {
+            "question": "What was the job Speaker_288_A mentioned he did?",
+            "answer": "plumber",
+            "response": "Speaker_288_A mentioned he did not do anything noteworthy recently.",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "271": [
+        {
+            "question": "What kind of car did Speaker_271_A mention his husband was investing in",
+            "answer": "A Raptor",
+            "response": "Mustang",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "291": [
+        {
+            "question": "What creature did Speaker_291_A mention caused him unease?",
+            "answer": "Spiders",
+            "response": "spiders",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "292": [
+        {
+            "question": "What was the name of Speaker_292_A's favorite book?",
+            "answer": "A Clockwork Orange",
+            "response": "The Fault in Our Stars",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "294": [
+        {
+            "question": "What were the names of Speaker_294_A's dogs",
+            "answer": "Venice and Milan",
+            "response": "Venice and Milan",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "289": [
+        {
+            "question": "What profession did Speaker_289_A mention he aspires to become",
+            "answer": "A physical therapist",
+            "response": "Physical therapist",
+            "category": "none",
+            "bleu_score": 0.6065306597126334,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "279": [
+        {
+            "question": "What job did Speaker_279_A's dad have?",
+            "answer": "army",
+            "response": "army",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "296": [
+        {
+            "question": "Where does Speaker_296_A usually spend his time volunteering",
+            "answer": "At the homeless shelter",
+            "response": "animal shelter",
+            "category": "none",
+            "bleu_score": 0.18393972058572117,
+            "f1_score": 0.3333333333333333,
+            "llm_score": 0
+        }
+    ],
+    "297": [
+        {
+            "question": "What are the breeds of Speaker_297_A's two dogs",
+            "answer": "springer spaniel lab",
+            "response": "springer spaniel and labrador retriever",
+            "category": "none",
+            "bleu_score": 0.4,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "298": [
+        {
+            "question": "Who does Speaker_298_A usually have lunch with",
+            "answer": "his parents and their clients",
+            "response": "parents and their clients",
+            "category": "none",
+            "bleu_score": 0.7788007830714049,
+            "f1_score": 0.888888888888889,
+            "llm_score": 1
+        }
+    ],
+    "299": [
+        {
+            "question": "What job does Speaker_299_A have?",
+            "answer": "mechanical engineer",
+            "response": "retired",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "290": [
+        {
+            "question": "What color is the helmet Speaker_290_A uses when he races motorcycles",
+            "answer": "red and blue",
+            "response": "red",
+            "category": "none",
+            "bleu_score": 0.1353352832366127,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "300": [
+        {
+            "question": "What was the dream car Speaker_300_A mentioned he was guessing?",
+            "answer": "Rolls Royce Ghost",
+            "response": "Rolls Royce Ghost",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "303": [
+        {
+            "question": "What did Speaker_303_A say about the number of cats he had",
+            "answer": "two cats",
+            "response": "3",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "301": [
+        {
+            "question": "What kind of robot was Speaker_301_A building?",
+            "answer": "A human-like robot",
+            "response": "human-like robots",
+            "category": "none",
+            "bleu_score": 0.3032653298563167,
+            "f1_score": 0.4,
+            "llm_score": 1
+        }
+    ],
+    "304": [
+        {
+            "question": "What hobby related to landscapes did Speaker_304_A mention during their conversation about jobs",
+            "answer": "Landscape photography",
+            "response": "landscaping",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "305": [
+        {
+            "question": "What profession did Speaker_305_A's dad want him to follow",
+            "answer": "army",
+            "response": "Army",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "306": [
+        {
+            "question": "What genre of music does Speaker_306_A usually listen to while working",
+            "answer": "Rock music",
+            "response": "Rock",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "295": [
+        {
+            "question": "What was the adventure at the pet store that Speaker_295_A mentioned and what did Speaker_295_A say he liked about his hair color?",
+            "answer": "grey hair",
+            "response": "Speaker_295_A stole a cat from a pet store and liked his rainbow hair colors.",
+            "category": "none",
+            "bleu_score": 0.06666666666666667,
+            "f1_score": 0.13333333333333336,
+            "llm_score": 0
+        }
+    ],
+    "308": [
+        {
+            "question": "What specific Star Wars movie did Speaker_308_A mention he liked",
+            "answer": "Rogue one",
+            "response": "Rogue One",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "293": [
+        {
+            "question": "What game did Speaker_293_A mention they both liked when discussing going to the beach",
+            "answer": "Monopoly",
+            "response": "Monopoly",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "310": [
+        {
+            "question": "What sport did Speaker_310_A mention he enjoyed watching?",
+            "answer": "Hockey",
+            "response": "hockey",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "309": [
+        {
+            "question": "What was the job Speaker_309_A held for 20 years?",
+            "answer": "paint abstract art",
+            "response": "Painter",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "307": [
+        {
+            "question": "What dish did Speaker_307_A mention is often eaten at his sister's shows",
+            "answer": "fish and chips",
+            "response": "fish and chips",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "314": [
+        {
+            "question": "What website did Speaker_314_A mention he likes to post his relationship status on",
+            "answer": "Facebook",
+            "response": "Facebook",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "312": [
+        {
+            "question": "What was the thing Speaker_312_A wanted to lend after mentioning blistered feet",
+            "answer": "A massager",
+            "response": "cleaning houses all day",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "302": [
+        {
+            "question": "Who does Speaker_302_A live with?",
+            "answer": "his best friend",
+            "response": "Roommate",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "316": [
+        {
+            "question": "What was the young band Speaker_316_A mentioned he liked during their discussion about favorite bands",
+            "answer": "older bands like the Eagles Beatles and ACDC",
+            "response": "Mickey Mouse",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "311": [
+        {
+            "question": "What series did Speaker_311_A recommend that has new books coming out",
+            "answer": "Harry Potter series",
+            "response": "Harry Potter",
+            "category": "none",
+            "bleu_score": 0.6065306597126334,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "318": [
+        {
+            "question": "What was the reason Speaker_318_A's parents kicked him out?",
+            "answer": "Because he is not using his chemistry degree",
+            "response": "The reason Speaker_318_A's parents kicked him out was not specified in the memories.",
+            "category": "none",
+            "bleu_score": 0.06666666666666667,
+            "f1_score": 0.1,
+            "llm_score": 0
+        }
+    ],
+    "319": [
+        {
+            "question": "What were the names of Speaker_319_A's two dogs",
+            "answer": "Luke and Duke",
+            "response": "Duke and Luke",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "317": [
+        {
+            "question": "What is the other hobby Speaker_317_A enjoys apart from grilling",
+            "answer": "Gambling",
+            "response": "[\n    \"7 days 8 hours ago: User loves to cook for friends\",\n    \"7 days 8 hours ago: User has a new Traeger grill\",\n    \"7 days 8 hours ago: User is bringing ribeye steak\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"13 days 8 hours ago: User travels to South America often\",\n    \"13 days 8 hours ago: User lives in North California\",\n    \"7 days 8 hours ago: User has a Bachelor's Degree in Chemistry\",\n    \"13 days 8 hours ago: User hasn't worked in many years\",\n    \"7 days 8 hours ago: User thinks they are decent at gambling because they are good at math\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is considering bringing games or wine\",\n    \"7 days 8 hours ago: User has a friend who has school homework\",\n    \"7 days 8 hours ago: User is free on weekends after helping someone with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math problems with her daughter on weekends\",\n    \"7 days 8 hours ago: User appreciates help with math-related struggles\",\n    \"13 days 8 hours ago: User taught math skills to someone\",\n    \"7 days 8 hours ago: User is free on weekends after helping with school homework\",\n    \"7 days 8 hours ago: User works through math",
+            "category": "none",
+            "bleu_score": 0.0005379236148466917,
+            "f1_score": 0.02631578947368421,
+            "llm_score": 1
+        }
+    ],
+    "322": [
+        {
+            "question": "What was the favorite color of Speaker_322_A that he mentioned in their previous conversation",
+            "answer": "We didn't discuss my favorite color",
+            "response": "orange",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "315": [
+        {
+            "question": "What car did Speaker_315_A prefer over a Camaro?",
+            "answer": "A Mustang",
+            "response": "Mustang",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "321": [
+        {
+            "question": "How many animals did Speaker_321_A mention he has?",
+            "answer": "four cats and a puppy",
+            "response": "2",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "323": [
+        {
+            "question": "What was the favorite team sport Speaker_323_A mentioned he enjoyed",
+            "answer": "Basketball",
+            "response": "basketball",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "320": [
+        {
+            "question": "What beverage did Speaker_320_A mention he is really into making?",
+            "answer": "Fancy teas",
+            "response": "strawberry tea",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "313": [
+        {
+            "question": "What vegetarian dish did Speaker_313_A mention he wanted to try?",
+            "answer": "Broccoli and tofu in a garlic sauce",
+            "response": "broccoli and tofu in a garlic sauce",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "326": [
+        {
+            "question": "What craft did Speaker_326_A mention he picked up around the time of his diagnosis",
+            "answer": "Sewing",
+            "response": "sewing",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "330": [
+        {
+            "question": "What specific thing did Speaker_330_A mention he wanted to invest in?",
+            "answer": "A futuristic grill",
+            "response": "futuristic grill",
+            "category": "none",
+            "bleu_score": 0.6065306597126334,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "325": [
+        {
+            "question": "What was the first movie together that Speaker_325_A mentioned in relation to Cliffhanger",
+            "answer": "Cliffhanger",
+            "response": "Cliffhanger",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "332": [
+        {
+            "question": "What board game did Speaker_332_A mention he liked to play",
+            "answer": "Monopoly",
+            "response": "Stratego and Battleship",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "334": [
+        {
+            "question": "What two types of tea were in the mix that Speaker_334_A mentioned he was having",
+            "answer": "green and black tea",
+            "response": "green and black tea",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "324": [
+        {
+            "question": "What instrument does Speaker_324_A teach at the homeless shelter",
+            "answer": "Piano",
+            "response": "piano",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "335": [
+        {
+            "question": "What hobby does Speaker_335_A enjoy doing on weekends",
+            "answer": "dancing",
+            "response": "dancing",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "333": [
+        {
+            "question": "How many kids did Speaker_333_A say he had with his ex-wife",
+            "answer": "Two",
+            "response": "2",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "331": [
+        {
+            "question": "How many instruments does Speaker_331_A play?",
+            "answer": "five instruments violin piano guitar bass drums",
+            "response": "5",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "336": [
+        {
+            "question": "What alternative way did Speaker_336_A suggest to pay for his college expenses?",
+            "answer": "Pole dancing",
+            "response": "Scholarships",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "337": [
+        {
+            "question": "What language was Speaker_337_A studying at the time he mentioned music as a hobby?",
+            "answer": "Spanish",
+            "response": "Spanish",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "327": [
+        {
+            "question": "What were the items Speaker_327_A mentioned that the gym supplied for his parrots",
+            "answer": "cages and smaller weights for the birds",
+            "response": "spot",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "341": [
+        {
+            "question": "What were the two instruments Speaker_341_A mentioned that his dad taught him",
+            "answer": "Guitar and violin",
+            "response": "guitar and violin",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "339": [
+        {
+            "question": "What was the favorite color Speaker_339_A mentioned",
+            "answer": "Orange",
+            "response": "green",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "342": [
+        {
+            "question": "What 80's band did Speaker_342_A mention as his fascination?",
+            "answer": "New Kids on the Block",
+            "response": "New Kids on the Block",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "344": [
+        {
+            "question": "What food did Speaker_344_A mention should be served at the shelter where he is volunteering?",
+            "answer": "Shawarma",
+            "response": "Mexican food",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "329": [
+        {
+            "question": "What industry does Speaker_329_A work in",
+            "answer": "banking industry",
+            "response": "banking",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "328": [
+        {
+            "question": "What animal did Speaker_328_A mention he did not like very much?",
+            "answer": "Lions",
+            "response": "lions",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "346": [
+        {
+            "question": "Where did Speaker_346_A mention he worked as a tour guide",
+            "answer": "museum",
+            "response": "museum",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "348": [
+        {
+            "question": "Who did Speaker_348_A mention as his favorite skateboarder",
+            "answer": "Rob Dryden",
+            "response": "Rob",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "338": [
+        {
+            "question": "What did Speaker_338_A say his cat's name was",
+            "answer": "Mean girl",
+            "response": "Mean girl",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "349": [
+        {
+            "question": "What instrument did Speaker_349_A mention he plays in addition to the guitar",
+            "answer": "piano",
+            "response": "piano",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "347": [
+        {
+            "question": "How much does Speaker_347_A usually give to the bunny rescue each paycheck",
+            "answer": "100",
+            "response": "100",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "351": [
+        {
+            "question": "What is the name of the companion Speaker_351_A wanted to travel with from Ohio",
+            "answer": "Spook",
+            "response": "Spook",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "352": [
+        {
+            "question": "What breed of dog did Speaker_352_A mention he has",
+            "answer": "German Shepherd",
+            "response": "China Cat",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "354": [
+        {
+            "question": "What was special about Speaker_354_A's new roommate after his recent move",
+            "answer": "best friends",
+            "response": "friend is liking the new place",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "353": [
+        {
+            "question": "What did Speaker_353_A mention he bought a raffle ticket for",
+            "answer": "Taylor Swift",
+            "response": "Taylor Swift",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "343": [
+        {
+            "question": "What did Speaker_343_A say he would rather put his money towards instead of renting a yacht",
+            "answer": "Bitcoin",
+            "response": "making lots of money",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "357": [
+        {
+            "question": "What were the names of the horses Speaker_357_A mentioned",
+            "answer": "Siegfried Beowulf and Hector",
+            "response": "Siegfried, Beowulf, and Hector",
+            "category": "none",
+            "bleu_score": 0.6666666666666666,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "340": [
+        {
+            "question": "What was the movie Speaker_340_A mentioned he was marathoning?",
+            "answer": "Star Wars",
+            "response": "Titanic",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "358": [
+        {
+            "question": "What kind of wine did Speaker_358_A suggest he should try after discussing what he enjoys in the evenings?",
+            "answer": "cabernet",
+            "response": "Sauvetage Rose",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "356": [
+        {
+            "question": "What band did Speaker_356_A mention he used to listen to when he played with his favorite toy",
+            "answer": "New Kids on the Block",
+            "response": "Lite Brite",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "345": [
+        {
+            "question": "How many miles did Speaker_345_A say he usually walks in a day",
+            "answer": "3 miles",
+            "response": "3 miles",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "360": [
+        {
+            "question": "What was the particular type of tea Speaker_360_A mentioned he likes",
+            "answer": "Weed tea",
+            "response": "fancy tea",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "359": [
+        {
+            "question": "What was the main reason Speaker_359_A mentioned for playing soccer",
+            "answer": "he enjoys spending time with his friends",
+            "response": "Concerned about playing better on soccer team",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "361": [
+        {
+            "question": "What does Speaker_361_A love doing while enjoying his favorite pizza?",
+            "answer": "jamming out to music especially The Who",
+            "response": "Loves to eat mushrooms and spinach on pizza",
+            "category": "none",
+            "bleu_score": 0.12500000000000003,
+            "f1_score": 0.13333333333333333,
+            "llm_score": 0
+        }
+    ],
+    "355": [
+        {
+            "question": "What unique job did Speaker_355_A mention his sister has",
+            "answer": "She is a pole dancer",
+            "response": "dances on a pole for money",
+            "category": "none",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.3636363636363636,
+            "llm_score": 1
+        }
+    ],
+    "364": [
+        {
+            "question": "How many cats did Speaker_364_A mention he has",
+            "answer": "two cats",
+            "response": "1",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "350": [
+        {
+            "question": "What did Speaker_350_A say his mother did for a living during her visit?",
+            "answer": "She does whatever job is available to her",
+            "response": "electrician",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "366": [
+        {
+            "question": "What country did Speaker_366_A say he moved from",
+            "answer": "Australia",
+            "response": "Australia",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "370": [
+        {
+            "question": "What job did Speaker_370_A mention he mostly does",
+            "answer": "construction worker",
+            "response": "construction worker",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "372": [
+        {
+            "question": "What was the platform Speaker_372_A mentioned they both use to search for new songs",
+            "answer": "Youtube",
+            "response": "YouTube",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "371": [
+        {
+            "question": "What number of wrestling matches did Speaker_371_A mention he had the next day",
+            "answer": "6 matches",
+            "response": "6",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "362": [
+        {
+            "question": "What were the two sports Speaker_362_A mentioned he really enjoyed",
+            "answer": "Golf and combat fighting",
+            "response": "baseball and tennis",
+            "category": "none",
+            "bleu_score": 0.23884377019126307,
+            "f1_score": 0.28571428571428575,
+            "llm_score": 0
+        }
+    ],
+    "374": [
+        {
+            "question": "What special treat did Speaker_374_A mention his friend gives to his dog?",
+            "answer": "doggy ice cream",
+            "response": "doggy ice cream",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "369": [
+        {
+            "question": "What specific activity did Speaker_369_A mention he does occasionally to give back to the community",
+            "answer": "help out at the soup kitchen",
+            "response": "walking dogs",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "375": [
+        {
+            "question": "Who was the singer Speaker_375_A mentioned he liked?",
+            "answer": "Travis Scott",
+            "response": "Enrique Iglesias",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "377": [
+        {
+            "question": "What was the birthday gift Speaker_377_A mentioned he was planning to give Speaker_377_A?",
+            "answer": "A spaceship",
+            "response": "45th birthday gift",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "368": [
+        {
+            "question": "What was the cause of the problem at the bunny rescue center that Speaker_368_A mentioned?",
+            "answer": "Badgers",
+            "response": "Badgers were eating the bunnies.",
+            "category": "none",
+            "bleu_score": 0.16666666666666669,
+            "f1_score": 0.33333333333333337,
+            "llm_score": 1
+        }
+    ],
+    "378": [
+        {
+            "question": "What was the place Speaker_378_A was working at?",
+            "answer": "Burger King",
+            "response": "Burger King",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "365": [
+        {
+            "question": "What did Speaker_365_A mention he was building for his work project?",
+            "answer": "A robot",
+            "response": "robot",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "367": [
+        {
+            "question": "What physical activity did Speaker_367_A mention he couldn't do due to his age?",
+            "answer": "running",
+            "response": "run",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "363": [
+        {
+            "question": "What did Speaker_363_A say about the number of hours he practices each day?",
+            "answer": "Four hours every day",
+            "response": "4 hours",
+            "category": "none",
+            "bleu_score": 0.18393972058572117,
+            "f1_score": 0.3333333333333333,
+            "llm_score": 1
+        }
+    ],
+    "379": [
+        {
+            "question": "What was the item Speaker_379_A discussed taking to his kindergarten class for show and tell?",
+            "answer": "Robots",
+            "response": "robot",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "381": [
+        {
+            "question": "What was the favorite food Speaker_381_A mentioned",
+            "answer": "Any kind of pasta",
+            "response": "fruit papaya",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "380": [
+        {
+            "question": "What specific type of workout does Speaker_380_A do regularly",
+            "answer": "Mostly cardio",
+            "response": "cardio",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "376": [
+        {
+            "question": "Who did Speaker_376_A recommend for help with self control and dealing with emotions",
+            "answer": "A professional counselor or psychologist",
+            "response": "User's husband",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "382": [
+        {
+            "question": "How many kids did Speaker_382_A mention he likes hanging out with",
+            "answer": "Three",
+            "response": "3",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "373": [
+        {
+            "question": "How many dogs does Speaker_373_A have",
+            "answer": "one",
+            "response": "1",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "384": [
+        {
+            "question": "What profession did Speaker_384_A mention he wanted to pursue?",
+            "answer": "veterinarian",
+            "response": "veterinarian",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "385": [
+        {
+            "question": "What was the favorite food Speaker_385_A mentioned besides sushi",
+            "answer": "Pizza especially with black olives",
+            "response": "pizza",
+            "category": "none",
+            "bleu_score": 0.01831563888873418,
+            "f1_score": 0.33333333333333337,
+            "llm_score": 1
+        }
+    ],
+    "387": [
+        {
+            "question": "What did Speaker_387_A say about how time has affected him?",
+            "answer": "Time has not been good to him and he was beautiful years ago",
+            "response": "time has not been good to him",
+            "category": "none",
+            "bleu_score": 0.42437284567694994,
+            "f1_score": 0.7000000000000001,
+            "llm_score": 1
+        }
+    ],
+    "383": [
+        {
+            "question": "What profession did Speaker_383_A mention he nearly entered had he finished school",
+            "answer": "The army",
+            "response": "chef",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "389": [
+        {
+            "question": "What was the favorite Spanish word Speaker_389_A mentioned in relation to his studies?",
+            "answer": "Trabajo",
+            "response": "trabajo",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "388": [
+        {
+            "question": "What type of food did Speaker_388_A mention he enjoys the most",
+            "answer": "Hummus",
+            "response": "pot roast",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "391": [
+        {
+            "question": "Which team did Speaker_391_A mention he played football for",
+            "answer": "New Orleans Saints",
+            "response": "New Orleans Saints",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "393": [
+        {
+            "question": "What was the toy Speaker_393_A mentioned he liked when he was a kid",
+            "answer": "The rubiks cube",
+            "response": "Rubik's cube",
+            "category": "none",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.4,
+            "llm_score": 1
+        }
+    ],
+    "392": [
+        {
+            "question": "How many sons did Speaker_392_A say he has",
+            "answer": "5 sons",
+            "response": "3",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "396": [
+        {
+            "question": "What was Speaker_396_A's favorite color",
+            "answer": "Black",
+            "response": "yellow",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "397": [
+        {
+            "question": "What three languages did Speaker_397_A mention he is fluent in",
+            "answer": "English Spanish French",
+            "response": "English, Spanish, and French",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.8571428571428571,
+            "llm_score": 1
+        }
+    ],
+    "390": [
+        {
+            "question": "What irrational fear did Speaker_390_A mention he was afraid of",
+            "answer": "Clowns",
+            "response": "heights",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "398": [
+        {
+            "question": "What job did Speaker_398_A mention he had before being a public service employee",
+            "answer": "public service employee",
+            "response": "public service employee",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "399": [
+        {
+            "question": "What reason did Speaker_399_A give for deciding to join the Navy?",
+            "answer": "love the color navy",
+            "response": "love for the color",
+            "category": "none",
+            "bleu_score": 0.75,
+            "f1_score": 0.75,
+            "llm_score": 1
+        }
+    ],
+    "400": [
+        {
+            "question": "What sport did Speaker_400_A mention he liked to do in his free time",
+            "answer": "Ping pong",
+            "response": "ping pong",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "401": [
+        {
+            "question": "What was the favourite colour of Speaker_401_A that he mentioned?",
+            "answer": "Brown",
+            "response": "pink",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "402": [
+        {
+            "question": "What were the names of Speaker_402_A's cat and dog",
+            "answer": "Mouse and Biscuit",
+            "response": "Mouse and Sugar",
+            "category": "none",
+            "bleu_score": 0.6666666666666666,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 0
+        }
+    ],
+    "403": [
+        {
+            "question": "What dish did Speaker_403_A mention he was going to make while watching a movie",
+            "answer": "Lasagna",
+            "response": "lasagna",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "405": [
+        {
+            "question": "What type of food did Speaker_405_A mention he only eats to maintain his figure",
+            "answer": "Salads",
+            "response": "salads",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "386": [
+        {
+            "question": "What was the place Speaker_386_A mentioned visiting for its impressive roller coasters",
+            "answer": "Heide Park",
+            "response": "Heide Park",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "406": [
+        {
+            "question": "How long had Speaker_406_A known his partner before deciding to get married",
+            "answer": "One year",
+            "response": "1 year",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "409": [
+        {
+            "question": "What band did Speaker_409_A mention he wanted to listen to in the car while driving to get some donuts",
+            "answer": "Insane Clown Posse",
+            "response": "Insane Clown Posse",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "411": [
+        {
+            "question": "What color did Speaker_411_A mention his guitar was when discussing his hobbies?",
+            "answer": "pink",
+            "response": "pink",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "412": [
+        {
+            "question": "What did Speaker_412_A say he wanted to do after he retires",
+            "answer": "Travel more",
+            "response": "travel more after being a librarian",
+            "category": "none",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "395": [
+        {
+            "question": "What was the favorite movie Speaker_395_A mentioned",
+            "answer": "Friday",
+            "response": "Friday",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "394": [
+        {
+            "question": "What profession did Speaker_394_A mention about his family member that related to Speaker_394_A's past?",
+            "answer": "dentist",
+            "response": "Sister",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "416": [
+        {
+            "question": "What physical challenge was Speaker_416_A working towards?",
+            "answer": "Running a kilometer",
+            "response": "run an 8 minute mile",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "413": [
+        {
+            "question": "What was the favorite Disney character Speaker_413_A mentioned",
+            "answer": "Goofy",
+            "response": "Goofy",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "407": [
+        {
+            "question": "What breed did Speaker_407_A mention is always Catholic",
+            "answer": "Huskies",
+            "response": "Husky",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "414": [
+        {
+            "question": "What subject does Speaker_414_A teach at high school",
+            "answer": "high school English",
+            "response": "English",
+            "category": "none",
+            "bleu_score": 0.1353352832366127,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "404": [
+        {
+            "question": "What did Speaker_404_A's father do for a living",
+            "answer": "drove cars for Nascar",
+            "response": "Worked at Home Depot",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "418": [
+        {
+            "question": "What was the amount of pounds of cinnamon rolls Speaker_418_A planned to eat in one day for a challenge",
+            "answer": "6 pounds of cinnamon rolls",
+            "response": "6 pounds",
+            "category": "none",
+            "bleu_score": 0.22313016014842982,
+            "f1_score": 0.5714285714285715,
+            "llm_score": 1
+        }
+    ],
+    "417": [
+        {
+            "question": "What was the name of the band Speaker_417_A wanted to see in the UK",
+            "answer": "The Who",
+            "response": "The Who",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "420": [
+        {
+            "question": "What was Speaker_420_A's favorite color",
+            "answer": "Gray",
+            "response": "blue",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "421": [
+        {
+            "question": "What was the suggestion Speaker_421_A made on how Speaker_421_A could make money from his gold medal",
+            "answer": "endorsements",
+            "response": "Speak about the gold medal and potentially sell stories or appearances related to it.",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "422": [
+        {
+            "question": "What flavor did Speaker_422_A mention he would get on the way back from the park?",
+            "answer": "Chocolate",
+            "response": "chocolate ice cream",
+            "category": "none",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "423": [
+        {
+            "question": "What specific type of book did Speaker_423_A mention he likes?",
+            "answer": "Adult coloring books",
+            "response": "adult coloring books",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "408": [
+        {
+            "question": "What classic movie did Speaker_408_A mention he enjoyed?",
+            "answer": "The Great Escape",
+            "response": "The Great Escape",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "425": [
+        {
+            "question": "What were the names of the cats that Speaker_425_A mentioned",
+            "answer": "Samson and Delilah",
+            "response": "Samson and Delilah",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "410": [
+        {
+            "question": "Who did Speaker_410_A mention is a top model from Italy",
+            "answer": "his wife",
+            "response": "User's wife",
+            "category": "none",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "427": [
+        {
+            "question": "Where does Speaker_427_A work?",
+            "answer": "nursing home",
+            "response": "nursing home",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "426": [
+        {
+            "question": "What was the year and model of the car Speaker_426_A offered to use for the cat meet up",
+            "answer": "2015 Honda Civic",
+            "response": "2015",
+            "category": "none",
+            "bleu_score": 0.1353352832366127,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "429": [
+        {
+            "question": "What did Speaker_429_A say about the number of toilets he has to share with his housemates?",
+            "answer": "3 toilets",
+            "response": "3 toilets",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "428": [
+        {
+            "question": "What did Speaker_428_A say he used to watch when discussing his favourite cartoons",
+            "answer": "Mickey Mouse",
+            "response": "Scooby Doo",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "424": [
+        {
+            "question": "Where is Speaker_424_A's new home located",
+            "answer": "Japan",
+            "response": "Japan",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "432": [
+        {
+            "question": "What was the job Speaker_432_A did before he started cleaning houses",
+            "answer": "paint",
+            "response": "cleaning houses",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "415": [
+        {
+            "question": "What sport did Speaker_415_A mention he plays occasionally",
+            "answer": "Soccer",
+            "response": "soccer",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "431": [
+        {
+            "question": "What instrument did Speaker_431_A's parents teach him to play when he was young",
+            "answer": "ukulele",
+            "response": "ukulele",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "433": [
+        {
+            "question": "What band did Speaker_433_A mention he was going to see at his favorite concert",
+            "answer": "The Rolling Stones",
+            "response": "Insane Clown Posse",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "430": [
+        {
+            "question": "How many siblings did Speaker_430_A mention he has",
+            "answer": "three siblings and a brother",
+            "response": "2",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "436": [
+        {
+            "question": "What reason did Speaker_436_A mention for getting burnt when moving out west?",
+            "answer": "fair skin and brown eyes",
+            "response": "Speaker_436_A did not mention getting burnt when moving out west.",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "438": [
+        {
+            "question": "What was the favorite color Speaker_438_A mentioned while discussing ping pong",
+            "answer": "Purple",
+            "response": "purple",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "437": [
+        {
+            "question": "Where did Speaker_437_A mention he was volunteering when discussing moving in with his boyfriend?",
+            "answer": "local soup kitchen",
+            "response": "local soup kitchen",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "435": [
+        {
+            "question": "What did Speaker_435_A say about having any injuries from his work",
+            "answer": "No he has never broken any bones",
+            "response": "Speaker_435_A has never broken any bones and has only had minor injuries.",
+            "category": "none",
+            "bleu_score": 0.38461538461538464,
+            "f1_score": 0.5555555555555556,
+            "llm_score": 1
+        }
+    ],
+    "439": [
+        {
+            "question": "What does Speaker_439_A usually do in his free time",
+            "answer": "volunteer at a homeless shelter",
+            "response": "plays music, reads, and teaches piano",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "434": [
+        {
+            "question": "How long did it take Speaker_434_A to get 100000 subscribers on Twitch?",
+            "answer": "6 months",
+            "response": "6 months",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "441": [
+        {
+            "question": "What does Speaker_441_A love to have on his burgers",
+            "answer": "Bacon",
+            "response": "bacon",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "443": [
+        {
+            "question": "What was the object Speaker_443_A mentioned he could move with his powers",
+            "answer": "Boogers",
+            "response": "things",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "419": [
+        {
+            "question": "Where did Speaker_419_A say he started working recently",
+            "answer": "At a gas station",
+            "response": "gas station",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "445": [
+        {
+            "question": "Where did Speaker_445_A learn to swim",
+            "answer": "In the ocean",
+            "response": "ocean",
+            "category": "none",
+            "bleu_score": 0.1353352832366127,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "440": [
+        {
+            "question": "What was the old toy Speaker_440_A mentioned from the 80s that he loved",
+            "answer": "Lite Brite",
+            "response": "Lite Brite",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "446": [
+        {
+            "question": "What color did Speaker_446_A mention he hated the most",
+            "answer": "orange",
+            "response": "orange",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "447": [
+        {
+            "question": "What was the one thing Speaker_447_A brought back from China",
+            "answer": "The chocolate bar",
+            "response": "chocolate bar from China",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.5714285714285715,
+            "llm_score": 1
+        }
+    ],
+    "448": [
+        {
+            "question": "What profession did Speaker_448_A mention he was interested in documenting?",
+            "answer": "construction foreman",
+            "response": "construction",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 0
+        }
+    ],
+    "449": [
+        {
+            "question": "What did Speaker_449_A mention he would buy when visiting the bunny sanctuary where Speaker_449_A volunteers",
+            "answer": "A hat",
+            "response": "hat",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "451": [
+        {
+            "question": "What did Speaker_451_A's grandfather do during WWII",
+            "answer": "He was in the army",
+            "response": "Speaker_451_A's grandfather was in the army during WWII.",
+            "category": "none",
+            "bleu_score": 0.4,
+            "f1_score": 0.6153846153846154,
+            "llm_score": 1
+        }
+    ],
+    "455": [
+        {
+            "question": "What did Speaker_455_A ask Speaker_455_A to provide for the little league kids' visit?",
+            "answer": "Coffee",
+            "response": "gifts",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "450": [
+        {
+            "question": "Where did Speaker_450_A say he was riding his motorbike?",
+            "answer": "Cairo",
+            "response": "Florida",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "452": [
+        {
+            "question": "What age was the student turning on his birthday",
+            "answer": "12",
+            "response": "18",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "457": [
+        {
+            "question": "What does Speaker_457_A do for a living?",
+            "answer": "teach tennis",
+            "response": "Works in the West Virginia coal industry",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "456": [
+        {
+            "question": "What does Speaker_456_A do for a living",
+            "answer": "hair stylist",
+            "response": "School teacher",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "460": [
+        {
+            "question": "How many pairs of shoes did Speaker_460_A say he had",
+            "answer": "237 pairs of shoes",
+            "response": "236 pairs",
+            "category": "none",
+            "bleu_score": 0.18393972058572117,
+            "f1_score": 0.3333333333333333,
+            "llm_score": 0
+        }
+    ],
+    "459": [
+        {
+            "question": "What unique thing did Speaker_459_A do with his hair for the Star Wars premiere",
+            "answer": "dyed half his hair for the Rebels and half for the Empire",
+            "response": "Dyed hair half for the rebels and half for the empire",
+            "category": "none",
+            "bleu_score": 0.9131007162822624,
+            "f1_score": 0.9411764705882353,
+            "llm_score": 1
+        }
+    ],
+    "463": [
+        {
+            "question": "How many kids does Speaker_463_A already have before expecting the twins",
+            "answer": "One a little girl",
+            "response": "1",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "442": [
+        {
+            "question": "What does Speaker_442_A like to do in his spare time to help others?",
+            "answer": "volunteer at soup kitchens",
+            "response": "volunteer at soup kitchens",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "444": [
+        {
+            "question": "What was the activity Speaker_444_A mentioned that helps him stay in shape",
+            "answer": "Walking",
+            "response": "Walking",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "467": [
+        {
+            "question": "What was the job Speaker_467_A quit before going soul searching in Alaska",
+            "answer": "customer service",
+            "response": "job in Alaska",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "465": [
+        {
+            "question": "Where did Speaker_465_A mention was his favourite place to escape winter",
+            "answer": "Southern Georgia",
+            "response": "Myrtle Beach",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "462": [
+        {
+            "question": "Which genre did Speaker_462_A mention he enjoys listening to",
+            "answer": "Indie r&b",
+            "response": "indie and R&B",
+            "category": "none",
+            "bleu_score": 0.8,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "461": [
+        {
+            "question": "What two crops did Speaker_461_A mention he grows on his farm",
+            "answer": "corn and wheat",
+            "response": "corn and wheat",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "464": [
+        {
+            "question": "What did Speaker_464_A say was his favorite band",
+            "answer": "Up",
+            "response": "Up",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "466": [
+        {
+            "question": "What genre did Speaker_466_A mention he liked to play for his babies",
+            "answer": "Classical music",
+            "response": "softer classical music",
+            "category": "none",
+            "bleu_score": 0.6666666666666666,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "468": [
+        {
+            "question": "What type of food did Speaker_468_A mention he prefers over the crops he plants",
+            "answer": "Pizza",
+            "response": "Veggie burgers and salads",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "469": [
+        {
+            "question": "Which state was the national park that Speaker_469_A mentioned located in",
+            "answer": "Alabama",
+            "response": "Tennessee",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "454": [
+        {
+            "question": "What safety advice did Speaker_454_A give regarding motorbike riding after recovery?",
+            "answer": "wear a helmet and safety eyewear",
+            "response": "Wear a helmet and safety eyewear",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "453": [
+        {
+            "question": "What remedy did Speaker_453_A's mom suggest for dealing with the shakes before she died",
+            "answer": "soup is good for the shakes",
+            "response": "football soup",
+            "category": "none",
+            "bleu_score": 0.06766764161830635,
+            "f1_score": 0.25,
+            "llm_score": 0
+        }
+    ],
+    "471": [
+        {
+            "question": "How many cats does Speaker_471_A have and where do they like to stay",
+            "answer": "3 cats one is indoors and the other two like to stay outside",
+            "response": "3 cats, 2 outdoor and 1 indoor",
+            "category": "none",
+            "bleu_score": 0.20072303569462135,
+            "f1_score": 0.3,
+            "llm_score": 1
+        }
+    ],
+    "472": [
+        {
+            "question": "What specific protein-rich food did Speaker_472_A mention he eats a lot of in his vegetarian meals",
+            "answer": "Beans",
+            "response": "beans",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "470": [
+        {
+            "question": "What did Speaker_470_A's dad do for a living",
+            "answer": "NASCAR driver",
+            "response": "NASCAR driver",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "473": [
+        {
+            "question": "What job did Speaker_473_A start not long ago?",
+            "answer": "local high school",
+            "response": "Job at a local high school",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "475": [
+        {
+            "question": "What grade does Speaker_475_A teach?",
+            "answer": "3rd grade",
+            "response": "3rd grade",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "474": [
+        {
+            "question": "What athletic activity did Speaker_474_A mention as his favorite",
+            "answer": "running in marathons",
+            "response": "Running",
+            "category": "none",
+            "bleu_score": 0.1353352832366127,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "458": [
+        {
+            "question": "What was the dance Speaker_458_A mentioned he performed in his youth",
+            "answer": "Flamingo dance",
+            "response": "flamingo dancer",
+            "category": "none",
+            "bleu_score": 0.5,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "476": [
+        {
+            "question": "What peculiar thing does Speaker_476_A collect from his old medicine practice",
+            "answer": "medical stories",
+            "response": "medical stories",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "478": [
+        {
+            "question": "What were the toppings on the pizza Speaker_478_A discussed regarding late-night snacks",
+            "answer": "Black olives and mushrooms",
+            "response": "anchovies",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "480": [
+        {
+            "question": "What language did Speaker_480_A mention he was interested in learning?",
+            "answer": "Spanish",
+            "response": "Spanish",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "479": [
+        {
+            "question": "What was the favorite snack that Speaker_479_A mentioned",
+            "answer": "Hummus",
+            "response": "chocolate bars",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "477": [
+        {
+            "question": "What was the name of Speaker_477_A's pet dog that he shared during their conversation about favorite activities and food",
+            "answer": "Charlie",
+            "response": "Charlie",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "482": [
+        {
+            "question": "How many years has Speaker_482_A been playing soccer",
+            "answer": "10 years",
+            "response": "12 hours ago",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "481": [
+        {
+            "question": "What was the subject Speaker_481_A mentioned he was studying?",
+            "answer": "Law",
+            "response": "law",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "483": [
+        {
+            "question": "What kind of animals does Speaker_483_A raise on his farm",
+            "answer": "beef and pig",
+            "response": "pigs, cattle, and sheep",
+            "category": "none",
+            "bleu_score": 0.16666666666666669,
+            "f1_score": 0.28571428571428575,
+            "llm_score": 0
+        }
+    ],
+    "484": [
+        {
+            "question": "What was the specific car brand Speaker_484_A mentioned in relation to driving fast",
+            "answer": "Rolls Royce",
+            "response": "Lamborghini Aventador",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "486": [
+        {
+            "question": "What was the special thing Speaker_486_A mentioned he loves about where he lives?",
+            "answer": "he lives up high in the clouds and he loves it",
+            "response": "loves the cloud as a good place to live",
+            "category": "none",
+            "bleu_score": 0.17794164509262397,
+            "f1_score": 0.2105263157894737,
+            "llm_score": 0
+        }
+    ],
+    "489": [
+        {
+            "question": "What kind of work did Speaker_489_A's dad do",
+            "answer": "Home Depot",
+            "response": "Home Depot",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "487": [
+        {
+            "question": "What two football teams did Speaker_487_A mention as his favorites",
+            "answer": "Redskins and Packers",
+            "response": "Redskins and Packers",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "493": [
+        {
+            "question": "What was the name of the rescue where Speaker_493_A volunteers?",
+            "answer": "The local bunny rescue",
+            "response": "Bunny Rescue",
+            "category": "none",
+            "bleu_score": 0.36787944117144233,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "490": [
+        {
+            "question": "Where does Speaker_490_A volunteer as a swim coach",
+            "answer": "local pool",
+            "response": "local pool",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "491": [
+        {
+            "question": "What was the favorite drink of Speaker_491_A that he mentioned?",
+            "answer": "Rum but not with soda anymore",
+            "response": "clear sparkling white wines",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "495": [
+        {
+            "question": "What was the Spanish word Speaker_495_A mentioned he really liked?",
+            "answer": "trabajo",
+            "response": "trabajo",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "497": [
+        {
+            "question": "What was the untraditional ingredient Speaker_497_A suggested to use in his lasagna recipe",
+            "answer": "Plantains",
+            "response": "carrot noodles",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "496": [
+        {
+            "question": "What was the unexpected hobby Speaker_496_A mentioned he was really into?",
+            "answer": "Adult coloring books",
+            "response": "adult coloring books",
+            "category": "none",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "498": [
+        {
+            "question": "How many kids does Speaker_498_A have",
+            "answer": "three and one on the way",
+            "response": "3",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "485": [
+        {
+            "question": "What activity did Speaker_485_A suggest over watching TV during their discussion about leisure activities",
+            "answer": "Going for a walk",
+            "response": "drinking wine",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "492": [
+        {
+            "question": "What does Speaker_492_A call soda in his area",
+            "answer": "pop",
+            "response": "soda",
+            "category": "none",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "488": [
+        {
+            "question": "What type of ice cream did Speaker_488_A mention he likes to eat?",
+            "answer": "ice cream sandwiches",
+            "response": "vanilla ice cream",
+            "category": "none",
+            "bleu_score": 0.6666666666666666,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 0
+        }
+    ],
+    "494": [
+        {
+            "question": "What age and profession did Speaker_494_A mention regarding his mother?",
+            "answer": "103 dentist",
+            "response": "71 years old, dentist",
+            "category": "none",
+            "bleu_score": 0.2,
+            "f1_score": 0.3333333333333333,
+            "llm_score": 0
+        }
+    ],
+    "499": [
+        {
+            "question": "How did Speaker_499_A describe his parents' professions",
+            "answer": "They are both teachers",
+            "response": "Speaker_499_A described his parents' professions as teachers.",
+            "category": "none",
+            "bleu_score": 0.11111111111111109,
+            "f1_score": 0.18181818181818182,
+            "llm_score": 1
+        }
+    ]
+}

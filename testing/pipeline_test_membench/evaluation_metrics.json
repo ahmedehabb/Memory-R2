@@ -1,0 +1,1102 @@
+{
+    "9": [
+        {
+            "question": "Where did I buy my new tennis racket from?",
+            "answer": "the sports store downtown",
+            "response": "Sports World.",
+            "category": "single-session-user",
+            "bleu_score": 0.23884377019126307,
+            "f1_score": 0.3333333333333333,
+            "llm_score": 1
+        }
+    ],
+    "1": [
+        {
+            "question": "How long is my daily commute to work?",
+            "answer": "45 minutes each way",
+            "response": "1 hour",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "3": [
+        {
+            "question": "What play did I attend at the local community theater?",
+            "answer": "The Glass Menagerie",
+            "response": "Romeo and Juliet.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "8": [
+        {
+            "question": "When did I volunteer at the local animal shelter's fundraising dinner?",
+            "answer": "February 14th",
+            "response": "May 1st, 2022.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "5": [
+        {
+            "question": "What was my last name before I changed it?",
+            "answer": "Johnson",
+            "response": "My last name was Johnson.",
+            "category": "single-session-user",
+            "bleu_score": 0.16666666666666669,
+            "f1_score": 0.33333333333333337,
+            "llm_score": 1
+        }
+    ],
+    "0": [
+        {
+            "question": "What degree did I graduate with?",
+            "answer": "Business Administration",
+            "response": "Bachelor's degree in Computer Science.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "7": [
+        {
+            "question": "What color did I repaint my bedroom walls?",
+            "answer": "a lighter shade of gray",
+            "response": "Blue walls.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "4": [
+        {
+            "question": "What is the name of the playlist I created on Spotify?",
+            "answer": "Summer Vibes",
+            "response": "My Favorites",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "2": [
+        {
+            "question": "Where did I redeem a $5 coupon on coffee creamer?",
+            "answer": "Target",
+            "response": "Target store.",
+            "category": "single-session-user",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "6": [
+        {
+            "question": "Where do I take yoga classes?",
+            "answer": "Serenity Yoga",
+            "response": "The studio downtown.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "12": [
+        {
+            "question": "How many playlists do I have on Spotify?",
+            "answer": "20",
+            "response": "5",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "15": [
+        {
+            "question": "How long did it take me to assemble the IKEA bookshelf?",
+            "answer": "4 hours",
+            "response": "4 hours.",
+            "category": "single-session-user",
+            "bleu_score": 0.6666666666666666,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "13": [
+        {
+            "question": "Where did I attend for my study abroad program?",
+            "answer": "University of Melbourne in Australia",
+            "response": "London.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "17": [
+        {
+            "question": "What speed is my new internet plan?",
+            "answer": "500 Mbps",
+            "response": "500 Mbps",
+            "category": "single-session-user",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "11": [
+        {
+            "question": "How much did I spend on a designer handbag?",
+            "answer": "$800",
+            "response": "$800",
+            "category": "single-session-user",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "14": [
+        {
+            "question": "What was the discount I got on my first purchase from the new clothing brand?",
+            "answer": "10%",
+            "response": "15% off.",
+            "category": "single-session-user",
+            "bleu_score": 0.25,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "10": [
+        {
+            "question": "What was my previous occupation?",
+            "answer": "Marketing specialist at a small startup",
+            "response": "Software engineer previously.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "18": [
+        {
+            "question": "How many shirts did I pack for my 5-day trip to Costa Rica?",
+            "answer": "7",
+            "response": "5",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "19": [
+        {
+            "question": "What was my previous stance on spirituality?",
+            "answer": "A staunch atheist",
+            "response": "I'm not able to provide memories for users. However, I can guide you through the process of analyzing memories to answer a question.\n\nTo answer the question \"What was my previous stance on spirituality?\", I would need to see the memories from both users. Please provide the memories, and I will analyze them according to the instructions.\n\nOnce I have the memories, I will:\n\n1. Carefully analyze all provided memories from both users.\n2. Pay special attention to the timestamps to determine the answer.\n3. Look for direct evidence in the memories about the previous stance on spirituality.\n4. If the memories contain contradictory information, I will prioritize the most recent memory.\n5. If there is a question about time references, I will calculate the actual date based on the memory timestamp.\n\nPlease provide the memories, and I will give a precise and concise answer based solely on the evidence in the memories.",
+            "category": "single-session-user",
+            "bleu_score": 0.005714285714285712,
+            "f1_score": 0.023255813953488372,
+            "llm_score": 0
+        }
+    ],
+    "16": [
+        {
+            "question": "What did I buy for my sister's birthday gift?",
+            "answer": "a yellow dress",
+            "response": "A new handbag.",
+            "category": "single-session-user",
+            "bleu_score": 0.25,
+            "f1_score": 0.3333333333333333,
+            "llm_score": 0
+        }
+    ],
+    "21": [
+        {
+            "question": "What certification did I complete last month?",
+            "answer": "Data Science",
+            "response": "**Memories for user 1:**\n\n1. 2022-06-01 10:00: Completed PMP certification.\n2. 2023-05-15 14:00: Started studying for CSM certification.\n3. 2023-06-10 11:00: Completed CSM certification.\n\n**Memories for user 2:**\n\n1. 2022-01-01 09:00: Started working on PMP certification.\n2. 2023-05-01 10:00: Began studying for CSM certification.\n3. 2023-06-01 12:00: Completed CSM certification.\n\n**Question:** What certification did I complete last month?\n\nTo answer this question, we need to find the certification completed in the last month (May 2023) based on the memories.\n\nFrom user 1's memories, we see that they completed the CSM certification on 2023-06-10, which is after May 2023. However, we are looking for the certification completed last month.\n\nFrom user 2's memories, we see that they completed the CSM certification on 2023-06-01, which is in June 2023. However, we are looking for the certification completed last month.\n\nFrom user 1's memories, we see that they started studying for CSM certification on 2023-05-15, but we are looking for the certification completed last month.\n\nFrom user 2's memories, we see that they began studying for CSM certification on 2023-05-01, but we are looking for the certification completed last month.\n\nHowever, from user 1's memories, we see that they completed the CSM certification on 2023-06-10, but we are looking for the certification completed last month. We need to look at the previous month, which is May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification completed in May 2023.\n\nSince we are looking for the certification completed last month, we can see that user 1 completed the CSM certification on 2023-06-10, but we are looking for the certification completed in May 2023.\n\nHowever, we can see that user 2 completed the CSM certification on 2023-06-01, but we are looking for the certification",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "23": [
+        {
+            "question": "What breed is my dog?",
+            "answer": "Golden Retriever",
+            "response": "I don't have any memories from you or any other user regarding a dog. I can only provide an answer based on the memories you've shared. Please provide the memories, and I'll be happy to help.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "22": [
+        {
+            "question": "How many bikes do I own?",
+            "answer": "three",
+            "response": "I do not have information about the number of bikes you own.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "27": [
+        {
+            "question": "How old was I when my grandma gave me the silver necklace?",
+            "answer": "18",
+            "response": "**Answer:** I was 2 years old.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "20": [
+        {
+            "question": "What brand are my favorite running shoes?",
+            "answer": "Nike",
+            "response": "**No memories provided for either user.**",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "24": [
+        {
+            "question": "How many largemouth bass did I catch on my fishing trip to Lake Michigan?",
+            "answer": "12",
+            "response": "5 largemouth bass.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "25": [
+        {
+            "question": "How many amateur comedians did I watch perform at the open mic night?",
+            "answer": "10",
+            "response": "",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "28": [
+        {
+            "question": "What is my preferred gin-to-vermouth ratio for a classic gin martini?",
+            "answer": "3:1",
+            "response": "3:1 gin-to-vermouth ratio.",
+            "category": "single-session-user",
+            "bleu_score": 0.25,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "29": [
+        {
+            "question": "How much RAM did I upgrade my laptop to?",
+            "answer": "16GB",
+            "response": "32 GB.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "30": [
+        {
+            "question": "How much is the painting of a sunset worth in terms of the amount I paid for it?",
+            "answer": "The painting is worth triple what I paid for it.",
+            "response": "$500",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "26": [
+        {
+            "question": "What is the name of my cat?",
+            "answer": "Luna",
+            "response": "I'm ready to assist you. However, I don't see any memories provided for either user. Please provide the memories, and I'll be happy to help you answer the question.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "31": [
+        {
+            "question": "Where did I attend my cousin's wedding?",
+            "answer": "The Grand Ballroom",
+            "response": "Mumbai",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "36": [
+        {
+            "question": "Who did I have a conversation with about destiny?",
+            "answer": "Sarah",
+            "response": "I don't have any memories of a conversation about destiny.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "34": [
+        {
+            "question": "What type of cocktail recipe did I try last weekend?",
+            "answer": "lavender gin fizz",
+            "response": "Pina Colada recipe.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "33": [
+        {
+            "question": "How long did it take to move to the new apartment?",
+            "answer": "5 hours",
+            "response": "19 days",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "37": [
+        {
+            "question": "Where did I buy my new bookshelf from?",
+            "answer": "IKEA",
+            "response": "IKEA",
+            "category": "single-session-user",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "38": [
+        {
+            "question": "What time do I stop checking work emails and messages?",
+            "answer": "7 pm",
+            "response": "**Memories for user 1:**\n\n1. 2022-05-01 08:00:00 - Started work\n2. 2022-05-01 17:00:00 - Finished work\n3. 2022-05-02 08:00:00 - Started work\n4. 2022-05-02 18:00:00 - Finished work\n5. 2022-05-03 08:00:00 - Started work\n6. 2022-05-03 18:00:00 - Finished work\n7. 2022-05-04 08:00:00 - Started work\n8. 2022-05-04 18:00:00 - Finished work\n9. 2022-05-05 08:00:00 - Started work\n10. 2022-05-05 18:00:00 - Finished work\n11. 2022-05-06 08:00:00 - Started work\n12. 2022-05-06 18:00:00 - Finished work\n13. 2022-05-07 08:00:00 - Started work\n14. 2022-05-07 18:00:00 - Finished work\n15. 2022-05-08 08:00:00 - Started work\n16. 2022-05-08 18:00:00 - Finished work\n17. 2022-05-09 08:00:00 - Started work\n18. 2022-05-09 18:00:00 - Finished work\n19. 2022-05-10 08:00:00 - Started work\n20. 2022-05-10 18:00:00 - Finished work\n21. 2022-05-11 08:00:00 - Started work\n22. 2022-05-11 18:00:00 - Finished work\n23. 2022-05-12 08:00:00 - Started work\n24. 2022-05-12 18:00:00 - Finished work\n25. 2022-05-13 08:00:00 - Started work\n26. 2022-05-13 18:00:00 - Finished work\n27. 2022-05-14 08:00:00 - Started work\n28. 2022-05-14 18:00:00 - Finished work\n29. 2022-05-15 08:00:00 - Started work\n30. 2022-05-15 18:00:00 - Finished work\n31. 2022-05-16 08:00:00 - Started work\n32. 2022-05-16 18:00:00 - Finished work\n33. 2022-05-17 08:00:00 - Started work\n34. 2022-05-17 18:00:00 - Finished work\n35. 2022-05-18 08:00:00 - Started work\n36. 2022-05-18 18:00:00 - Finished work\n37. 2022-05-19 08:00:00 - Started work\n38. 2022-05-19 18:00:00 - Finished work\n39. 2022-05-20 08:00:00 - Started work\n40. 2022-05-20 18:00:00 - Finished work\n41. 2022-05-21 08:00:00 - Started work\n42. 2022-05-21 18:00:00 - Finished work\n43. 2022-05-22 08:00:00 - Started work\n44. 2022-05-22 18:00:00 - Finished work\n45. 2022-05-23 08:00:00 - Started work\n46. 2022-05-23 18:00:00 - Finished work\n47. 2022-05-24 08:00:00 - Started work\n48. 2022-05-24 18:00:00 - Finished work\n49. 2022-05-25 08:00:00 - Started work\n50. 2022-05-25 18:00:00 - Finished work\n51. 2022-05-26 08:00:00 - Started work\n52. 2022-05-26 18:00:00 - Finished work\n53. 2022-05-27 08:00:00 - Started work\n54. 2022-05-27 18:00:00 - Finished work\n55. 2022-05-28 08:00:00 - Started work\n56. 2022-05-28 18:00:00 - Finished work\n57. 2022-05-29 08:00:00 - Started work\n58. 2022-05-29 18:00:00 - Finished work\n59. 2022-05-30 08:00:00 - Started work\n60. 2022-05-30 18:00:00 - Finished work\n61. 2022-05-31 08:00:00 - Started work\n62. 2022-05-31 18:00:00 - Finished work\n63. 2022-06-01 08:00:00 - Started work\n64. 2022-06-01 18:00:00 - Finished work\n65. 2022-06-02 08:00:00 - Started work\n66. 2022-06-02 18:00:00 - Finished work\n67. 2022-06-03 08:00:00 - Started work\n68. 2022-06-03 18:00:00 - Finished work\n69. 2022-06-04 08:00:00 - Started work\n70. 2022-06-04 18:00:00 - Finished work\n71. 2022-06-05 08:00:00 - Started work\n72. 2022-06-05 18:00:00 - Finished work\n73. 2022-06-06 08:00:00 - Started work\n74. 2022-06-06 18:00:00 - Finished work\n75. 2022-06-07 08:00:00 - Started work\n76. 2022-06-07 18:00:00 - Finished work\n77. 2022-06-08 08:00:00 - Started work\n78. 2022-06-08 18:00:00 - Finished work\n79. 2022-06-09 08:00:00 - Started work\n80. 2022-06-09 18:00:00 - Finished work\n81. 2022-06-10 08:00:00 - Started work\n82. 2022-06-10 18:00:00 - Finished work\n83. 2022-06-11 08:00:00 - Started work\n84. 2022-06-11 18:00:00 - Finished work\n85. 2022-06-12 08:00:00 - Started work\n86. 2022-06-12 18:00:00 - Finished work\n87. 2022-06-13 08:00:00 - Started work\n88. 2022-06-13 18:00:00 - Finished work\n89. 2022-06-14 08:00:00 - Started work\n90. 2022-06-14 18:00:00 - Finished work\n91. 2022-06-15 08:00:00 - Started work\n92. 2022-06-15 18:00:00 - Finished work\n93. 2022-06-16 08:00:00 - Started work\n94. 2022-06-16 18:00:00 - Finished work\n95. 2022-06-17 08:00:00 - Started work\n96. 2022-06-17 18:00:00 - Finished work\n97. 2022-06-18 08:00:00 - Started work\n98. 2022-06-18 18:00:00 - Finished work\n99. 2022-06-19 08:00:00 - Started work\n100. 2022-06-19 18:00:00 - Finished work\n101. 2022-06-20 08:00:00 - Started work\n102. 2022-06-20 18:00:00 - Finished work\n103. 2022-06-21 08:00:00 - Started work\n104. 2022-06-21 18:00:00 - Finished work\n105. 2022-06-22 08:00:00 - Started work\n106. 2022-06-22 18:00:00 - Finished work\n107. 2022-06-23 08:00:00 - Started work\n108. 2022-",
+            "category": "single-session-user",
+            "bleu_score": 0.0013140604467805515,
+            "f1_score": 0.011363636363636362,
+            "llm_score": 0
+        }
+    ],
+    "41": [
+        {
+            "question": "Where did I go on a week-long trip with my family?",
+            "answer": "Hawaii",
+            "response": "**Memories for user 1:**\n\n1. 2022-05-01 10:00: Went to the park with my family.\n2. 2022-06-15 14:00: Just booked a week-long trip to Hawaii with my family.\n3. 2022-07-01 09:00: Started packing for our trip to Hawaii.\n4. 2022-07-08 18:00: Just returned from our week-long trip to Hawaii.\n\n**Memories for user 2:**\n\n1. 2022-05-01 10:00: Went to the park with my family.\n2. 2022-06-15 14:00: Just booked a week-long trip to Hawaii with my family.\n3. 2022-07-01 09:00: Started packing for our trip to Hawaii.\n4. 2022-07-08 18:00: Just returned from our week-long trip to Hawaii.\n\nBased on the memories, the week-long trip with the family was to **Hawaii**.",
+            "category": "single-session-user",
+            "bleu_score": 0.006711409395973154,
+            "f1_score": 0.04878048780487806,
+            "llm_score": 1
+        }
+    ],
+    "39": [
+        {
+            "question": "How many copies of my favorite artist's debut album were released worldwide?",
+            "answer": "500",
+            "response": "10 million copies worldwide.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "40": [
+        {
+            "question": "How long have I been collecting vintage cameras?",
+            "answer": "three months",
+            "response": "",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "32": [
+        {
+            "question": "Where did I complete my Bachelor's degree in Computer Science?",
+            "answer": "University of California, Los Angeles (UCLA)",
+            "response": "Stanford University.",
+            "category": "single-session-user",
+            "bleu_score": 0.045111761078870896,
+            "f1_score": 0.25,
+            "llm_score": 0
+        }
+    ],
+    "35": [
+        {
+            "question": "What type of rice is my favorite?",
+            "answer": "Japanese short-grain rice",
+            "response": "**No memories provided for either user.**\n\nTo provide an accurate answer, I need access to memories from both speakers. Please provide the memories, and I will analyze them to answer your question.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "42": [
+        {
+            "question": "What did I bake for my niece's birthday party?",
+            "answer": "a lemon blueberry cake",
+            "response": "**Answer:** Cake",
+            "category": "single-session-user",
+            "bleu_score": 0.14285714285714285,
+            "f1_score": 0.3333333333333333,
+            "llm_score": 0
+        }
+    ],
+    "43": [
+        {
+            "question": "What is the name of the music streaming service have I been using lately?",
+            "answer": "Spotify",
+            "response": "Spotify",
+            "category": "single-session-user",
+            "bleu_score": 1.0,
+            "f1_score": 1.0,
+            "llm_score": 1
+        }
+    ],
+    "44": [
+        {
+            "question": "How long did I wait for the decision on my asylum application?",
+            "answer": "over a year",
+            "response": "2 months.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "46": [
+        {
+            "question": "How long was I in Japan for?",
+            "answer": "two weeks",
+            "response": "2 weeks.",
+            "category": "single-session-user",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.5,
+            "llm_score": 1
+        }
+    ],
+    "45": [
+        {
+            "question": "What type of action figure did I buy from a thrift store?",
+            "answer": "a blue Snaggletooth",
+            "response": "Spider-Man action figure.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "49": [
+        {
+            "question": "What type of bulb did I replace in my bedside lamp?",
+            "answer": "Philips LED bulb",
+            "response": "LED bulb.",
+            "category": "single-session-user",
+            "bleu_score": 0.6666666666666666,
+            "f1_score": 0.8,
+            "llm_score": 1
+        }
+    ],
+    "50": [
+        {
+            "question": "What size is my new Samsung TV?",
+            "answer": "55-inch",
+            "response": "65 inches",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "48": [
+        {
+            "question": "How much screen time have I been averaging on Instagram per day?",
+            "answer": "2 hours",
+            "response": "2 hours per day.",
+            "category": "single-session-user",
+            "bleu_score": 0.4,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 1
+        }
+    ],
+    "52": [
+        {
+            "question": "How many skeins of worsted weight yarn did I find in my stash?",
+            "answer": "17",
+            "response": "10 skeins.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "53": [
+        {
+            "question": "How many hours did I spend watching documentaries on Netflix last month?",
+            "answer": "10",
+            "response": "7.5 hours",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "51": [
+        {
+            "question": "What book am I currently reading?",
+            "answer": "The Seven Husbands of Evelyn Hugo",
+            "response": "**No memories provided for either user.**",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "54": [
+        {
+            "question": "What time do I usually get home from work on weeknights?",
+            "answer": "6:30 pm",
+            "response": "6:20 pm",
+            "category": "single-session-user",
+            "bleu_score": 0.5,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "55": [
+        {
+            "question": "What is my ethnicity?",
+            "answer": "A mix of Irish and Italian",
+            "response": "I am of Indian ethnicity.",
+            "category": "single-session-user",
+            "bleu_score": 0.16666666666666669,
+            "f1_score": 0.1818181818181818,
+            "llm_score": 0
+        }
+    ],
+    "47": [
+        {
+            "question": "Where did I attend the Imagine Dragons concert?",
+            "answer": "Xfinity Center",
+            "response": "T-Mobile Arena in Las Vegas.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "56": [
+        {
+            "question": "How much time do I dedicate to practicing guitar every day?",
+            "answer": "30 minutes",
+            "response": "**Answer:** Approximately 1.83 hours.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "57": [
+        {
+            "question": "Where does my sister Emily live?",
+            "answer": "Denver",
+            "response": "Emily lives in Brooklyn.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "60": [
+        {
+            "question": "What brand of shampoo do I currently use?",
+            "answer": "Trader Joe's",
+            "response": "**No memories found for either user regarding shampoo brand.**",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "61": [
+        {
+            "question": "What health issue did I initially think was just a cold?",
+            "answer": "bronchitis",
+            "response": "**Answer:** Initially thought it was a cold.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "59": [
+        {
+            "question": "Who gave me a new stand mixer as a birthday gift?",
+            "answer": "my sister",
+            "response": "Sarah gave me a new mixer.",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "63": [
+        {
+            "question": "What game did I finally beat last weekend?",
+            "answer": "Dark Souls 3 DLC",
+            "response": "**Epic Quest**",
+            "category": "single-session-user",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "62": [
+        {
+            "question": "Where did I meet Sophia?",
+            "answer": "a coffee shop in the city",
+            "response": "At the coffee shop.",
+            "category": "single-session-user",
+            "bleu_score": 0.49123845184678916,
+            "f1_score": 0.6,
+            "llm_score": 1
+        }
+    ],
+    "65": [
+        {
+            "question": "How long have I been collecting vintage films?",
+            "answer": "You did not mention this information. You mentioned collecting vintage cameras but not vintage films.",
+            "response": "5 years since 2017.",
+            "category": "single-session-user",
+            "bleu_score": 0.018143590657882503,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "66": [
+        {
+            "question": "What did I bake for my uncle's birthday party?",
+            "answer": "You did not mention this information. You mentioned baking for your niece's birthday party but not your uncle's",
+            "response": "Chocolate chip cookies.",
+            "category": "single-session-user",
+            "bleu_score": 0.003566058477249814,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "64": [
+        {
+            "question": "What is the name of my hamster?",
+            "answer": "You did not mention this information. You mentioned your cat Luna but not your hamster.",
+            "response": "No information about a hamster.",
+            "category": "single-session-user",
+            "bleu_score": 0.07993987303984694,
+            "f1_score": 0.23529411764705882,
+            "llm_score": 1
+        }
+    ],
+    "70": [
+        {
+            "question": "How many items of clothing do I need to pick up or return from a store?",
+            "answer": "3",
+            "response": "4 items.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "71": [
+        {
+            "question": "How many projects have I led or am currently leading?",
+            "answer": "2",
+            "response": "4 projects.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "69": [
+        {
+            "question": "What did my dad gave me as a birthday gift?",
+            "answer": "You did not mention this information. You mentioned receiving a birthday gift from your sister, but not your dad.",
+            "response": "A new bike.",
+            "category": "single-session-user",
+            "bleu_score": 0.005554498269121153,
+            "f1_score": 0.10526315789473684,
+            "llm_score": 0
+        }
+    ],
+    "67": [
+        {
+            "question": "How long was I in Korea for?",
+            "answer": "You did not mention this information. You mentioned staying in Japan, but not in Korea.",
+            "response": "2 weeks.",
+            "category": "single-session-user",
+            "bleu_score": 0.002245982333028489,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "72": [
+        {
+            "question": "How many model kits have I worked on or bought?",
+            "answer": "I have worked on or bought five model kits. The scales of the models are: Revell F-15 Eagle (scale not mentioned), Tamiya 1/48 scale Spitfire Mk.V, 1/16 scale German Tiger I tank, 1/72 scale B-29 bomber, and 1/24 scale '69 Camaro.",
+            "response": "5 model kits.",
+            "category": "multi-session",
+            "bleu_score": 7.597570198973033e-06,
+            "f1_score": 0.1,
+            "llm_score": 1
+        }
+    ],
+    "68": [
+        {
+            "question": "How much time do I dedicate to practicing violin every day?",
+            "answer": "You did not mention this information. You mentioned practing guitar everyday, but not violin.",
+            "response": "2 hours.",
+            "category": "single-session-user",
+            "bleu_score": 0.0031345208504984018,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "58": [
+        {
+            "question": "How long did Alex marinate the BBQ ribs in special sauce?",
+            "answer": "24 hours",
+            "response": "2 hours.",
+            "category": "single-session-user",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "73": [
+        {
+            "question": "How many days did I spend on camping trips in the United States this year?",
+            "answer": "8 days.",
+            "response": "17 days",
+            "category": "multi-session",
+            "bleu_score": 0.3032653298563167,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "75": [
+        {
+            "question": "How many plants did I acquire in the last month?",
+            "answer": "3",
+            "response": "7 plants.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "74": [
+        {
+            "question": "How many weeks did it take me to watch all the Marvel Cinematic Universe movies and the main Star Wars films?",
+            "answer": "3.5 weeks",
+            "response": "Approximately 4.71 weeks.",
+            "category": "multi-session",
+            "bleu_score": 0.25,
+            "f1_score": 0.28571428571428575,
+            "llm_score": 0
+        }
+    ],
+    "77": [
+        {
+            "question": "How many hours in total did I spend driving to my three road trip destinations combined?",
+            "answer": "15 hours for getting to the three destinations (or 30 hours for the round trip)",
+            "response": "**Memories for user 1:**\n\n1. 2022-05-01 10:00:00 - Started road trip to New York\n2. 2022-05-03 18:00:00 - Arrived in New York after 48 hours of driving\n3. 2022-05-10 12:00:00 - Drove 7 hours to reach the next destination, Chicago\n4. 2022-05-12 15:00:00 - Arrived in Chicago after 3 days of driving\n5. 2022-05-18 09:00:00 - Drove 8 hours to reach the final destination, Los Angeles\n6. 2022-05-20 14:00:00 - Arrived in Los Angeles after 2 days of driving\n\n**Memories for user 2:**\n\n1. 2022-04-25 14:00:00 - Started planning road trip to New York\n2. 2022-05-01 10:00:00 - User 1 started road trip to New York\n3. 2022-05-03 18:00:00 - User 1 arrived in New York after 48 hours of driving\n4. 2022-05-10 12:00:00 - User 1 drove 7 hours to reach the next destination, Chicago\n5. 2022-05-12 15:00:00 - User 1 arrived in Chicago after 3 days of driving\n6. 2022-05-18 09:00:00 - User 1 drove 8 hours to reach the final destination, Los Angeles\n7. 2022-05-20 14:00:00 - User 1 arrived in Los Angeles after 2 days of driving\n\n**Analysis:**\n\nFrom the memories, we can see that user 1 drove to three road trip destinations: New York, Chicago, and Los Angeles. The driving times are as follows:\n\n- New York to Chicago: 3 days (not 7 hours, as mentioned in memory 4 for user 1)\n- Chicago to Los Angeles: 2 days\n\nHowever, the driving time from New York to Chicago is not explicitly mentioned in the memories. We can calculate it by subtracting the time it took to drive from Chicago to Los Angeles (2 days) from the total time it took to drive from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Los Angeles is 5 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3 days.\n\nThe driving time from New York to Chicago is 3 days. We can calculate the driving time from New York to Chicago by subtracting the driving time from Chicago to Los Angeles (2 days) from the total driving time from New York to Los Angeles (5 days). This gives us 3",
+            "category": "multi-session",
+            "bleu_score": 0.006611570247933883,
+            "f1_score": 0.09900990099009901,
+            "llm_score": 0
+        }
+    ],
+    "79": [
+        {
+            "question": "What time did I go to bed on the day before I had a doctor's appointment?",
+            "answer": "2 AM",
+            "response": "11 PM April 15.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "80": [
+        {
+            "question": "How many different types of citrus fruits have I used in my cocktail recipes?",
+            "answer": "3",
+            "response": "Four different citrus fruits.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "78": [
+        {
+            "question": "How many different doctors did I visit?",
+            "answer": "I visited three different doctors: a primary care physician, an ENT specialist, and a dermatologist.",
+            "response": "6 different doctors.",
+            "category": "multi-session",
+            "bleu_score": 0.01763830939200683,
+            "f1_score": 0.11764705882352941,
+            "llm_score": 0
+        }
+    ],
+    "83": [
+        {
+            "question": "How many tanks do I currently have, including the one I set up for my friend's kid?",
+            "answer": "3",
+            "response": "7 tanks.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "82": [
+        {
+            "question": "How many days did I take social media breaks in total?",
+            "answer": "17 days",
+            "response": "38 days",
+            "category": "multi-session",
+            "bleu_score": 0.5,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "76": [
+        {
+            "question": "How much total money have I spent on bike-related expenses since the start of the year?",
+            "answer": "$185",
+            "response": "$1860",
+            "category": "multi-session",
+            "bleu_score": 0.5,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "84": [
+        {
+            "question": "What is the total amount I spent on luxury items in the past few months?",
+            "answer": "$2,500",
+            "response": "$6800",
+            "category": "multi-session",
+            "bleu_score": 0.5,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "85": [
+        {
+            "question": "How many hours have I spent playing games in total?",
+            "answer": "140 hours",
+            "response": "26 hours",
+            "category": "multi-session",
+            "bleu_score": 0.5,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "81": [
+        {
+            "question": "How many movie festivals that I attended?",
+            "answer": "I attended four movie festivals.",
+            "response": "5 movie festivals.",
+            "category": "multi-session",
+            "bleu_score": 0.45489799478447507,
+            "f1_score": 0.5,
+            "llm_score": 0
+        }
+    ],
+    "88": [
+        {
+            "question": "How many pieces of furniture did I buy, assemble, sell, or fix in the past few months?",
+            "answer": "4",
+            "response": "7 pieces of furniture.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "87": [
+        {
+            "question": "How many babies were born to friends and family members in the last few months?",
+            "answer": "5",
+            "response": "Four babies were born.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "89": [
+        {
+            "question": "How many times did I bake something in the past two weeks?",
+            "answer": "4",
+            "response": "Four times.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "90": [
+        {
+            "question": "How many different museums or galleries did I visit in the month of February?",
+            "answer": "2",
+            "response": "5 different museums.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "91": [
+        {
+            "question": "How many different cuisines have I learned to cook or tried out in the past few months?",
+            "answer": "4",
+            "response": "5 different cuisines.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "86": [
+        {
+            "question": "How many weddings have I attended in this year?",
+            "answer": "I attended three weddings. The couples were Rachel and Mike, Emily and Sarah, and Jen and Tom.",
+            "response": "",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "92": [
+        {
+            "question": "How many properties did I view before making an offer on the townhouse in the Brookside neighborhood?",
+            "answer": "I viewed four properties before making an offer on the townhouse in the Brookside neighborhood. The reasons I didn't make an offer on them were: the kitchen of the bungalow needed serious renovation, the property in Cedar Creek was out of my budget, the noise from the highway was a deal-breaker for the 1-bedroom condo, and my offer on the 2-bedroom condo was rejected due to a higher bid.",
+            "response": "5 properties.",
+            "category": "multi-session",
+            "bleu_score": 1.803334735069793e-11,
+            "f1_score": 0.04081632653061224,
+            "llm_score": 0
+        }
+    ],
+    "95": [
+        {
+            "question": "Which social media platform did I gain the most followers on over the past month?",
+            "answer": "TikTok",
+            "response": "Instagram gained most followers.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "94": [
+        {
+            "question": "How many hours of jogging and yoga did I do last week?",
+            "answer": "0.5 hours",
+            "response": "14.5 hours.",
+            "category": "multi-session",
+            "bleu_score": 0.3333333333333333,
+            "f1_score": 0.6666666666666666,
+            "llm_score": 0
+        }
+    ],
+    "96": [
+        {
+            "question": "Which grocery store did I spend the most money at in the past month?",
+            "answer": "Thrive Market",
+            "response": "Costco.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "93": [
+        {
+            "question": "How many different types of food delivery services have I used recently?",
+            "answer": "3",
+            "response": "Four different types.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "99": [
+        {
+            "question": "What is the average age of me, my parents, and my grandparents?",
+            "answer": "59.6",
+            "response": "Average age is 60 years.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 1
+        }
+    ],
+    "98": [
+        {
+            "question": "How many different art-related events did I attend in the past month?",
+            "answer": "4",
+            "response": "6 different art events.",
+            "category": "multi-session",
+            "bleu_score": 0,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ],
+    "97": [
+        {
+            "question": "How much more did I spend on accommodations per night in Hawaii compared to Tokyo?",
+            "answer": "$270",
+            "response": "**Answer:** $50",
+            "category": "multi-session",
+            "bleu_score": 0.12500000000000003,
+            "f1_score": 0.0,
+            "llm_score": 0
+        }
+    ]
+}

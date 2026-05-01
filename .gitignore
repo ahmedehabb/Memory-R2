@@ -8,12 +8,27 @@ checkpoints/
 outputs/
 wandb/
 data/locomo/processed*
+data/sft/
+data/sft_rlhf/
+data/longmemeval-cleaned/
 *.log
 memory/memory_cache_*
 logs/
 cache/
-testing/results/
 qa_dumps*/
+qa_dumps_dedup/
 results/
 vllm_servers*/
-testing/*/qdrants
+
+# Testing pipelines: ignore only the heavy artifacts (vector DBs, big datasets, results, caches)
+testing/results/
+testing/*/qdrants/
+testing/*/dataset/
+testing/*/cache/
+testing/*/__pycache__/
+testing/*/wandb/
+testing/*/.env
+testing/*/.env.local
+
+# Allow .env.example as a tracked template
+!.env.example
