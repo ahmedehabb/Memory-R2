@@ -29,5 +29,8 @@ testing/*/wandb/
 testing/*/.env
 testing/*/.env.local
 
+# Singularity / container images and vLLM server runtime dirs
+*.sif
+
 # Allow .env.example as a tracked template
 !.env.example
