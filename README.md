@@ -41,12 +41,6 @@ Each session is processed chunk-by-chunk; per chunk the extractor proposes facts
 
 Memory-R2 transfers to out-of-distribution benchmarks (LongMemEval-oracle/-s, MSC-Self-Instruct, MemBench), generalizes from 3B to 7B with the largest gains on the smaller model, and is robust across answer agents (base Qwen-7B, GRPO-tuned Qwen-7B, GPT-OSS-120B).
 
-### Accuracy vs latency, and the compression-penalty sweep
-
-![Accuracy / latency / compression sweep](figures/efficiency_combined_v2.png)
-
-Memory-R2 moves the operating point to the upper-left of the accuracy–latency plane (higher F1, lower per-conversation latency). The compression-penalty sweep shows a sweet spot at $\lambda_\mathrm{comp} = 0.3$ on both 3B and 7B.
-
 ---
 
 ## Installation
