@@ -18,7 +18,6 @@ cache/
 qa_dumps*/
 qa_dumps_dedup/
 results/
-vllm_servers*/
 
 # Testing pipelines: ignore only the heavy artifacts (vector DBs, big datasets, results, caches)
 testing/results/
