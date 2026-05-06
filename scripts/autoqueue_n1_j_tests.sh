@@ -45,7 +45,7 @@ while IFS=$'\t' read -r CKPT RUN_TAG MAX_TURNS RUN_NAME; do
   ' 2>/dev/null || true
 
   VAL_KWARGS_N=1 MAX_NUM_TURNS=$MAX_TURNS REMA_DUMP_QA=1 \
-  REMA_QA_DUMP_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/qa_dumps \
+  REMA_QA_DUMP_DIR=<repo>/qa_dumps \
   REMA_RUN_NAME=$RUN_NAME \
   MODEL_PATH_OVERRIDE=$CKPT RUN_TAG=$RUN_TAG \
     srun --jobid=$JID --overlap -N1 -n1 bash scripts/vllm_clients/vllm_client_test_eval.sh \

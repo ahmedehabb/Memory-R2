@@ -37,7 +37,7 @@ TS="$(date +%Y%m%d_%H%M%S)"
 HF_OUT="$REPO_ROOT/outputs/answer_agent_sft_hf/n11_sft_step${SFT_CKPT_STEP}_${TS}"
 
 CONDA_ENV_NAME="${CONDA_ENV_NAME:-rema}"
-CONDA_ROOT="${CONDA_ROOT:-/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/miniconda3}"
+CONDA_ROOT="${CONDA_ROOT:-<workspace>/miniconda3}"
 if [[ -f "$CONDA_ROOT/etc/profile.d/conda.sh" ]]; then
   source "$CONDA_ROOT/etc/profile.d/conda.sh"
   conda activate "$CONDA_ENV_NAME" || true

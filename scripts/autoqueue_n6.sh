@@ -46,7 +46,7 @@ sleep 5
 
 # Fire N6 test_only — uses separated-trainer, QA-dump for J later
 VAL_KWARGS_N=1 MAX_NUM_TURNS=6 REMA_DUMP_QA=1 \
-REMA_QA_DUMP_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/qa_dumps \
+REMA_QA_DUMP_DIR=<repo>/qa_dumps \
 REMA_RUN_NAME=$RUN_TAG \
 MODEL_PATH_META=$MODEL_META \
 MODEL_PATH_REASONING=$MODEL_REASONING \

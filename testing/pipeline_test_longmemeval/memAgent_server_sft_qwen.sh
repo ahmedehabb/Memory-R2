@@ -8,7 +8,7 @@ HOST="0.0.0.0"
 PORT=8000
 
 MODEL_NAME="sft qwen 7b memAgent"
-MODEL_PATH="/hkfs/work/workspace/scratch/lmu_xjh4853-mem0rl/sft-memAgent-multi-evidence-Qwen-7B-Instruct-1001/merged_model/global_step_60"
+MODEL_PATH="<scratch>/<user>-mem0rl/sft-memAgent-multi-evidence-Qwen-7B-Instruct-1001/merged_model/global_step_60"
 
 
 nohup python3 -m vllm.entrypoints.openai.api_server \

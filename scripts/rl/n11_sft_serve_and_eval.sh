@@ -39,7 +39,7 @@ export VLLM_MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-32768}"
 SERVER_SCRIPT="$REPO_ROOT/vllm_server_qwen.sh"
 
 # Start server in background — bind RENDEZVOUS_DIR to our isolated dir via env hack
-ORIG_RV=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/vllm_servers_qwen
+ORIG_RV=<repo>/vllm_servers_qwen
 SERVER_LOG="$REPO_ROOT/logs/n11_serve_eval_${SFT_LABEL}_${TS}.server.log"
 
 echo "[n11_serve_eval] $SFT_LABEL :: serving $SFT_HF_PATH on port $HASH_PORT"

@@ -5,7 +5,7 @@ export LOG_DIR=$(pwd)/logs/G5_RERUN
 mkdir -p $LOG_DIR
 
 # Activate environment
-source /hkfs/work/workspace/scratch/tum_eyi5958-myspace2/miniconda3/etc/profile.d/conda.sh
+source <workspace>/miniconda3/etc/profile.d/conda.sh
 conda activate rema
 
 # Launch training with separated trainer

@@ -16,7 +16,7 @@ add-ppo-llama-msc:
 		--method add \
 		--qdrant_path qdrants/add_ppo_llama_msc \
 		--memAgent_url http://localhost:8000/v1/chat/completions \
-		--memAgent_model /hkfs/work/workspace/scratch/lmu_xjh4853-mem0rl/ppo-memAgent-multi-evidence-EM-score-copy-Llama-3.1-8B-Instruct-0908/hf_converted/global_step_10
+		--memAgent_model <scratch>/<user>-mem0rl/ppo-memAgent-multi-evidence-EM-score-copy-Llama-3.1-8B-Instruct-0908/hf_converted/global_step_10
 
 
 add-grpo-llama-msc:
@@ -26,7 +26,7 @@ add-grpo-llama-msc:
 		--method add \
 		--qdrant_path qdrants/add_grpo_llama_msc \
 		--memAgent_url http://localhost:8000/v1/chat/completions \
-		--memAgent_model /hkfs/work/workspace/scratch/lmu_xjh4853-mem0rl/grpo-memAgent-multi-evidence-EM-reward-Llama-3.1-8B-Instruct-0909/hf_converted/global_step_8
+		--memAgent_model <scratch>/<user>-mem0rl/grpo-memAgent-multi-evidence-EM-reward-Llama-3.1-8B-Instruct-0909/hf_converted/global_step_8
 
 
 pipeline-base-llama-msc:
@@ -52,7 +52,7 @@ pipeline-ppo-llama-msc:
 		--top_k 30 \
 		--qdrant_path qdrants/add_ppo_llama_msc \
 		--answerBot_url http://localhost:8000/v1/chat/completions \
-		--answerBot_model /home/hk-project-p0022573/lmu_xjh4853/workspace/mem0_ckpt_success/Llama_8b/answer_agent/global_step_70
+		--answerBot_model <home>/workspace/mem0_ckpt_success/Llama_8b/answer_agent/global_step_70
 
 
 pipeline-grpo-llama-msc:
@@ -65,7 +65,7 @@ pipeline-grpo-llama-msc:
 		--top_k 30 \
 		--qdrant_path qdrants/add_grpo_llama_msc \
 		--answerBot_url http://localhost:8000/v1/chat/completions \
-		--answerBot_model /home/hk-project-p0022573/lmu_xjh4853/workspace/mem0_ckpt_success/Llama_8b/answer_agent/global_step_30
+		--answerBot_model <home>/workspace/mem0_ckpt_success/Llama_8b/answer_agent/global_step_30
 
 
 memAgent-ppo-llama-msc:
@@ -99,7 +99,7 @@ add-ppo-qwen-msc:
 		--method add \
 		--qdrant_path qdrants/add_ppo_qwen_msc \
 		--memAgent_url http://localhost:8000/v1/chat/completions \
-		--memAgent_model /hkfs/work/workspace/scratch/lmu_xjh4853-mem0rl/ppo-memAgent-Qwen2.5-7B-Instruct-multi-evidence-EM-reward-copy-0918/hf_converted/global_step_55 \
+		--memAgent_model <scratch>/<user>-mem0rl/ppo-memAgent-Qwen2.5-7B-Instruct-multi-evidence-EM-reward-copy-0918/hf_converted/global_step_55 \
 		2>&1 | tee add_ppo_qwen_msc.log
 
 
@@ -110,7 +110,7 @@ add-grpo-qwen-msc:
 		--method add \
 		--qdrant_path qdrants/add_grpo_qwen_msc \
 		--memAgent_url http://localhost:8000/v1/chat/completions \
-		--memAgent_model /hkfs/work/workspace/scratch/lmu_xjh4853-mem0rl/grpo-memAgent-multi-evidence-EM-reward-Qwen2.5-7B-Instruct-0913/hf_converted/global_step_14 \
+		--memAgent_model <scratch>/<user>-mem0rl/grpo-memAgent-multi-evidence-EM-reward-Qwen2.5-7B-Instruct-0913/hf_converted/global_step_14 \
 		2>&1 | tee add_grpo_qwen_msc.log
 
 
@@ -138,7 +138,7 @@ pipeline-ppo-qwen-msc:
 		--top_k 30 \
 		--qdrant_path qdrants/add_ppo_qwen_msc \
 		--answerBot_url http://localhost:8000/v1/chat/completions \
-		--answerBot_model /hkfs/work/workspace/scratch/lmu_xjh4853-mem0rl/ppo-split118-qwen-prompt-em-answer-reward-max-token-2048-Qwen2.5-7B-Instruct-0726-1/hf_converted/global_step_120
+		--answerBot_model <scratch>/<user>-mem0rl/ppo-split118-qwen-prompt-em-answer-reward-max-token-2048-Qwen2.5-7B-Instruct-0726-1/hf_converted/global_step_120
 
 
 pipeline-grpo-qwen-msc:
@@ -151,5 +151,5 @@ pipeline-grpo-qwen-msc:
 		--top_k 30 \
 		--qdrant_path qdrants/add_grpo_qwen_msc \
 		--answerBot_url http://localhost:8000/v1/chat/completions \
-		--answerBot_model /hkfs/work/workspace/scratch/lmu_xjh4853-mem0rl/grpo-split118-qwen-prompt-max-token-2048-agents-5-use-kl-in-reward-Qwen2.5-7B-Instruct-0726-1/hf_converted/global_step_90
+		--answerBot_model <scratch>/<user>-mem0rl/grpo-split118-qwen-prompt-max-token-2048-agents-5-use-kl-in-reward-Qwen2.5-7B-Instruct-0726-1/hf_converted/global_step_90
 

@@ -10,7 +10,7 @@
 #   bash setup_judge_env.sh
 # =============================================================================
 
-SIF_PATH=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/vllm-openai.sif
+SIF_PATH=<repo>/vllm-openai.sif
 
 if [ -f "$SIF_PATH" ]; then
     echo "[setup] SIF already exists at $SIF_PATH — skipping pull."

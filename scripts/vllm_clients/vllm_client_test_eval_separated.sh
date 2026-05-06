@@ -26,28 +26,28 @@ export SKIP_NODE_CHECK=1
 # Source common environment from standalone (env vars, conda, server wait)
 # ---------------------------------------------------------------------------
 VLLM_PORT=${VLLM_PORT:-8000}
-RENDEZVOUS_DIR=${RENDEZVOUS_DIR:-/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/vllm_servers}
+RENDEZVOUS_DIR=${RENDEZVOUS_DIR:-<repo>/vllm_servers}
 SERVER_WAIT_TIMEOUT=${SERVER_WAIT_TIMEOUT:-600}
 
 export JOB_ID=${SLURM_JOB_ID:-local_$(date +%Y%m%d_%H%M%S)}
 export RUN_TAG=${RUN_TAG:-test_eval_${JOB_ID}}
 export RUN_TS=${RUN_TS:-$(date +%Y%m%d_%H%M%S)}
 RUN_TAG_SAFE=$(echo "${RUN_TAG}" | tr -cs '[:alnum:]_-' '_')
-export LOG_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/logs/$JOB_ID
-export TMPDIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/tmp
+export LOG_DIR=<repo>/logs/$JOB_ID
+export TMPDIR=<workspace>/tmp
 export RAY_TMPDIR=/scratch/$USER/ray_$JOB_ID
 export HYDRA_RUN_DIR=/scratch/$USER/hydra_${RUN_TAG_SAFE}_$JOB_ID
 export SCRATCH_DIR=/scratch/$USER/verl_$JOB_ID
-export HF_HOME=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/hf_home
-export HF_DATASETS_CACHE=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/hf_datasets
-export TRITON_HOME=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/trition
-export TRITON_DUMP_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/trition_dump
-export EMBEDDING_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/embedding_cache
-export MEMORY_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/train
-export MEMORY_CACHE_DIR_VAL=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/validation
-export MEMORY_CACHE_DIR_TEST=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/test
-export OPENAI_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/openai_cache
-export TEACHER_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/teacher_cache
+export HF_HOME=<workspace>/hf_home
+export HF_DATASETS_CACHE=<workspace>/hf_datasets
+export TRITON_HOME=<workspace>/trition
+export TRITON_DUMP_DIR=<workspace>/trition_dump
+export EMBEDDING_CACHE_DIR=<workspace>/embedding_cache
+export MEMORY_CACHE_DIR=<repo>/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/train
+export MEMORY_CACHE_DIR_VAL=<repo>/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/validation
+export MEMORY_CACHE_DIR_TEST=<repo>/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/test
+export OPENAI_CACHE_DIR=<workspace>/openai_cache
+export TEACHER_CACHE_DIR=<workspace>/teacher_cache
 
 mkdir -p $LOG_DIR $TMPDIR $RAY_TMPDIR $HYDRA_RUN_DIR $SCRATCH_DIR \
          $HF_HOME $HF_DATASETS_CACHE $TRITON_HOME $TRITON_DUMP_DIR \
@@ -59,11 +59,11 @@ export HF_TOKEN="${HF_TOKEN:?Set HF_TOKEN via env or sourced .env file}"
 export WANDB_API_KEY="${WANDB_API_KEY:?Set WANDB_API_KEY via env or sourced .env file}"
 unset ROCR_VISIBLE_DEVICES
 
-source /hkfs/work/workspace/scratch/tum_eyi5958-myspace2/miniconda3/etc/profile.d/conda.sh
+source <workspace>/miniconda3/etc/profile.d/conda.sh
 conda activate rema
-export PATH="/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/miniconda3/envs/rema/bin:$PATH"
+export PATH="<workspace>/miniconda3/envs/rema/bin:$PATH"
 
-cd /hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public
+cd <repo>
 
 # ---------------------------------------------------------------------------
 # Wait for judge server
@@ -118,7 +118,7 @@ echo "[test-eval] Model: $MODEL_PATH"
 echo "[test-eval] RUN_TAG: $RUN_TAG"
 
 # Use pre-processed data (max_sessions=32, all 7 test convs)
-DATASET_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/processed
+DATASET_DIR=<repo>/data/locomo/processed
 NUM_TEST_CONVS=7    # 7 held-out test convs (conv-41,49,50,42,48,30,26); conv-47 reserved for train
 NUM_VAL_CONVS=1
 NUM_TRAIN_CONVS=4   # must be divisible by n_gpus=4 (trainer validation requirement)
@@ -158,7 +158,7 @@ mkdir -p $HYDRA_RUN_DIR
 export REMA_RUN_NAME=${REMA_RUN_NAME:-${RUN_TAG}_${RUN_TS}}
 if [ -n "${REMA_DUMP_QA:-}" ]; then
   export REMA_DUMP_QA
-  export REMA_QA_DUMP_DIR=${REMA_QA_DUMP_DIR:-/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/qa_dumps}
+  export REMA_QA_DUMP_DIR=${REMA_QA_DUMP_DIR:-<repo>/qa_dumps}
   export REMA_QA_DUMP_SPLITS=${REMA_QA_DUMP_SPLITS:-test,val}
   echo "[test-eval-sep] QA-dump enabled: dir=$REMA_QA_DUMP_DIR splits=$REMA_QA_DUMP_SPLITS run=$REMA_RUN_NAME"
 fi
@@ -287,7 +287,7 @@ test_mhop=$(rg -o 'test/multi_hop_f1:[0-9.eE+-]+' "$LOG_FILE" | tail -n 1 | cut 
 echo "[test-eval] END_TS=$RUN_END_ISO RC=$RUN_RC WALL_SEC=$RUN_WALL_SEC" | tee -a "$LOG_FILE"
 echo "[test-eval] LATENCY_SUMMARY run_tag=$RUN_TAG model=$MODEL_PATH wall_sec=$RUN_WALL_SEC test_timing_s_total=${test_timing_s_total:-NA} test_timing_s_gen=${test_timing_s_gen:-NA} test_timing_per_token_ms_gen=${test_timing_per_token_ms_gen:-NA} test_sec_per_conv=${test_sec_per_conv:-NA} test_total_completion_tokens=${test_total_completion_tokens:-NA} test_acc=${test_acc:-NA} test_bleu=${test_bleu:-NA} test_mhop_f1=${test_mhop:-NA}" | tee -a "$LOG_FILE"
 
-LAT_TSV="/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/logs/latency_summary.tsv"
+LAT_TSV="<repo>/logs/latency_summary.tsv"
 if [ ! -f "$LAT_TSV" ]; then
     echo -e "date\trun_tag\tjob_id\tmodel_path\tmax_num_turns\twall_sec\ttest_timing_s_total\ttest_timing_s_gen\ttest_timing_s_reward\ttest_timing_per_token_ms_gen\ttest_timing_per_token_ms_total\ttest_sec_per_conv\ttest_gen_sec_per_conv\ttest_total_completion_tokens\ttest_num_finished\ttiming_s_gen_fit\ttiming_s_testing_fit\tthroughput_fit\ttest_acc\ttest_bleu\ttest_mhop_f1\tlog_file\trc" > "$LAT_TSV"
 fi

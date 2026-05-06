@@ -16,7 +16,7 @@ if [ -z "${OPENAI_API_KEY:-}" ]; then
     exit 1
 fi
 
-cd /hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public
+cd <repo>
 
 echo "[run_collect_wrapper] Model: $MODEL_NAME"
 echo "[run_collect_wrapper] Output: $OUTPUT_PATH"

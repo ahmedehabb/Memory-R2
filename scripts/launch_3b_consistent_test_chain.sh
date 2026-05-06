@@ -3,7 +3,7 @@
 # val_kwargs.n=1 + REMA_DUMP_QA=1 → 1085 unique QAs, no dedup.
 set -uo pipefail
 
-REPO=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public
+REPO=<repo>
 LOG_DIR=$REPO/logs/${SLURM_JOB_ID:-4003879}
 mkdir -p $LOG_DIR
 CHAIN_LOG=$LOG_DIR/3b_consistent_test_chain_$(date +%Y%m%d_%H%M%S).log

@@ -8,7 +8,7 @@ HOST="0.0.0.0"
 PORT=4399
 
 MODEL_NAME="sft qwen answerAgent"
-MODEL_PATH="/hkfs/work/workspace/scratch/lmu_xjh4853-mem0rl/sft-split118-Qwen2.5-7B-Instruct-1001-1/merged_model/global_step_60"
+MODEL_PATH="<scratch>/<user>-mem0rl/sft-split118-Qwen2.5-7B-Instruct-1001-1/merged_model/global_step_60"
 
 
 nohup python3 -m vllm.entrypoints.openai.api_server \

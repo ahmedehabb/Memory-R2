@@ -17,29 +17,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 VLLM_PORT=${VLLM_PORT:-8000}
 VLLM_JUDGE_MODEL=${VLLM_JUDGE_MODEL:-"openai/gpt-oss-120b"}
-RENDEZVOUS_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/vllm_servers
+RENDEZVOUS_DIR=<repo>/vllm_servers
 SERVER_WAIT_TIMEOUT=${SERVER_WAIT_TIMEOUT:-600}
 
 # ---------------------------------------------------------------------------
 # Common environment
 # ---------------------------------------------------------------------------
 export JOB_ID=sep_params
-export DATASET_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/processed_${JOB_ID}
-export LOG_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/logs/$JOB_ID
-export TMPDIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/tmp
+export DATASET_DIR=<repo>/data/locomo/processed_${JOB_ID}
+export LOG_DIR=<repo>/logs/$JOB_ID
+export TMPDIR=<workspace>/tmp
 export RAY_TMPDIR=/scratch/$USER/ray_$JOB_ID
 export HYDRA_RUN_DIR=/scratch/$USER/hydra_$JOB_ID
 export SCRATCH_DIR=/scratch/$USER/verl_$JOB_ID
-export HF_HOME=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/hf_home
-export HF_DATASETS_CACHE=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/hf_datasets
-export TRITON_HOME=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/trition
-export TRITON_DUMP_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/trition_dump
-export EMBEDDING_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/embedding_cache
-export MEMORY_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_$JOB_ID/train
-export MEMORY_CACHE_DIR_VAL=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_$JOB_ID/validation
-export MEMORY_CACHE_DIR_TEST=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_$JOB_ID/test
-export OPENAI_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/openai_cache
-export TEACHER_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/teacher_cache
+export HF_HOME=<workspace>/hf_home
+export HF_DATASETS_CACHE=<workspace>/hf_datasets
+export TRITON_HOME=<workspace>/trition
+export TRITON_DUMP_DIR=<workspace>/trition_dump
+export EMBEDDING_CACHE_DIR=<workspace>/embedding_cache
+export MEMORY_CACHE_DIR=<repo>/memory/memory_cache_$JOB_ID/train
+export MEMORY_CACHE_DIR_VAL=<repo>/memory/memory_cache_$JOB_ID/validation
+export MEMORY_CACHE_DIR_TEST=<repo>/memory/memory_cache_$JOB_ID/test
+export OPENAI_CACHE_DIR=<workspace>/openai_cache
+export TEACHER_CACHE_DIR=<workspace>/teacher_cache
 mkdir -p $LOG_DIR $TMPDIR $RAY_TMPDIR $HYDRA_RUN_DIR $SCRATCH_DIR \
          $HF_HOME $HF_DATASETS_CACHE $TRITON_HOME $TRITON_DUMP_DIR \
          $EMBEDDING_CACHE_DIR $MEMORY_CACHE_DIR $MEMORY_CACHE_DIR_VAL \
@@ -50,10 +50,10 @@ export HF_TOKEN="***HF_TOKEN_REDACTED***"
 export WANDB_API_KEY="***WANDB_KEY_REDACTED***"
 unset ROCR_VISIBLE_DEVICES
 
-source /hkfs/work/workspace/scratch/tum_eyi5958-myspace2/miniconda3/etc/profile.d/conda.sh
+source <workspace>/miniconda3/etc/profile.d/conda.sh
 conda activate rema
 
-cd /hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public
+cd <repo>
 
 # ---------------------------------------------------------------------------
 # Auto-detect servers

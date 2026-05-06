@@ -20,7 +20,7 @@ import shutil
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-PROJECT = "/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public"
+PROJECT = "<repo>"
 RESULTS_TSV = f"{PROJECT}/results.tsv"
 PROGRAM_MD  = f"{PROJECT}/program.md"
 STATE_FILE  = f"{PROJECT}/scripts/auto_eval_loop_state.json"
@@ -28,7 +28,7 @@ LOOP_LOG    = f"{PROJECT}/logs/auto_eval_loop_detailed.log"
 CHECK_INTERVAL_S = 1200  # check every 20 minutes
 LOOP_FOREVER = True       # keep looping until user stops it
 
-CONDA_ACTIVATE = "source /hkfs/work/workspace/scratch/tum_eyi5958-myspace2/miniconda3/etc/profile.d/conda.sh && conda activate rema"
+CONDA_ACTIVATE = "source <workspace>/miniconda3/etc/profile.d/conda.sh && conda activate rema"
 BASE_MODEL_HF  = "Qwen/Qwen2.5-7B-Instruct"
 RENDEZVOUS_QWEN = f"{PROJECT}/vllm_servers_qwen"
 
@@ -153,7 +153,7 @@ def get_free_slurm_jobs():
     """Return list of job IDs that are running but have no active workload."""
     try:
         out = subprocess.check_output(
-            ["squeue", "-u", os.environ.get("USER", "tum_eyi5958"),
+            ["squeue", "-u", os.environ.get("USER", "<user>"),
              "--format=%.10i %.8T %.6D %R %j", "--noheader"],
             text=True, timeout=30
         )

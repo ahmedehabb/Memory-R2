@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export SKIP_NODE_CHECK=1
 
 # Point to Qwen judge server instead of gpt-oss
-export RENDEZVOUS_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/vllm_servers_qwen
+export RENDEZVOUS_DIR=<repo>/vllm_servers_qwen
 export VLLM_PORT=8100
 export VLLM_JUDGE_MODEL="Qwen/Qwen2.5-7B-Instruct"
 

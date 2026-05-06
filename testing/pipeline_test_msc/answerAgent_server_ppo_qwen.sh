@@ -9,7 +9,7 @@ PORT=8000
 
 # memAgent grpo
 MODEL_NAME="ppo"
-MODEL_PATH="/hkfs/work/workspace/scratch/lmu_xjh4853-mem0rl/ppo-split118-qwen-prompt-em-answer-reward-max-token-2048-Qwen2.5-7B-Instruct-0726-1/hf_converted/global_step_120" 
+MODEL_PATH="<scratch>/<user>-mem0rl/ppo-split118-qwen-prompt-em-answer-reward-max-token-2048-Qwen2.5-7B-Instruct-0726-1/hf_converted/global_step_120" 
 # Run grpo memAgent server at background
 nohup python3 -m vllm.entrypoints.openai.api_server \
     --host $HOST \

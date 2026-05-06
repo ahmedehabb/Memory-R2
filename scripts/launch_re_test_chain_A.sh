@@ -3,7 +3,7 @@
 # Runs on one H200×4 alloc. Each row → ~25 min.
 set -uo pipefail
 
-REPO=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public
+REPO=<repo>
 LOG_DIR=$REPO/logs/${SLURM_JOB_ID:-3989154}
 mkdir -p $LOG_DIR
 CHAIN_LOG=$LOG_DIR/re_test_chainA_$(date +%Y%m%d_%H%M%S).log

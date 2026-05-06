@@ -25,7 +25,7 @@ export VLLM_PORT="$HASH_PORT"
 export VLLM_TENSOR_PARALLEL="${VLLM_TENSOR_PARALLEL:-4}"
 export VLLM_MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-32768}"
 
-ORIG_RV=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/vllm_servers_qwen
+ORIG_RV=<repo>/vllm_servers_qwen
 TMP_SERVER="$REPO_ROOT/vllm_server_qwen_${SFT_LABEL}.sh"
 sed -e "s|$ORIG_RV|$ISO_DIR|g" \
     -e "s|--gpu-memory-utilization 0.85|--gpu-memory-utilization ${VLLM_SERVER_GPU_MEM_UTIL:-0.85}|" \

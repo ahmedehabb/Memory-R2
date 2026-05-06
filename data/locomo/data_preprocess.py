@@ -10,8 +10,8 @@ import pandas as pd
 CHUNK_BY_SESSION = True  # If True, each session becomes one chunk (ignores CHUNK_SIZE)
 MAX_SESSION = None # set to None to use all sessions
 CHUNK_SIZE = 8  # Number of dialogue turns per chunk (only used if CHUNK_BY_SESSION=False)
-INPUT_JSON = "/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/locomo10.json"
-OUTPUT_DIR = Path("/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/processed")
+INPUT_JSON = "<repo>/data/locomo/locomo10.json"
+OUTPUT_DIR = Path("<repo>/data/locomo/processed")
 
 # Category 5 (adversarial) questions config
 SKIP_CATEGORY_5 = True  # If True, skip all category 5 (adversarial) questions

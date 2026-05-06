@@ -8,7 +8,7 @@ HOST="0.0.0.0"
 PORT=4399
 
 MODEL_NAME="sft llama answerAgent"
-MODEL_PATH="/hkfs/work/workspace/scratch/lmu_xjh4853-mem0rl/sft-split118-Llama-3.1-8B-Instruct-0925-1/merged_model/global_step_50"
+MODEL_PATH="<scratch>/<user>-mem0rl/sft-split118-Llama-3.1-8B-Instruct-0925-1/merged_model/global_step_50"
 
 
 nohup python3 -m vllm.entrypoints.openai.api_server \

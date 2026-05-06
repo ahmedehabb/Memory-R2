@@ -14,9 +14,9 @@ TIER=$1
 PORT=$2
 RVDZ_SUBDIR=$3
 
-REPO_DIR="/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public"
-PY_BIN="/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/miniconda3/envs/rema/bin/python"
-OPENAI_CACHE_DIR="/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/openai_cache"
+REPO_DIR="<repo>"
+PY_BIN="<workspace>/miniconda3/envs/rema/bin/python"
+OPENAI_CACHE_DIR="<workspace>/openai_cache"
 RESULTS_DIR="${REPO_DIR}/testing/results"
 PIPE_DIR="${REPO_DIR}/testing/pipeline_test_longmemeval"
 RENDEZVOUS_DIR="${REPO_DIR}/vllm_servers_${RVDZ_SUBDIR}"

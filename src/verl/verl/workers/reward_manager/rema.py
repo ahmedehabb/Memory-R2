@@ -355,6 +355,68 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
                            for qa_pair in qa_pairs]
                 results = [future.result() for future in futures]
     
+    # Optional per-QA dump for post-hoc LLM-judge scoring (REMA_DUMP_QA=1).
+    # Layout: $REMA_QA_DUMP_DIR/$REMA_RUN_NAME/$split/step_unknown/convconv-<c>_chunk<k>_epoch<e>_idx<i>.jsonl
+    # Schema matches scripts/.../score_locomo_qa_dumps.py expectations.
+    _dump_qa = os.environ.get('REMA_DUMP_QA', '').strip()
+    if _dump_qa and _dump_qa not in ('0', 'false', 'False', ''):
+        _dump_splits = [s.strip() for s in os.environ.get('REMA_QA_DUMP_SPLITS', 'test,val').split(',') if s.strip()]
+        if split in _dump_splits and len(results) > 0:
+            _dump_dir = os.environ.get('REMA_QA_DUMP_DIR', '').strip() or os.path.join(os.getcwd(), 'qa_dumps')
+            _run_name = os.environ.get('REMA_RUN_NAME', 'unnamed_run').strip() or 'unnamed_run'
+            _out_dir = os.path.join(_dump_dir, _run_name, split, 'step_unknown')
+            def _to_native(x):
+                # Recursively convert numpy / tensor types to JSON-serializable Python primitives.
+                try:
+                    import numpy as _np
+                    if isinstance(x, _np.ndarray):
+                        return [_to_native(v) for v in x.tolist()]
+                    if isinstance(x, (_np.integer,)):
+                        return int(x)
+                    if isinstance(x, (_np.floating,)):
+                        return float(x)
+                    if isinstance(x, (_np.bool_,)):
+                        return bool(x)
+                except Exception:
+                    pass
+                if isinstance(x, (list, tuple)):
+                    return [_to_native(v) for v in x]
+                if isinstance(x, dict):
+                    return {str(k): _to_native(v) for k, v in x.items()}
+                if hasattr(x, 'tolist'):
+                    try:
+                        return _to_native(x.tolist())
+                    except Exception:
+                        return str(x)
+                return x
+            try:
+                os.makedirs(_out_dir, exist_ok=True)
+                _out_file = os.path.join(_out_dir, f"convconv-{conv_id}_chunk{chunk_id}_epoch{epoch}_idx{index}.jsonl")
+                with open(_out_file, 'w') as _f:
+                    for _qa_idx, _r in enumerate(results):
+                        _rec = {
+                            'qa_idx': _qa_idx,
+                            'split': split,
+                            'conv_id': f"conv-{conv_id}" if not str(conv_id).startswith('conv-') else str(conv_id),
+                            'chunk_id': int(chunk_id) if chunk_id is not None else None,
+                            'epoch': int(epoch) if epoch is not None else None,
+                            'index_in_batch': int(index) if index is not None else None,
+                            'session_id': int(session_id) if session_id is not None else None,
+                            'session_time': str(session_time) if session_time is not None else '',
+                            'speakers': [str(s) for s in (list(speakers) if speakers is not None else [])],
+                            'question': str(_r.get('question', '')),
+                            'gold_answer': str(_r.get('gold_answer', '')),
+                            'predicted_answer': str(_r.get('predicted_answer', '')),
+                            'response': str(_r.get('response', '')),
+                            'category': int(_r.get('category', 0)) if _r.get('category') is not None else 0,
+                            'evidence': _to_native(_r.get('evidence')),
+                            'f1': float(_r.get('question_score', 0.0)),
+                            'bleu': float(_r.get('bleu_score', 0.0)),
+                        }
+                        _f.write(json.dumps(_rec, ensure_ascii=False) + '\n')
+            except Exception as _e:
+                print(f"[LocomoScore] QA dump failed for conv={conv_id} chunk={chunk_id}: {_e}")
+
     # Process results
     for qa_idx, result in enumerate(results):
         question_score = result['question_score']
@@ -525,7 +587,7 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
         tracking_metrics['evidence_precision'] = total_evidence_precision / num_questions_with_evidence
         tracking_metrics['evidence_recall'] = total_evidence_recall / num_questions_with_evidence
         tracking_metrics['avg_retrieval_rank'] = total_avg_rank / num_questions_with_evidence
-        
+
         # Compute failure rates by root cause
         total_needed_evidence = sum(len(qa_pair.get('evidence', [])) for qa_pair in qa_pairs if qa_pair.get('evidence'))
         if total_needed_evidence > 0:
@@ -535,6 +597,12 @@ def locomo_score(qa_pairs: list[dict], conv_id: int, chunk_id: int, speakers: li
             tracking_metrics['retrieval_failure_rate'] = total_retrieval_only_failures / total_needed_evidence
             # Total failure: combines both problems (memory + retrieval)
             tracking_metrics['total_failure_rate'] = total_retrieval_failures / total_needed_evidence
+
+        # Detailed per-chunk metrics line — parsed by autonomous loop / scripts to extract MemTok/Comp/MFail aggregates.
+        try:
+            print(f"[LocomoScore] conv_id={conv_id} chunk_id={chunk_id} mem_size={tracking_metrics.get('memory_size', 0)} mem_tokens={tracking_metrics.get('memory_token_count', 0)} comp_ratio={tracking_metrics.get('memory_compression_ratio', 0.0):.4f} mfail={tracking_metrics.get('memory_failure_rate', 0.0):.4f} retrieval_fail={tracking_metrics.get('retrieval_failure_rate', 0.0):.4f} total_fail={tracking_metrics.get('total_failure_rate', 0.0):.4f} ev_prec={tracking_metrics.get('evidence_precision', 0.0):.4f} ev_recall={tracking_metrics.get('evidence_recall', 0.0):.4f}")
+        except Exception:
+            pass
         
         # print(f"[LocomoScore] Retrieval quality metrics:")
         # print(f"  - Evidence precision: {tracking_metrics['evidence_precision']:.3f}")

@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export SKIP_NODE_CHECK=1
 
 # 3B 8sess champion (jetaoz29 equivalent: comp=0.2, 6turns, full step10)
-export CURRENT_MODEL_PATH_OVERRIDE="/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/checkpoints/rema-curriculum-v1/curr_8sess_p7_3b_8sess_fix_answeragent__20260417_184031_6turns_2ppo_Kl0.001_persession_0.2addcomp_turn_grpo_1convs16r_innergrpo0.5sampleQA_pen0oss120b/global_step_10/hf_fixed"
+export CURRENT_MODEL_PATH_OVERRIDE="<repo>/checkpoints/rema-curriculum-v1/curr_8sess_p7_3b_8sess_fix_answeragent__20260417_184031_6turns_2ppo_Kl0.001_persession_0.2addcomp_turn_grpo_1convs16r_innergrpo0.5sampleQA_pen0oss120b/global_step_10/hf_fixed"
 
 export MAX_NUM_TURNS=6
 export CLIP_RATIO=0.2

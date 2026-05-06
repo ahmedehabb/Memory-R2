@@ -17,29 +17,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 VLLM_PORT=${VLLM_PORT:-8000}
 VLLM_JUDGE_MODEL=${VLLM_JUDGE_MODEL:-"openai/gpt-oss-120b"}
-RENDEZVOUS_DIR=${RENDEZVOUS_DIR:-/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/vllm_servers}
+RENDEZVOUS_DIR=${RENDEZVOUS_DIR:-<repo>/vllm_servers}
 SERVER_WAIT_TIMEOUT=${SERVER_WAIT_TIMEOUT:-600}
 
 # ---------------------------------------------------------------------------
 # Common environment
 # ---------------------------------------------------------------------------
 export JOB_ID=${JOB_ID:-sep_params}
-export DATASET_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/processed_${JOB_ID}
-export LOG_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/logs/$JOB_ID
-export TMPDIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/tmp
+export DATASET_DIR=<repo>/data/locomo/processed_${JOB_ID}
+export LOG_DIR=<repo>/logs/$JOB_ID
+export TMPDIR=<workspace>/tmp
 export RAY_TMPDIR=${RAY_TMPDIR:-/scratch/$USER/ray}
 export HYDRA_RUN_DIR=/scratch/$USER/hydra_$JOB_ID
 export SCRATCH_DIR=/scratch/$USER/verl_$JOB_ID
-export HF_HOME=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/hf_home
-export HF_DATASETS_CACHE=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/hf_datasets
-export TRITON_HOME=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/trition
-export TRITON_DUMP_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/trition_dump
-export EMBEDDING_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/embedding_cache
-export MEMORY_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_$JOB_ID/train
-export MEMORY_CACHE_DIR_VAL=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_$JOB_ID/validation
-export MEMORY_CACHE_DIR_TEST=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_$JOB_ID/test
-export OPENAI_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/openai_cache
-export TEACHER_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/teacher_cache
+export HF_HOME=<workspace>/hf_home
+export HF_DATASETS_CACHE=<workspace>/hf_datasets
+export TRITON_HOME=<workspace>/trition
+export TRITON_DUMP_DIR=<workspace>/trition_dump
+export EMBEDDING_CACHE_DIR=<workspace>/embedding_cache
+export MEMORY_CACHE_DIR=<repo>/memory/memory_cache_$JOB_ID/train
+export MEMORY_CACHE_DIR_VAL=<repo>/memory/memory_cache_$JOB_ID/validation
+export MEMORY_CACHE_DIR_TEST=<repo>/memory/memory_cache_$JOB_ID/test
+export OPENAI_CACHE_DIR=<workspace>/openai_cache
+export TEACHER_CACHE_DIR=<workspace>/teacher_cache
 mkdir -p $LOG_DIR $TMPDIR $RAY_TMPDIR $HYDRA_RUN_DIR $SCRATCH_DIR \
          $HF_HOME $HF_DATASETS_CACHE $TRITON_HOME $TRITON_DUMP_DIR \
          $EMBEDDING_CACHE_DIR $MEMORY_CACHE_DIR $MEMORY_CACHE_DIR_VAL \
@@ -50,9 +50,9 @@ export HF_TOKEN="${HF_TOKEN:?Set HF_TOKEN via env or sourced .env file}"
 export WANDB_API_KEY="${WANDB_API_KEY:?Set WANDB_API_KEY via env or sourced .env file}"
 unset ROCR_VISIBLE_DEVICES
 
-export PATH=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/miniconda3/envs/rema/bin:$PATH
+export PATH=<workspace>/miniconda3/envs/rema/bin:$PATH
 
-cd /hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public
+cd <repo>
 
 # ---------------------------------------------------------------------------
 # Auto-detect servers
@@ -192,7 +192,7 @@ PYTHONUNBUFFERED=1 python -m verl.rema_separated_trainer.main_ppo \
     algorithm.switch_agent.enable=True \
     algorithm.switch_agent.level=step \
     algorithm.switch_agent.freq=$SWITCH_FREQ \
-    algorithm.switch_agent.model_paths=[/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/checkpoints/rema-curriculum-v1/8sess_separated_params_switch10_turns4_2ppo_Kl0.001_persession_0.2addcomp_turn_grpo_1convs16r_innergrpo0.5/global_step_20/meta_thinking/actor/hf_fixed,/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/checkpoints/rema-curriculum-v1/8sess_separated_params_switch10_turns4_2ppo_Kl0.001_persession_0.2addcomp_turn_grpo_1convs16r_innergrpo0.5/global_step_20/reasoning/actor/hf_fixed] \
+    algorithm.switch_agent.model_paths=[<repo>/checkpoints/rema-curriculum-v1/8sess_separated_params_switch10_turns4_2ppo_Kl0.001_persession_0.2addcomp_turn_grpo_1convs16r_innergrpo0.5/global_step_20/meta_thinking/actor/hf_fixed,<repo>/checkpoints/rema-curriculum-v1/8sess_separated_params_switch10_turns4_2ppo_Kl0.001_persession_0.2addcomp_turn_grpo_1convs16r_innergrpo0.5/global_step_20/reasoning/actor/hf_fixed] \
     algorithm.switch_agent.start_agent=$START_AGENT \
     trainer.project_name=$PROJECT_NAME \
     trainer.experiment_name=$STAGE_EXP_NAME \

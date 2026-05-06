@@ -3,7 +3,7 @@
 # allocation. Each training: 8-sess, 10 epochs, ~1.5h on H200x4. Total ~4.5h.
 set -uo pipefail
 
-REPO_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public
+REPO_DIR=<repo>
 LOG_BASE=${LOG_BASE:-$REPO_DIR/logs/3989152}
 mkdir -p "$LOG_BASE"
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 JOB_ID=3975036
-REPO_DIR="/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public"
+REPO_DIR="<repo>"
 WATCH_LOG="${REPO_DIR}/logs/3975036/p7_3b_comp01_short_h200_watcher.log"
 LAUNCH_LOG="${REPO_DIR}/logs/3975036/p7_3b_comp01_short_h200_launch.log"
 

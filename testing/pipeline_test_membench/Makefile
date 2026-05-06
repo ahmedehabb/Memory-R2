@@ -22,7 +22,7 @@ add-ppo-llama:
 		--method add \
 		--qdrant_path qdrants/add_ppo_llama \
 		--memAgent_url http://localhost:8000/v1/chat/completions \
-		--memAgent_model /home/hk-project-p0022573/lmu_xjh4853/workspace/mem0_ckpt_success/Llama_8b/memory_manager/global_step_15
+		--memAgent_model <home>/workspace/mem0_ckpt_success/Llama_8b/memory_manager/global_step_15
 
 add-grpo-llama:
 	python run_experiments.py \
@@ -31,7 +31,7 @@ add-grpo-llama:
 		--method add \
 		--qdrant_path qdrants/add_grpo_llama \
 		--memAgent_url http://localhost:8000/v1/chat/completions \
-		--memAgent_model /home/hk-project-p0022573/lmu_xjh4853/workspace/mem0_ckpt_success/Llama_8b/memory_manager/global_step_8
+		--memAgent_model <home>/workspace/mem0_ckpt_success/Llama_8b/memory_manager/global_step_8
 
 add-base-qwen:
 	python run_experiments.py \
@@ -76,7 +76,7 @@ pipeline-ppo-llama:
 		--top_k 30 \
 		--qdrant_path qdrants/add_base_llama_copy \
 		--answerBot_url http://localhost:8000/v1/chat/completions \
-		--answerBot_model /home/hk-project-p0022573/lmu_xjh4853/workspace/mem0_ckpt_success/Llama_8b/answer_agent/global_step_70
+		--answerBot_model <home>/workspace/mem0_ckpt_success/Llama_8b/answer_agent/global_step_70
 
 pipeline-grpo-llama:
 	python run_experiments.py \
@@ -88,7 +88,7 @@ pipeline-grpo-llama:
 		--top_k 30 \
 		--qdrant_path qdrants/add_base_llama_copy \
 		--answerBot_url http://localhost:8000/v1/chat/completions \
-		--answerBot_model /home/hk-project-p0022573/lmu_xjh4853/workspace/mem0_ckpt_success/Llama_8b/answer_agent/global_step_30
+		--answerBot_model <home>/workspace/mem0_ckpt_success/Llama_8b/answer_agent/global_step_30
 
 
 pipeline-base-qwen:

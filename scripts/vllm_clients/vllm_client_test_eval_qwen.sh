@@ -27,28 +27,28 @@ export SKIP_NODE_CHECK=1
 # Qwen judge — isolated rendezvous dir (never mix with vllm_servers/)
 # ---------------------------------------------------------------------------
 VLLM_PORT=${VLLM_PORT:-8100}
-RENDEZVOUS_DIR=${JUDGE_RENDEZVOUS_DIR:-/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/vllm_servers_qwen}
+RENDEZVOUS_DIR=${JUDGE_RENDEZVOUS_DIR:-<repo>/vllm_servers_qwen}
 SERVER_WAIT_TIMEOUT=${SERVER_WAIT_TIMEOUT:-600}
 
 export JOB_ID=${SLURM_JOB_ID:-local_$(date +%Y%m%d_%H%M%S)}
 export RUN_TAG=${RUN_TAG:-qwen_judge_eval_${JOB_ID}}
 export RUN_TS=${RUN_TS:-$(date +%Y%m%d_%H%M%S)}
 RUN_TAG_SAFE=$(echo "${RUN_TAG}" | tr -cs '[:alnum:]_-' '_')
-export LOG_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/logs/$JOB_ID
-export TMPDIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/tmp
+export LOG_DIR=<repo>/logs/$JOB_ID
+export TMPDIR=<workspace>/tmp
 export RAY_TMPDIR=/scratch/$USER/ray_$JOB_ID
 export HYDRA_RUN_DIR=/scratch/$USER/hydra_${RUN_TAG_SAFE}_$JOB_ID
 export SCRATCH_DIR=/scratch/$USER/verl_$JOB_ID
-export HF_HOME=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/hf_home
-export HF_DATASETS_CACHE=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/hf_datasets
-export TRITON_HOME=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/trition
-export TRITON_DUMP_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/trition_dump
-export EMBEDDING_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/embedding_cache
-export MEMORY_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/train
-export MEMORY_CACHE_DIR_VAL=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/validation
-export MEMORY_CACHE_DIR_TEST=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/test
-export OPENAI_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/openai_cache
-export TEACHER_CACHE_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/teacher_cache
+export HF_HOME=<workspace>/hf_home
+export HF_DATASETS_CACHE=<workspace>/hf_datasets
+export TRITON_HOME=<workspace>/trition
+export TRITON_DUMP_DIR=<workspace>/trition_dump
+export EMBEDDING_CACHE_DIR=<workspace>/embedding_cache
+export MEMORY_CACHE_DIR=<repo>/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/train
+export MEMORY_CACHE_DIR_VAL=<repo>/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/validation
+export MEMORY_CACHE_DIR_TEST=<repo>/memory/memory_cache_${JOB_ID}_${RUN_TAG_SAFE}/test
+export OPENAI_CACHE_DIR=<workspace>/openai_cache
+export TEACHER_CACHE_DIR=<workspace>/teacher_cache
 
 mkdir -p $LOG_DIR $TMPDIR $RAY_TMPDIR $HYDRA_RUN_DIR $SCRATCH_DIR \
          $HF_HOME $HF_DATASETS_CACHE $TRITON_HOME $TRITON_DUMP_DIR \
@@ -60,11 +60,11 @@ export HF_TOKEN="${HF_TOKEN:?Set HF_TOKEN via env or sourced .env file}"
 export WANDB_API_KEY="${WANDB_API_KEY:?Set WANDB_API_KEY via env or sourced .env file}"
 unset ROCR_VISIBLE_DEVICES
 
-source /hkfs/work/workspace/scratch/tum_eyi5958-myspace2/miniconda3/etc/profile.d/conda.sh
+source <workspace>/miniconda3/etc/profile.d/conda.sh
 conda activate rema
-export PATH="/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/miniconda3/envs/rema/bin:$PATH"
+export PATH="<workspace>/miniconda3/envs/rema/bin:$PATH"
 
-cd /hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public
+cd <repo>
 
 # ---------------------------------------------------------------------------
 # Wait for Qwen judge server (vllm_servers_qwen/ only)
@@ -110,7 +110,7 @@ export JUDGE_API_KEY="EMPTY"
 # Keep your real OpenAI key for embedding retrieval (memory search).
 # Judge requests still go to local vLLM via JUDGE_BASE_URLS above.
 if [ -z "${OPENAI_API_KEY:-}" ] || [ "${OPENAI_API_KEY}" = "EMPTY" ]; then
-    FALLBACK_KEY=$(grep -m1 '^export OPENAI_API_KEY=' /hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/scripts/vllm_clients/vllm_client_test_eval.sh | cut -d'"' -f2)
+    FALLBACK_KEY=$(grep -m1 '^export OPENAI_API_KEY=' <repo>/scripts/vllm_clients/vllm_client_test_eval.sh | cut -d'"' -f2)
     if [ -n "$FALLBACK_KEY" ]; then
         export OPENAI_API_KEY="$FALLBACK_KEY"
         echo "[test-eval-qwen] OPENAI_API_KEY not provided; using fallback from vllm_client_test_eval.sh"
@@ -161,7 +161,7 @@ echo "[test-eval-qwen] Judge model id: $OPENAI_JUDGE_MODEL"
 echo "[test-eval-qwen] Model: $MODEL_PATH"
 echo "[test-eval-qwen] RUN_TAG: $RUN_TAG"
 
-DATASET_DIR=/hkfs/work/workspace/scratch/tum_eyi5958-myspace2/projects/ReMA-public/data/locomo/processed
+DATASET_DIR=<repo>/data/locomo/processed
 NUM_TEST_CONVS=7
 NUM_VAL_CONVS=1
 NUM_TRAIN_CONVS=4
