@@ -10,8 +10,6 @@ At its core is **LoGo-GRPO**, a credit-assignment algorithm that combines **lo**
 
 ## Overview
 
-![Method overview: prior offline pipelines vs Memory-R2 online multi-step RL](figures/figure_1.png)
-
 Long-horizon LLM agents need to *form*, *evolve*, and *retrieve* memory across many sessions. Memory-R2 trains a single LLM to act as both a **memory extractor** (turns dialogue chunks into atomic facts) and a **memory manager** (issues `INSERT` / `UPDATE` / `DELETE` operations on a persistent memory bank), with a curriculum that scales from 8 → 16 → 32 sessions.
 
 ### Key contributions
