@@ -4,7 +4,7 @@ This repository contains the code, training scripts, and evaluation pipelines fo
 
 At its core is **LoGo-GRPO**, a credit-assignment algorithm that combines **lo**cal and **g**l**o**bal group-relative optimization to fix the rollout-divergence bias that plagues vanilla GRPO when intermediate state evolves across sessions.
 
-> Memory-R2 builds on the [ReMA framework](https://github.com/ziyuwan/ReMA-public). The original ReMA README is preserved as [`REAME.md`](REAME.md) for reference.
+> Memory-R2 builds on the [ReMA framework](https://github.com/ziyuwan/ReMA-public). The original ReMA README is preserved as [`REMA_UPSTREAM_README.md`](REMA_UPSTREAM_README.md) for reference.
 
 ---
 
@@ -290,7 +290,7 @@ See per-benchmark README and Makefile inside:
 ├── sft/                                # Optional: SFT data prep + answer-agent fine-tuning utils
 ├── figures/                            # Paper figures used in this README
 ├── .env.example                        # Template — copy to .env and fill in your keys
-└── REAME.md                            # Original upstream ReMA README (preserved)
+└── REMA_UPSTREAM_README.md             # Original upstream ReMA README (preserved)
 ```
 
 ---
