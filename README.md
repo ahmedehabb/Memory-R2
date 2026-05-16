@@ -23,7 +23,7 @@ Long-horizon LLM agents need to *form*, *evolve*, and *retrieve* memory across m
 
 ![GRPO vs LoGo-GRPO](figures/teaser_figure.png)
 
-Standard GRPO (top) compares trajectories that progressively diverge in their intermediate memory states using only a terminal global reward — this conflates session-level credit. LoGo-GRPO (bottom) keeps the global reward but additionally re-rolls a session from a shared snapshot, yielding fair within-session comparisons.
+Standard GRPO (left) compares trajectories that progressively diverge in their intermediate memory states using only a terminal global reward — this conflates session-level credit. LoGo-GRPO (right) keeps the global reward but additionally re-rolls a session from a shared snapshot, yielding fair within-session comparisons.
 
 ### Training pipeline
 
@@ -39,7 +39,19 @@ Each session is processed chunk-by-chunk; per chunk the extractor proposes facts
 
 ![Generalization](figures/generalization_combined.png)
 
-Memory-R2 transfers to out-of-distribution benchmarks (LongMemEval-oracle/-s, MSC-Self-Instruct, MemBench), generalizes from 3B to 7B with the largest gains on the smaller model, and is robust across answer agents (base Qwen-7B, GRPO-tuned Qwen-7B, GPT-OSS-120B).
+Memory-R2 transfers to out-of-distribution benchmarks (LongMemEval-oracle/-s, MSC-Self-Instruct, MemBench), generalizes from 3B to 7B with the largest gains on the smaller model, and is robust across answer agents (base Qwen-7B, GRPO-tuned Qwen-7B, GPT-OSS-120B). Notably, these gains come from training on **only two LoCoMo conversations**, demonstrating that the paradigm is highly data-efficient.
+
+### LoGo-GRPO and curriculum learning are both essential
+
+![LoGo-GRPO vs GRPO and curriculum effect](figures/logo_grpo_curriculum.png)
+
+**(a, b)** LoGo-GRPO consistently outperforms standard GRPO across every curriculum stage (8 / 16 / 32 sessions), confirming that local rerollouts mitigate credit-assignment bias rather than just adding rollouts. **(c, d)** Direct 32-session training collapses validation F1 from ~0.47 down to ~0.27 and lets M-Fail explode to >70%, while the 8 → 16 → 32 curriculum stays stable around F1 ≈ 0.50 with M-Fail under 7%. Early long-horizon errors propagate across sessions and corrupt memory; the curriculum first teaches reliable short-horizon behavior, then scales up.
+
+### Inference efficiency and compression penalty
+
+![Latency and compression](figures/efficiency_combined.png)
+
+**(a, b)** Memory-R2 improves the accuracy–latency trade-off: on Qwen2.5-7B it raises F1 *and* lowers per-conversation / per-generated-token latency; on Qwen2.5-3B it brings large F1 gains with only a modest latency increase. **(c, d)** Sweeping the compression penalty λ_comp ∈ {0, 0.1, 0.3, 0.5} for both 3B and 7B, **λ_comp = 0.3** (yellow band) consistently maximizes F1 and BLEU-1 — small λ retains noisy memories while overly aggressive compression discards useful evidence. This is the default used throughout the paper.
 
 ---
 
@@ -305,7 +317,8 @@ A complete description of every paper cell — including source artifacts and th
 ```bibtex
 @article{memory_r2_2026,
   title  = {Memory-R2: Fair Credit Assignment for Long-Horizon Memory-Augmented LLM Agents},
-  author = {Anonymous},
+  author = {Yan, Sikuan and Bahloul, Ahmed and Nie, Ercong and Schwarzmann, Susanna and
+            Trivisonno, Riccardo and Tresp, Volker and Ma, Yunpu},
   year   = {2026},
   note   = {Under review}
 }
