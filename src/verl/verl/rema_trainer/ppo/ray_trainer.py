@@ -1267,7 +1267,14 @@ class RayReMATrainer(object):
         data_source_lst = []
         num_turns_lst = []
         completion_tokens_lst = []
+        input_tokens_lst = []            # per-trajectory input/context tokens (sum over turns, both roles)
+        mt_gen_lst = []; rs_gen_lst = []   # per-role output tokens (extractor=meta_thinking, manager=reasoning)
+        mt_inp_lst = []; rs_inp_lst = []   # per-role input tokens
+        per_turn_inp_lst = []; per_turn_gen_lst = []  # [batch, max_num_turns] for per-turn-index reporting
         sample_scores = []
+        # latency instrumentation (judge=reward phase tracked separately from generation)
+        import time as _time
+        _gen_time = 0.0; _reward_time = 0.0; _total_finished = 0
 
         max_num_turns = self.config.actor_rollout_ref.rollout.max_num_turns
         single_agent_mode = self.config.actor_rollout_ref.rollout.get('single_agent_mode', False)
@@ -1375,7 +1382,9 @@ class RayReMATrainer(object):
             # print(f"[TEST BATCH {batch_idx + 1}] Padded batch size: {len(test_gen_batch_padded.batch)}, pad_size: {pad_size}")
             
             # print(f"[TEST BATCH {batch_idx + 1}] >>> Calling multi_turn_generate_sequences...")
+            _gen_t0 = _time.perf_counter()
             test_output_gen_batch_padded = self.actor_rollout_wg.multi_turn_generate_sequences(test_gen_batch_padded)
+            _gen_time += _time.perf_counter() - _gen_t0
             # print(f"[TEST BATCH {batch_idx + 1}] <<< Generation complete")
 
             # unpad
@@ -1390,11 +1399,22 @@ class RayReMATrainer(object):
             num_turns_lst.append(num_turns)
             print(f"[TEST BATCH {batch_idx + 1}] num_turns (all samples): min={num_turns.min()}, max={num_turns.max()}, mean={num_turns.float().mean()}")
             
-            turn_level_completion_tokens = test_output_gen_batch.batch['meta_thinking_num_gen_tokens'].cpu() + \
-                test_output_gen_batch.batch['reasoning_num_gen_tokens'].cpu()
+            mt_gen = test_output_gen_batch.batch['meta_thinking_num_gen_tokens'].cpu()
+            rs_gen = test_output_gen_batch.batch['reasoning_num_gen_tokens'].cpu()
+            turn_level_completion_tokens = mt_gen + rs_gen
             completion_tokens = turn_level_completion_tokens.sum(dim=-1)
             completion_tokens_lst.append(completion_tokens)
             # print(f"[TEST BATCH {batch_idx + 1}] completion_tokens (all samples): min={completion_tokens.min()}, max={completion_tokens.max()}, mean={completion_tokens.float().mean()}")
+
+            # input/context (prompt) tokens — mirror of completion tokens, per-turn and per-trajectory
+            mt_inp = test_output_gen_batch.batch['meta_thinking_num_prompt_tokens'].cpu()
+            rs_inp = test_output_gen_batch.batch['reasoning_num_prompt_tokens'].cpu()
+            turn_level_input_tokens = mt_inp + rs_inp
+            input_tokens = turn_level_input_tokens.sum(dim=-1)
+            input_tokens_lst.append(input_tokens)
+            mt_gen_lst.append(mt_gen.sum(dim=-1)); rs_gen_lst.append(rs_gen.sum(dim=-1))
+            mt_inp_lst.append(mt_inp.sum(dim=-1)); rs_inp_lst.append(rs_inp.sum(dim=-1))
+            per_turn_inp_lst.append(turn_level_input_tokens); per_turn_gen_lst.append(turn_level_completion_tokens)
             
             # Check if any conversations finished in this batch and evaluate them
             if num_finished > 0:
@@ -1426,7 +1446,10 @@ class RayReMATrainer(object):
                 
                 # Compute rewards for finished conversations
                 # print(f"[TEST BATCH {batch_idx + 1}] Computing rewards for finished conversations...")
+                _rew_t0 = _time.perf_counter()
                 reward_tensor = self.val_reward_fn(finished_test_batch, compression_penalty=self.config.trainer.compression_penalty)
+                _reward_time += _time.perf_counter() - _rew_t0
+                _total_finished += num_finished * repeat_times  # finished conv-rollouts (matches num_finished_convs)
                 # print(f"[TEST BATCH {batch_idx + 1}] Reward tensor keys: {list(reward_tensor.keys())}")
                 
                 reward_tensor_lst.append(reward_tensor['reasoning_turn_level_reward'])
@@ -1546,6 +1569,49 @@ class RayReMATrainer(object):
             metric_dict['test/completion_tokens/max'] = completion_tokens_tensor.max().item()
             metric_dict['test/completion_tokens/min'] = completion_tokens_tensor.min().item()
             # print(f"[TEST] completion_tokens: mean={metric_dict['test/completion_tokens/mean']:.2f}, max={metric_dict['test/completion_tokens/max']}, min={metric_dict['test/completion_tokens/min']}")
+
+        # ---- input/context (prompt) tokens: mirror of completion tokens ----
+        if input_tokens_lst:
+            input_tokens_tensor = torch.cat(input_tokens_lst, dim=0)
+            metric_dict['test/input_tokens/mean'] = input_tokens_tensor.float().mean().item()
+            metric_dict['test/input_tokens/max'] = input_tokens_tensor.max().item()
+            metric_dict['test/input_tokens/min'] = input_tokens_tensor.min().item()
+            metric_dict['test/perf/total_input_tokens'] = int(input_tokens_tensor.sum().item())
+            # per-turn (per-trajectory normalised by num_turns), mirror of completion_tokens_per_turn
+            if num_turns_lst:
+                _nt = torch.cat(num_turns_lst, dim=0).float().clamp(min=1.0)
+                metric_dict['test/input_tokens_per_turn/mean'] = (input_tokens_tensor.float() / _nt).mean().item()
+                metric_dict['test/completion_tokens_per_turn/mean'] = (completion_tokens_tensor.float() / _nt).mean().item()
+        # per-role totals (extractor=meta_thinking, manager=reasoning)
+        if mt_gen_lst:
+            metric_dict['test/perf/total_meta_gen_tokens'] = int(torch.cat(mt_gen_lst).sum().item())
+            metric_dict['test/perf/total_reason_gen_tokens'] = int(torch.cat(rs_gen_lst).sum().item())
+            metric_dict['test/perf/total_meta_input_tokens'] = int(torch.cat(mt_inp_lst).sum().item())
+            metric_dict['test/perf/total_reason_input_tokens'] = int(torch.cat(rs_inp_lst).sum().item())
+        # per-turn-index means (context growth across turns); averaged over samples present at that turn
+        if per_turn_inp_lst:
+            _pin = torch.cat(per_turn_inp_lst, dim=0).float()
+            _pgn = torch.cat(per_turn_gen_lst, dim=0).float()
+            for _t in range(_pin.shape[1]):
+                _mask = (_pin[:, _t] > 0) | (_pgn[:, _t] > 0)
+                if bool(_mask.any()):
+                    metric_dict[f'test/input_tokens_at_turn/{_t}'] = _pin[_mask, _t].mean().item()
+                    metric_dict[f'test/completion_tokens_at_turn/{_t}'] = _pgn[_mask, _t].mean().item()
+
+        # ---- latency: generation vs judge(reward) phase ----
+        _n_conv = max(_total_finished, 1)
+        _total_completion = int(completion_tokens_tensor.sum().item()) if completion_tokens_lst else 0
+        _timing_total = _gen_time + _reward_time
+        metric_dict['test/timing_s/gen'] = _gen_time
+        metric_dict['test/timing_s/reward'] = _reward_time
+        metric_dict['test/timing_s/total'] = _timing_total
+        metric_dict['test/perf/num_finished_convs'] = _total_finished
+        metric_dict['test/perf/total_completion_tokens'] = _total_completion
+        metric_dict['test/perf/sec_per_conv'] = _timing_total / _n_conv
+        metric_dict['test/perf/gen_sec_per_conv'] = _gen_time / _n_conv
+        if _total_completion > 0:
+            metric_dict['test/timing_per_token_ms/gen'] = _gen_time * 1000.0 / _total_completion
+            metric_dict['test/timing_per_token_ms/total'] = _timing_total * 1000.0 / _total_completion
 
         # Save generation results to a JSON file
         if self.config.trainer.get('save_val_generations', False):

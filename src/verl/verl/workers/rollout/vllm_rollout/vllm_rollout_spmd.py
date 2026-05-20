@@ -642,15 +642,19 @@ class vLLMRollout(BaseRollout):
 
         # extract information from history record
         num_gen_token_lst = {role: [] for role in agent_roles}
+        num_prompt_token_lst = {role: [] for role in agent_roles}
         stop_reason_lst = {role: [] for role in agent_roles}
         for h in history:
             _num_gen_tokens = {role: [] for role in agent_roles}
+            _num_prompt_tokens = {role: [] for role in agent_roles}
             _stop_reasons = {role: [] for role in agent_roles}
             for m in h:
                 _num_gen_tokens[m['role']].append(m['num_gen_tokens'])
+                _num_prompt_tokens[m['role']].append(m.get('num_prompt_tokens', 0))
                 _stop_reasons[m['role']].append(m['stop_reason'])
             for role in agent_roles:
                 num_gen_token_lst[role].append(_num_gen_tokens[role])
+                num_prompt_token_lst[role].append(_num_prompt_tokens[role])
                 stop_reason_lst[role].append(_stop_reasons[role])
 
         # print(f"Building tensor dict...")
@@ -660,9 +664,10 @@ class vLLMRollout(BaseRollout):
         # print(f"Stop reason list keys: {list(stop_reason_lst.keys())}")
         
         tensor_dict = self._build_tensor_dict(last_round_responses,
-                                              conversation_history, 
+                                              conversation_history,
                                               tokenizer,
                                               num_gen_token_lst,
+                                              num_prompt_token_lst,
                                               stop_reason_lst,
                                               max_num_turns,
                                               finish_reason)
@@ -767,6 +772,7 @@ class vLLMRollout(BaseRollout):
                            conversation_history: Dict[str, List[List[Dict[str, str]]]],
                            tokenizer: PreTrainedTokenizer,
                            num_gen_token_lst: Dict[str, List[List[int]]],
+                           num_prompt_token_lst: Dict[str, List[List[int]]],
                            stop_reason_lst: Dict[str, List[List[Optional[str]]]],
                            max_num_turns: int,
                            finish_reason: List[Optional[str]]):
@@ -853,12 +859,18 @@ class vLLMRollout(BaseRollout):
             # Compute position ids from attention mask
             position_ids = compute_position_id_with_mask(attention_mask)
             
-            padded_num_gen_tokens = torch.full((batch_size, max_num_turns), 
+            padded_num_gen_tokens = torch.full((batch_size, max_num_turns),
                                               0,
                                               dtype=torch.long)
             for i, num_gen_tokens in enumerate(num_gen_token_lst[role]):
                 padded_num_gen_tokens[i, :len(num_gen_tokens)] = torch.tensor(num_gen_tokens, dtype=torch.long)
-            padded_stop_reasons = torch.full((batch_size, max_num_turns), 
+            # per-turn input/context (prompt) tokens for this role, mirror of num_gen_tokens
+            padded_num_prompt_tokens = torch.full((batch_size, max_num_turns),
+                                              0,
+                                              dtype=torch.long)
+            for i, num_prompt_tokens in enumerate(num_prompt_token_lst[role]):
+                padded_num_prompt_tokens[i, :len(num_prompt_tokens)] = torch.tensor(num_prompt_tokens, dtype=torch.long)
+            padded_stop_reasons = torch.full((batch_size, max_num_turns),
                                             0,
                                             dtype=torch.bool)
 
@@ -876,6 +888,7 @@ class vLLMRollout(BaseRollout):
                     "attention_mask": attention_mask,
                     "position_ids": position_ids,
                     "num_gen_tokens": padded_num_gen_tokens,
+                    "num_prompt_tokens": padded_num_prompt_tokens,
                     "stop_reasons": padded_stop_reasons,
                     "turn_finished": torch.tensor(finish_reason_array),
                 },
@@ -1103,7 +1116,7 @@ class vLLMRollout(BaseRollout):
 
                 # Generate responses for current role
                 # print(f"  Generating responses...")
-                current_outputs, num_gen_tokens, stop_reasons, resp_lens = self._generate_role_responses(
+                current_outputs, num_gen_tokens, stop_reasons, resp_lens, prompt_lens = self._generate_role_responses(
                     prompt_proto, tokenizer, response_length, **kwargs)
                 if not (
                     len(current_outputs) == len(unfinished_indices)
@@ -1210,6 +1223,7 @@ class vLLMRollout(BaseRollout):
                     finish_flag,
                     agent_roles,
                     num_gen_tokens,
+                    prompt_lens,
                     stop_reasons,
                     fact_prompts,
                     executor_prompts,
@@ -1537,6 +1551,8 @@ class vLLMRollout(BaseRollout):
         # print(f"      Generation completed")
         
         resp_lens = output.batch['attention_mask'][:, -response_length:].sum(dim=1).tolist()
+        # input/context tokens fed to this generation call (prompt portion, padding excluded)
+        prompt_lens = output.batch['attention_mask'][:, :-response_length].sum(dim=1).tolist()
         vllm_output_text = output.non_tensor_batch['text'].tolist()
         # print(f"      Response lengths: {resp_lens}")
         # output_text = tokenizer.batch_decode(
@@ -1563,7 +1579,7 @@ class vLLMRollout(BaseRollout):
         # print(f"      Returning {len(vllm_output_text)} outputs")
 
         # return output_text_clean, num_gen_tokens, stop_reasons, resp_lens
-        return vllm_output_text, num_gen_tokens, stop_reasons, resp_lens
+        return vllm_output_text, num_gen_tokens, stop_reasons, resp_lens, prompt_lens
 
     def _update_history_and_check_finish(
         self,
@@ -1576,6 +1592,7 @@ class vLLMRollout(BaseRollout):
         finish_flag: str,
         agent_roles: List[str],
         num_gen_tokens: List[int],
+        num_prompt_tokens: List[int],
         stop_reasons: List[Optional[str]],
         fact_prompts: List[str],
         executor_prompts: List[str],
@@ -1593,8 +1610,9 @@ class vLLMRollout(BaseRollout):
         assert len(current_outputs) == len(unfinished_indices), \
             f'{len(current_outputs)} != {len(unfinished_indices)}'
         for i, idx in enumerate(unfinished_indices):
-            history[idx].append({"role": role, "content": current_outputs[i], 
-                                 "num_gen_tokens": num_gen_tokens[i], 
+            history[idx].append({"role": role, "content": current_outputs[i],
+                                 "num_gen_tokens": num_gen_tokens[i],
+                                 "num_prompt_tokens": num_prompt_tokens[i],
                                  "stop_reason": stop_reasons[i]})
         # print(f"      History updated for all unfinished samples")
 
