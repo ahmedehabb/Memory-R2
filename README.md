@@ -1,6 +1,10 @@
 # Memory-R2: Fair Credit Assignment for Long-Horizon Memory-Augmented LLM Agents
 
-This repository contains the code, training scripts, and evaluation pipelines for **Memory-R2**, a training framework for memory-augmented LLM agents that learn to manage external memory across very long multi-session conversations.
+[![arXiv](https://img.shields.io/badge/arXiv-2605.21768-b31b1b.svg)](https://arxiv.org/abs/2605.21768)
+
+This repository is the official code release for the paper **[Memory-R2: Fair Credit Assignment for Long-Horizon Memory-Augmented LLM Agents](https://arxiv.org/abs/2605.21768)** (arXiv:2605.21768).
+
+It contains the code, training scripts, and evaluation pipelines for **Memory-R2**, a training framework for memory-augmented LLM agents that learn to manage external memory across very long multi-session conversations.
 
 At its core is **LoGo-GRPO**, a credit-assignment algorithm that combines **lo**cal and **g**l**o**bal group-relative optimization to fix the rollout-divergence bias that plagues vanilla GRPO when intermediate state evolves across sessions.
 
@@ -315,12 +319,14 @@ A complete description of every paper cell — including source artifacts and th
 ## Citation
 
 ```bibtex
-@article{memory_r2_2026,
-  title  = {Memory-R2: Fair Credit Assignment for Long-Horizon Memory-Augmented LLM Agents},
-  author = {Yan, Sikuan and Bahloul, Ahmed and Nie, Ercong and Schwarzmann, Susanna and
-            Trivisonno, Riccardo and Tresp, Volker and Ma, Yunpu},
-  year   = {2026},
-  note   = {Under review}
+@misc{yan2026memoryr2faircreditassignment,
+      title={Memory-R2: Fair Credit Assignment for Long-Horizon Memory-Augmented LLM Agents}, 
+      author={Sikuan Yan and Ahmed Bahloul and Ercong Nie and Susanna Schwarzmann and Riccardo Trivisonno and Volker Tresp and Yunpu Ma},
+      year={2026},
+      eprint={2605.21768},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2605.21768}, 
 }
 ```
 
