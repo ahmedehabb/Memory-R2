@@ -333,10 +333,14 @@ A complete description of every paper cell — including source artifacts and th
 If you use the underlying multi-agent framework, please also cite the upstream ReMA paper:
 
 ```bibtex
-@article{rema_2025,
-  title  = {ReMA: Learning to Meta-think for LLMs with Multi-Agent Reinforcement Learning},
-  author = {Wan, Ziyu and others},
-  year   = {2025}
+@misc{wan2025remalearningmetathinkllms,
+      title={ReMA: Learning to Meta-think for LLMs with Multi-Agent Reinforcement Learning}, 
+      author={Ziyu Wan and Yunxiang Li and Xiaoyu Wen and Yan Song and Hanjing Wang and Linyi Yang and Mark Schmidt and Jun Wang and Weinan Zhang and Shuyue Hu and Ying Wen},
+      year={2025},
+      eprint={2503.09501},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2503.09501}, 
 }
 ```
 
