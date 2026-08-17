@@ -1,6 +1,7 @@
 # Memory-R2: Fair Credit Assignment for Long-Horizon Memory-Augmented LLM Agents
 
 [![arXiv](https://img.shields.io/badge/arXiv-2605.21768-b31b1b.svg)](https://arxiv.org/abs/2605.21768)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-ahmedehabb%2Fmemory--r2--7b-yellow)](https://huggingface.co/ahmedehabb/memory-r2-7b)
 
 This repository is the official code release for the paper **[Memory-R2: Fair Credit Assignment for Long-Horizon Memory-Augmented LLM Agents](https://arxiv.org/abs/2605.21768)** (arXiv:2605.21768).
 
@@ -9,6 +10,28 @@ It contains the code, training scripts, and evaluation pipelines for **Memory-R2
 At its core is **LoGo-GRPO**, a credit-assignment algorithm that combines **lo**cal and **g**l**o**bal group-relative optimization to fix the rollout-divergence bias that plagues vanilla GRPO when intermediate state evolves across sessions.
 
 > Memory-R2 builds on the [ReMA framework](https://github.com/ziyuwan/ReMA-public). The original ReMA README is preserved as [`REMA_UPSTREAM_README.md`](REMA_UPSTREAM_README.md) for reference.
+
+---
+
+## Pretrained checkpoints
+
+7B checkpoints are released on Hugging Face: **[ahmedehabb/memory-r2-7b](https://huggingface.co/ahmedehabb/memory-r2-7b)**. The repo has **two separate checkpoints** that play two different, non-overlapping roles — they are not interchangeable:
+
+| Subfolder | Role | Manages memory? | Answers questions? |
+| --- | --- | :---: | :---: |
+| [`memory-manager/`](https://huggingface.co/ahmedehabb/memory-r2-7b/tree/main/memory-manager) | Stage 1 — reads the running conversation and issues INSERT / UPDATE / DELETE ops against the memory store. This is the paper's LoGo-GRPO "champion" (`32sess_champion_v2`) and its main contribution. | ✅ Yes — only job | ❌ No |
+| [`answer-agent/`](https://huggingface.co/ahmedehabb/memory-r2-7b/tree/main/answer-agent) | Stage 2 — given a question and the memory store `memory-manager/` produced, generates the final answer. SFT+RL-trained (`sft_cont_step55`). *Optional* — `memory-manager/` was evaluated against several answer agents in the paper (untrained Qwen-7B, GPT-OSS-120B, this one); any instruction-tuned LLM can play this role. | ❌ No | ✅ Yes — only job |
+
+Download either or both with:
+
+```python
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+memory_manager = AutoModelForCausalLM.from_pretrained("ahmedehabb/memory-r2-7b", subfolder="memory-manager", torch_dtype="auto", device_map="auto")
+answer_agent = AutoModelForCausalLM.from_pretrained("ahmedehabb/memory-r2-7b", subfolder="answer-agent", torch_dtype="auto", device_map="auto")
+```
+
+See the [model card](https://huggingface.co/ahmedehabb/memory-r2-7b) for full training details and headline numbers.
 
 ---
 
