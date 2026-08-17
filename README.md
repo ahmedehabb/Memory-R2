@@ -15,23 +15,23 @@ At its core is **LoGo-GRPO**, a credit-assignment algorithm that combines **lo**
 
 ## Pretrained checkpoints
 
-7B checkpoints are released on Hugging Face: **[ahmedehabb/Memory-R2](https://huggingface.co/ahmedehabb/Memory-R2)**. The repo has **two separate checkpoints** that play two different, non-overlapping roles — they are not interchangeable:
+7B checkpoints are released on Hugging Face as **two separate repos** that play two different, non-overlapping roles — they are not interchangeable:
 
-| Subfolder | Role | Manages memory? | Answers questions? |
+| Repo | Role | Manages memory? | Answers questions? |
 | --- | --- | :---: | :---: |
-| [`memory-manager/`](https://huggingface.co/ahmedehabb/Memory-R2/tree/main/memory-manager) | Stage 1 — reads the running conversation and issues INSERT / UPDATE / DELETE ops against the memory store. This is the paper's LoGo-GRPO "champion" (`32sess_champion_v2`) and its main contribution. | ✅ Yes — only job | ❌ No |
-| [`answer-agent/`](https://huggingface.co/ahmedehabb/Memory-R2/tree/main/answer-agent) | Stage 2 — given a question and the memory store `memory-manager/` produced, generates the final answer. SFT+RL-trained (`sft_cont_step55`). *Optional* — `memory-manager/` was evaluated against several answer agents in the paper (untrained Qwen-7B, GPT-OSS-120B, this one); any instruction-tuned LLM can play this role. | ❌ No | ✅ Yes — only job |
+| **[ahmedehabb/Memory-R2](https://huggingface.co/ahmedehabb/Memory-R2)** | Stage 1 — reads the running conversation and issues INSERT / UPDATE / DELETE ops against the memory store. This is the paper's LoGo-GRPO "champion" (`32sess_champion_v2`) and its main contribution. | ✅ Yes — only job | ❌ No |
+| **[ahmedehabb/Memory-R2-answer-agent](https://huggingface.co/ahmedehabb/Memory-R2-answer-agent)** | Stage 2 — given a question and the memory store `Memory-R2` produced, generates the final answer. SFT+RL-trained (`sft_cont_step55`). *Optional* — the memory manager was evaluated against several answer agents in the paper (untrained Qwen-7B, GPT-OSS-120B, this one); any instruction-tuned LLM can play this role. | ❌ No | ✅ Yes — only job |
 
 Download either or both with:
 
 ```python
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-memory_manager = AutoModelForCausalLM.from_pretrained("ahmedehabb/Memory-R2", subfolder="memory-manager", torch_dtype="auto", device_map="auto")
-answer_agent = AutoModelForCausalLM.from_pretrained("ahmedehabb/Memory-R2", subfolder="answer-agent", torch_dtype="auto", device_map="auto")
+memory_manager = AutoModelForCausalLM.from_pretrained("ahmedehabb/Memory-R2", torch_dtype="auto", device_map="auto")
+answer_agent = AutoModelForCausalLM.from_pretrained("ahmedehabb/Memory-R2-answer-agent", torch_dtype="auto", device_map="auto")
 ```
 
-See the [model card](https://huggingface.co/ahmedehabb/Memory-R2) for full training details and headline numbers.
+See the model cards ([memory manager](https://huggingface.co/ahmedehabb/Memory-R2), [answer agent](https://huggingface.co/ahmedehabb/Memory-R2-answer-agent)) for full training details and headline numbers.
 
 ---
 
